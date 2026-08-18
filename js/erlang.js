@@ -397,6 +397,474 @@
     };
   };
 
+  /**
+   * Helper: Generate Normalized Diurnal Distribution Weights
+   * @param {number} numIntervals - Total intervals in the operating day
+   * @param {string|Array<number>} pattern - 'diurnal' | 'uniform' | 'morning' | 'evening' | custom weights
+   * @returns {Array<number>} Normalized weights summing to 1.0
+   */
+  Erlangly.getDistributionWeights = function(numIntervals, pattern) {
+    var n = Math.max(1, Math.floor(numIntervals || 24));
+    if (Array.isArray(pattern) && pattern.length === n) {
+      var sum = pattern.reduce(function(acc, val) { return acc + Math.max(0, val); }, 0);
+      return sum > 0 ? pattern.map(function(v) { return Math.max(0, v) / sum; }) : Array(n).fill(1 / n);
+    }
+
+    var weights = [];
+    var patternType = typeof pattern === 'string' ? pattern.toLowerCase() : 'diurnal';
+
+    for (var i = 0; i < n; i++) {
+      var t = i / (n - 1 || 1); // 0.0 to 1.0 across the operating day
+      var w = 1.0;
+
+      if (patternType === 'uniform') {
+        w = 1.0;
+      } else if (patternType === 'morning') {
+        // Peak around 25-30% of day
+        w = 0.3 + 1.2 * Math.exp(-Math.pow((t - 0.28) / 0.18, 2)) + 0.3 * Math.exp(-Math.pow((t - 0.7) / 0.25, 2));
+      } else if (patternType === 'evening') {
+        // Peak around 70-75% of day
+        w = 0.3 + 0.4 * Math.exp(-Math.pow((t - 0.3) / 0.25, 2)) + 1.2 * Math.exp(-Math.pow((t - 0.72) / 0.18, 2));
+      } else {
+        // Standard contact center diurnal curve (Twin peaks: morning ~30% and afternoon ~65%)
+        w = 0.25 + 0.95 * Math.exp(-Math.pow((t - 0.30) / 0.15, 2)) + 0.85 * Math.exp(-Math.pow((t - 0.65) / 0.16, 2));
+      }
+      weights.push(Math.max(0.01, w));
+    }
+
+    var total = weights.reduce(function(acc, val) { return acc + val; }, 0);
+    return weights.map(function(w) { return w / total; });
+  };
+
+  /**
+   * Daily Staffing Simulator
+   * Simulates interval-by-interval staffing needs across an operating day using Erlang C.
+   *
+   * @param {Object} params
+   * @param {number} params.dailyVolume - Total volume for the day
+   * @param {number} params.aht - Average handle time in seconds
+   * @param {number} [params.operatingHours=12] - Operating hours per day
+   * @param {number} [params.intervalMinutes=30] - Interval granularity in minutes (15, 30, 60)
+   * @param {string|Array<number>} [params.distribution='diurnal'] - Intraday volume arrival pattern
+   * @param {number} [params.targetServiceLevel=0.80] - Target SLA (e.g. 0.80)
+   * @param {number} [params.targetTimeSeconds=20] - Answer threshold in seconds
+   * @param {number} [params.maxOccupancy=0.85] - Occupancy ceiling
+   * @param {number} [params.shrinkage=0.30] - Shrinkage fraction
+   * @param {number} [params.workWeekHours=40] - Standard work week hours
+   * @param {number} [params.hourlyWage=0] - Hourly loaded labor cost
+   * @returns {Object} Daily simulation results and interval breakdown
+   */
+  Erlangly.simulateDailyProfile = function(params) {
+    params = params || {};
+    var dailyVol = Math.max(0, typeof params.dailyVolume === 'number' ? params.dailyVolume : 0);
+    var aht = Math.max(1, typeof params.aht === 'number' ? params.aht : 180);
+    var opHours = Math.max(1, Math.min(24, typeof params.operatingHours === 'number' ? params.operatingHours : 12));
+    var intervalMins = Math.max(5, Math.min(120, typeof params.intervalMinutes === 'number' ? params.intervalMinutes : 30));
+    var intervalSec = intervalMins * 60;
+    var numIntervals = Math.max(1, Math.round((opHours * 60) / intervalMins));
+    var sla = typeof params.targetServiceLevel === 'number' ? params.targetServiceLevel : 0.80;
+    var targetT = typeof params.targetTimeSeconds === 'number' ? params.targetTimeSeconds : 20;
+    var maxOcc = typeof params.maxOccupancy === 'number' ? params.maxOccupancy : 0.85;
+    var shrinkage = typeof params.shrinkage === 'number' ? params.shrinkage : 0.30;
+    var workWeek = typeof params.workWeekHours === 'number' && params.workWeekHours > 0 ? params.workWeekHours : 40.0;
+    var wage = Math.max(0, typeof params.hourlyWage === 'number' ? params.hourlyWage : 0);
+
+    var weights = Erlangly.getDistributionWeights(numIntervals, params.distribution || 'diurnal');
+    var intervals = [];
+    var totalNetStaffHours = 0;
+    var totalGrossStaffHours = 0;
+    var peakStaffed = 0;
+    var peakBase = 0;
+    var peakErlangs = 0;
+    var weightedSLSum = 0;
+    var weightedOccSum = 0;
+    var weightedASASum = 0;
+
+    var startHour = Math.max(0, Math.min(23, typeof params.startHour === 'number' ? params.startHour : (opHours === 24 ? 0 : 8)));
+
+    for (var i = 0; i < numIntervals; i++) {
+      var intervalVol = dailyVol * weights[i];
+      var solve = Erlangly.agentsRequired({
+        volume: intervalVol,
+        aht: aht,
+        intervalSeconds: intervalSec,
+        targetServiceLevel: sla,
+        targetTimeSeconds: targetT,
+        maxOccupancy: maxOcc,
+        shrinkage: shrinkage
+      });
+
+      var intervalHours = intervalSec / 3600;
+      var netHours = solve.baseAgents * intervalHours;
+      var grossHours = (solve.staffedAgents === Infinity ? solve.baseAgents : solve.staffedAgents) * intervalHours;
+
+      totalNetStaffHours += netHours;
+      totalGrossStaffHours += grossHours;
+
+      if (solve.staffedAgents > peakStaffed && solve.staffedAgents !== Infinity) {
+        peakStaffed = solve.staffedAgents;
+      }
+      if (solve.baseAgents > peakBase) {
+        peakBase = solve.baseAgents;
+      }
+      if (solve.trafficIntensity > peakErlangs) {
+        peakErlangs = solve.trafficIntensity;
+      }
+
+      weightedSLSum += solve.serviceLevel * intervalVol;
+      weightedOccSum += solve.occupancy * intervalVol;
+      weightedASASum += (solve.asa === Infinity ? 0 : solve.asa) * intervalVol;
+
+      // Format time label (e.g. "08:00" or "08:30")
+      var minsFromStart = i * intervalMins;
+      var curHour = (startHour + Math.floor(minsFromStart / 60)) % 24;
+      var curMin = minsFromStart % 60;
+      var timeLabel = (curHour < 10 ? '0' : '') + curHour + ':' + (curMin < 10 ? '0' : '') + curMin;
+
+      intervals.push({
+        intervalIndex: i,
+        time: timeLabel,
+        volume: intervalVol,
+        weightPct: weights[i] * 100,
+        erlangs: solve.trafficIntensity,
+        baseAgents: solve.baseAgents,
+        staffedAgents: solve.staffedAgents,
+        serviceLevel: solve.serviceLevel,
+        asa: solve.asa,
+        occupancy: solve.occupancy,
+        netHours: netHours,
+        grossHours: grossHours
+      });
+    }
+
+    var avgSL = dailyVol > 0 ? (weightedSLSum / dailyVol) : 1.0;
+    var avgOcc = dailyVol > 0 ? (weightedOccSum / dailyVol) : 0.0;
+    var avgASA = dailyVol > 0 ? (weightedASASum / dailyVol) : 0.0;
+    var standardDayHours = workWeek / 5; // e.g. 8h per day for 40h workweek
+    var baseFTE = standardDayHours > 0 ? (totalNetStaffHours / standardDayHours) : 0;
+    var staffedFTE = standardDayHours > 0 ? (totalGrossStaffHours / standardDayHours) : 0;
+    var laborCost = totalGrossStaffHours * wage;
+
+    return {
+      dailyVolume: dailyVol,
+      aht: aht,
+      operatingHours: opHours,
+      intervalMinutes: intervalMins,
+      numIntervals: numIntervals,
+      peakBaseAgents: peakBase,
+      peakStaffedAgents: peakStaffed,
+      peakErlangs: peakErlangs,
+      totalNetStaffHours: totalNetStaffHours,
+      totalGrossStaffHours: totalGrossStaffHours,
+      baseFTE: baseFTE,
+      staffedFTE: staffedFTE,
+      averageServiceLevel: avgSL,
+      averageOccupancy: avgOcc,
+      averageASA: avgASA,
+      laborCost: laborCost,
+      intervals: intervals
+    };
+  };
+
+  /**
+   * Weekly Staffing Simulator
+   * Simulates week-by-week capacity, staffing needs, and daily breakdowns across multiple weeks.
+   *
+   * @param {Object} params
+   * @param {number} params.weeklyVolume - Starting weekly volume
+   * @param {number} params.aht - AHT in seconds
+   * @param {number} [params.weeks=12] - Number of weeks in horizon (e.g. 4, 8, 12, 26, 52)
+   * @param {number} [params.growthRatePct=0] - Volume growth rate per week in %
+   * @param {number} [params.ahtDriftPct=0] - AHT drift per week in %
+   * @param {number} [params.operatingDays=7] - Operating days per week (5, 6, 7)
+   * @param {Array<number>} [params.dayWeights] - Day of week volume weights
+   * @param {number} [params.operatingHours=12] - Operating hours per day
+   * @param {string} [params.diurnalPattern='diurnal'] - Intraday profile
+   * @param {number} [params.targetServiceLevel=0.80] - Target SLA
+   * @param {number} [params.targetTimeSeconds=20] - Answer threshold in seconds
+   * @param {number} [params.maxOccupancy=0.85] - Occupancy ceiling
+   * @param {number} [params.shrinkage=0.30] - Shrinkage fraction
+   * @param {number} [params.workWeekHours=40] - Standard work week hours
+   * @param {number} [params.hourlyWage=0] - Loaded hourly wage
+   * @returns {Object} Weekly simulation results
+   */
+  Erlangly.simulateWeeklyProfile = function(params) {
+    params = params || {};
+    var startVol = Math.max(0, typeof params.weeklyVolume === 'number' ? params.weeklyVolume : 35000);
+    var startAht = Math.max(1, typeof params.aht === 'number' ? params.aht : 180);
+    var weeksCount = Math.max(1, Math.min(104, typeof params.weeks === 'number' ? params.weeks : 12));
+    var growthRate = typeof params.growthRatePct === 'number' ? params.growthRatePct / 100 : 0;
+    var ahtDrift = typeof params.ahtDriftPct === 'number' ? params.ahtDriftPct / 100 : 0;
+    var opDays = Math.max(1, Math.min(7, typeof params.operatingDays === 'number' ? params.operatingDays : 7));
+    var workWeek = typeof params.workWeekHours === 'number' && params.workWeekHours > 0 ? params.workWeekHours : 40.0;
+    var wage = Math.max(0, typeof params.hourlyWage === 'number' ? params.hourlyWage : 0);
+
+    // Default day of week weights
+    var dayWeights = params.dayWeights;
+    if (!Array.isArray(dayWeights) || dayWeights.length !== opDays) {
+      if (opDays === 7) {
+        dayWeights = [0.18, 0.17, 0.16, 0.16, 0.15, 0.10, 0.08]; // Mon to Sun
+      } else if (opDays === 6) {
+        dayWeights = [0.19, 0.18, 0.18, 0.17, 0.16, 0.12]; // Mon to Sat
+      } else {
+        dayWeights = [0.22, 0.21, 0.20, 0.20, 0.17]; // Mon to Fri
+      }
+    }
+    var dayWeightSum = dayWeights.reduce(function(a, b) { return a + b; }, 0) || 1;
+    var normDayWeights = dayWeights.map(function(w) { return w / dayWeightSum; });
+
+    var DAY_NAMES_7 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    var DAY_NAMES_5 = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    var dayNames = opDays === 7 ? DAY_NAMES_7 : (opDays === 5 ? DAY_NAMES_5 : DAY_NAMES_7.slice(0, opDays));
+
+    var weeks = [];
+    var totalPeriodVolume = 0;
+    var totalPeriodGrossHours = 0;
+    var totalPeriodNetHours = 0;
+    var maxStaffedFTE = 0;
+    var maxPeakAgents = 0;
+    var totalPeriodCost = 0;
+
+    for (var w = 1; w <= weeksCount; w++) {
+      var currentVol = startVol * Math.pow(1 + growthRate, w - 1);
+      var currentAht = Math.max(1, startAht * Math.pow(1 + ahtDrift, w - 1));
+
+      var dayResults = [];
+      var weekNetHours = 0;
+      var weekGrossHours = 0;
+      var weekPeakAgents = 0;
+      var weekPeakErlangs = 0;
+      var weekWeightedSL = 0;
+      var weekWeightedOcc = 0;
+
+      for (var d = 0; d < opDays; d++) {
+        var dayVol = currentVol * normDayWeights[d];
+        var daySim = Erlangly.simulateDailyProfile({
+          dailyVolume: dayVol,
+          aht: currentAht,
+          operatingHours: params.operatingHours || 12,
+          intervalMinutes: params.intervalMinutes || 30,
+          distribution: params.diurnalPattern || 'diurnal',
+          targetServiceLevel: params.targetServiceLevel || 0.80,
+          targetTimeSeconds: params.targetTimeSeconds || 20,
+          maxOccupancy: params.maxOccupancy || 0.85,
+          shrinkage: params.shrinkage !== undefined ? params.shrinkage : 0.30,
+          workWeekHours: workWeek,
+          hourlyWage: wage
+        });
+
+        weekNetHours += daySim.totalNetStaffHours;
+        weekGrossHours += daySim.totalGrossStaffHours;
+        if (daySim.peakStaffedAgents > weekPeakAgents) weekPeakAgents = daySim.peakStaffedAgents;
+        if (daySim.peakErlangs > weekPeakErlangs) weekPeakErlangs = daySim.peakErlangs;
+
+        weekWeightedSL += daySim.averageServiceLevel * dayVol;
+        weekWeightedOcc += daySim.averageOccupancy * dayVol;
+
+        dayResults.push({
+          dayIndex: d,
+          dayName: dayNames[d] || ('Day ' + (d + 1)),
+          volume: dayVol,
+          peakStaffedAgents: daySim.peakStaffedAgents,
+          netHours: daySim.totalNetStaffHours,
+          grossHours: daySim.totalGrossStaffHours,
+          serviceLevel: daySim.averageServiceLevel,
+          occupancy: daySim.averageOccupancy
+        });
+      }
+
+      var weekBaseFTE = workWeek > 0 ? (weekNetHours / workWeek) : 0;
+      var weekStaffedFTE = workWeek > 0 ? (weekGrossHours / workWeek) : 0;
+      var weekCost = weekGrossHours * wage;
+      var weekAvgSL = currentVol > 0 ? (weekWeightedSL / currentVol) : 1.0;
+      var weekAvgOcc = currentVol > 0 ? (weekWeightedOcc / currentVol) : 0.0;
+
+      totalPeriodVolume += currentVol;
+      totalPeriodGrossHours += weekGrossHours;
+      totalPeriodNetHours += weekNetHours;
+      totalPeriodCost += weekCost;
+
+      if (weekStaffedFTE > maxStaffedFTE) maxStaffedFTE = weekStaffedFTE;
+      if (weekPeakAgents > maxPeakAgents) maxPeakAgents = weekPeakAgents;
+
+      weeks.push({
+        weekNumber: w,
+        label: 'Week ' + w,
+        volume: currentVol,
+        aht: currentAht,
+        peakAgents: weekPeakAgents,
+        peakErlangs: weekPeakErlangs,
+        netHours: weekNetHours,
+        grossHours: weekGrossHours,
+        baseFTE: weekBaseFTE,
+        staffedFTE: weekStaffedFTE,
+        serviceLevel: weekAvgSL,
+        occupancy: weekAvgOcc,
+        laborCost: weekCost,
+        days: dayResults
+      });
+    }
+
+    return {
+      weeksCount: weeksCount,
+      startVolume: startVol,
+      startAht: startAht,
+      growthRatePct: params.growthRatePct || 0,
+      totalVolume: totalPeriodVolume,
+      totalGrossHours: totalPeriodGrossHours,
+      totalNetHours: totalPeriodNetHours,
+      totalLaborCost: totalPeriodCost,
+      averageStaffedFTE: weeksCount > 0 ? (weeks.reduce(function(a, b) { return a + b.staffedFTE; }, 0) / weeksCount) : 0,
+      peakStaffedFTE: maxStaffedFTE,
+      peakConcurrentAgents: maxPeakAgents,
+      averageServiceLevel: totalPeriodVolume > 0 ? (weeks.reduce(function(a, b) { return a + b.serviceLevel * b.volume; }, 0) / totalPeriodVolume) : 1.0,
+      averageOccupancy: totalPeriodVolume > 0 ? (weeks.reduce(function(a, b) { return a + b.occupancy * b.volume; }, 0) / totalPeriodVolume) : 0.0,
+      weeks: weeks
+    };
+  };
+
+  /**
+   * Monthly Staffing Simulator
+   * Simulates month-by-month strategic workforce planning, accounting for working days,
+   * peak-hour arrival concentration, monthly growth, seasonality, and labor budgets.
+   *
+   * @param {Object} params
+   * @param {number} params.monthlyVolume - Starting monthly volume
+   * @param {number} params.aht - AHT in seconds
+   * @param {number} [params.months=12] - Number of months (e.g. 3, 6, 12, 24)
+   * @param {number} [params.growthRatePct=0] - Volume growth rate per month in %
+   * @param {number} [params.ahtDriftPct=0] - AHT drift per month in %
+   * @param {Array<number>|number} [params.workingDays=21.75] - Working days per month
+   * @param {Array<number>} [params.seasonalityIndices] - Monthly seasonal multipliers
+   * @param {number} [params.operatingHours=12] - Operating hours per day
+   * @param {number} [params.peakHourFactor=0.105] - Fraction of daily volume in peak hour
+   * @param {number} [params.targetServiceLevel=0.80] - Target SLA
+   * @param {number} [params.targetTimeSeconds=20] - Answer threshold
+   * @param {number} [params.maxOccupancy=0.85] - Occupancy ceiling
+   * @param {number} [params.shrinkage=0.30] - Shrinkage fraction
+   * @param {number} [params.workWeekHours=40] - Standard work week hours
+   * @param {number} [params.hourlyWage=0] - Loaded hourly wage
+   * @returns {Object} Monthly simulation results
+   */
+  Erlangly.simulateMonthlyProfile = function(params) {
+    params = params || {};
+    var startVol = Math.max(0, typeof params.monthlyVolume === 'number' ? params.monthlyVolume : 150000);
+    var startAht = Math.max(1, typeof params.aht === 'number' ? params.aht : 180);
+    var monthsCount = Math.max(1, Math.min(60, typeof params.months === 'number' ? params.months : 12));
+    var growthRate = typeof params.growthRatePct === 'number' ? params.growthRatePct / 100 : 0;
+    var ahtDrift = typeof params.ahtDriftPct === 'number' ? params.ahtDriftPct / 100 : 0;
+    var workWeek = typeof params.workWeekHours === 'number' && params.workWeekHours > 0 ? params.workWeekHours : 40.0;
+    var wage = Math.max(0, typeof params.hourlyWage === 'number' ? params.hourlyWage : 0);
+    var opHours = Math.max(1, Math.min(24, typeof params.operatingHours === 'number' ? params.operatingHours : 12));
+    var sla = typeof params.targetServiceLevel === 'number' ? params.targetServiceLevel : 0.80;
+    var targetT = typeof params.targetTimeSeconds === 'number' ? params.targetTimeSeconds : 20;
+    var maxOcc = typeof params.maxOccupancy === 'number' ? params.maxOccupancy : 0.85;
+    var shrinkage = typeof params.shrinkage === 'number' ? params.shrinkage : 0.30;
+
+    var MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var CALENDAR_WORK_DAYS = [22, 20, 22, 21, 22, 21, 22, 22, 21, 22, 21, 22]; // Standard working days
+
+    var months = [];
+    var totalHorizonVolume = 0;
+    var totalHorizonGrossHours = 0;
+    var totalHorizonNetHours = 0;
+    var totalHorizonCost = 0;
+    var peakStaffedFTE = 0;
+    var peakConcurrentStaff = 0;
+
+    for (var m = 1; m <= monthsCount; m++) {
+      var monthIdx = (m - 1) % 12;
+      var seasonalFactor = 1.0;
+      if (Array.isArray(params.seasonalityIndices) && params.seasonalityIndices[monthIdx] !== undefined) {
+        seasonalFactor = Math.max(0.1, params.seasonalityIndices[monthIdx]);
+      }
+
+      var workDays = 21.75;
+      if (Array.isArray(params.workingDays) && params.workingDays[monthIdx] !== undefined) {
+        workDays = Math.max(1, params.workingDays[monthIdx]);
+      } else if (typeof params.workingDays === 'number' && params.workingDays > 0) {
+        workDays = params.workingDays;
+      } else {
+        workDays = CALENDAR_WORK_DAYS[monthIdx] || 21.75;
+      }
+
+      var currentVol = startVol * Math.pow(1 + growthRate, m - 1) * seasonalFactor;
+      var currentAht = Math.max(1, startAht * Math.pow(1 + ahtDrift, m - 1));
+
+      var avgDailyVol = workDays > 0 ? (currentVol / workDays) : 0;
+
+      // Simulate a representative daily profile for this month
+      var daySim = Erlangly.simulateDailyProfile({
+        dailyVolume: avgDailyVol,
+        aht: currentAht,
+        operatingHours: opHours,
+        intervalMinutes: params.intervalMinutes || 30,
+        distribution: params.diurnalPattern || 'diurnal',
+        targetServiceLevel: sla,
+        targetTimeSeconds: targetT,
+        maxOccupancy: maxOcc,
+        shrinkage: shrinkage,
+        workWeekHours: workWeek,
+        hourlyWage: wage
+      });
+
+      var monthlyNetHours = daySim.totalNetStaffHours * workDays;
+      var monthlyGrossHours = daySim.totalGrossStaffHours * workDays;
+      var monthlyLaborCost = monthlyGrossHours * wage;
+
+      // Monthly standard work hours per full-time FTE
+      var monthlyHoursPerFTE = workDays * (workWeek / 5);
+      var baseFTE = monthlyHoursPerFTE > 0 ? (monthlyNetHours / monthlyHoursPerFTE) : 0;
+      var staffedFTE = monthlyHoursPerFTE > 0 ? (monthlyGrossHours / monthlyHoursPerFTE) : 0;
+
+      totalHorizonVolume += currentVol;
+      totalHorizonGrossHours += monthlyGrossHours;
+      totalHorizonNetHours += monthlyNetHours;
+      totalHorizonCost += monthlyLaborCost;
+
+      if (staffedFTE > peakStaffedFTE) peakStaffedFTE = staffedFTE;
+      if (daySim.peakStaffedAgents > peakConcurrentStaff) peakConcurrentStaff = daySim.peakStaffedAgents;
+
+      var label = monthsCount <= 12 ? (MONTH_NAMES[monthIdx] || ('M' + m)) : ('M' + m + ' (' + MONTH_NAMES[monthIdx] + ')');
+
+      months.push({
+        monthNumber: m,
+        monthIndex: monthIdx,
+        label: label,
+        volume: currentVol,
+        aht: currentAht,
+        workingDays: workDays,
+        dailyVolume: avgDailyVol,
+        peakConcurrentAgents: daySim.peakStaffedAgents,
+        peakErlangs: daySim.peakErlangs,
+        baseFTE: baseFTE,
+        staffedFTE: staffedFTE,
+        grossHours: monthlyGrossHours,
+        netHours: monthlyNetHours,
+        serviceLevel: daySim.averageServiceLevel,
+        occupancy: daySim.averageOccupancy,
+        laborCost: monthlyLaborCost
+      });
+    }
+
+    return {
+      monthsCount: monthsCount,
+      startVolume: startVol,
+      startAht: startAht,
+      growthRatePct: params.growthRatePct || 0,
+      totalVolume: totalHorizonVolume,
+      totalGrossHours: totalHorizonGrossHours,
+      totalNetHours: totalHorizonNetHours,
+      totalLaborCost: totalHorizonCost,
+      averageStaffedFTE: monthsCount > 0 ? (months.reduce(function(a, b) { return a + b.staffedFTE; }, 0) / monthsCount) : 0,
+      peakStaffedFTE: peakStaffedFTE,
+      peakConcurrentAgents: peakConcurrentStaff,
+      averageServiceLevel: totalHorizonVolume > 0 ? (months.reduce(function(a, b) { return a + b.serviceLevel * b.volume; }, 0) / totalHorizonVolume) : 1.0,
+      averageOccupancy: totalHorizonVolume > 0 ? (months.reduce(function(a, b) { return a + b.occupancy * b.volume; }, 0) / totalHorizonVolume) : 0.0,
+      months: months
+    };
+  };
+
   return Erlangly;
 });
 

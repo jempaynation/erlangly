@@ -134,6 +134,65 @@ const pooling = Erlangly.multiSkillPoolingEfficiency(queues, 0.80, 20, 1800);
 assert(pooling.dedicatedAgents > pooling.pooledAgents, `Pooling creates headcount savings (Dedicated: ${pooling.dedicatedAgents}, Pooled: ${pooling.pooledAgents})`);
 assert(pooling.headcountSaved >= 2, `Headcount saved >= 2 agents (saved: ${pooling.headcountSaved} agents, ${pooling.percentEfficiencyGain.toFixed(1)}% gain)`);
 
+// 9. Multi-Period Staffing Simulation (Daily, Weekly, Monthly)
+console.log('\n[9] Multi-Period Staffing Simulation (Daily, Weekly, Monthly)');
+
+// Daily simulation test
+const dailySim = Erlangly.simulateDailyProfile({
+  dailyVolume: 5000,
+  aht: 180,
+  operatingHours: 12,
+  intervalMinutes: 30,
+  distribution: 'diurnal',
+  targetServiceLevel: 0.80,
+  targetTimeSeconds: 20,
+  shrinkage: 0.30,
+  workWeekHours: 40.0,
+  hourlyWage: 25.0
+});
+
+assert(dailySim.intervals.length === 24, 'Daily simulation generates 24 intervals for 12h @ 30min');
+assert(dailySim.peakStaffedAgents > 0, `Daily peak staffed agents > 0 (found: ${dailySim.peakStaffedAgents})`);
+assert(dailySim.totalGrossStaffHours > dailySim.totalNetStaffHours, 'Gross staff hours exceed net hours due to shrinkage');
+assert(dailySim.staffedFTE > dailySim.baseFTE, 'Staffed FTE exceeds base FTE');
+assert(dailySim.averageServiceLevel >= 0.80, `Daily average service level meets target (got: ${(dailySim.averageServiceLevel * 100).toFixed(1)}%)`);
+assert(dailySim.laborCost > 0, `Daily labor cost calculated ($${dailySim.laborCost.toFixed(2)})`);
+
+// Weekly simulation test
+const weeklySim = Erlangly.simulateWeeklyProfile({
+  weeklyVolume: 35000,
+  aht: 180,
+  weeks: 12,
+  growthRatePct: 2.0,
+  operatingDays: 7,
+  operatingHours: 12,
+  shrinkage: 0.30,
+  workWeekHours: 40.0,
+  hourlyWage: 25.0
+});
+
+assert(weeklySim.weeks.length === 12, 'Weekly simulation generates 12 weeks');
+assert(weeklySim.weeks[11].volume > weeklySim.weeks[0].volume, 'Weekly volume increases under positive growth rate');
+assert(weeklySim.weeks[11].staffedFTE > weeklySim.weeks[0].staffedFTE, 'Staffed FTE scales with growing weekly volume');
+assert(weeklySim.totalLaborCost > 0, `Total 12-week labor cost calculated ($${weeklySim.totalLaborCost.toLocaleString()})`);
+
+// Monthly simulation test
+const monthlySim = Erlangly.simulateMonthlyProfile({
+  monthlyVolume: 150000,
+  aht: 180,
+  months: 12,
+  growthRatePct: 1.0,
+  shrinkage: 0.30,
+  workWeekHours: 40.0,
+  hourlyWage: 25.0
+});
+
+assert(monthlySim.months.length === 12, 'Monthly simulation generates 12 months');
+assert(monthlySim.months[0].workingDays > 15, 'Calendar working days assigned per month');
+assert(monthlySim.months[0].staffedFTE > 0, `Month 1 staffed FTE > 0 (got: ${monthlySim.months[0].staffedFTE.toFixed(1)})`);
+assert(monthlySim.totalVolume > 1500000, `Total 12-month volume aggregated correctly (${monthlySim.totalVolume.toLocaleString()})`);
+assert(monthlySim.totalLaborCost > 0, `Total annual labor budget calculated ($${monthlySim.totalLaborCost.toLocaleString()})`);
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -141,4 +200,5 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 

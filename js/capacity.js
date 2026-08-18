@@ -4,8 +4,9 @@
  * Features:
  * - Single-interval interactive Erlang C solver & sensitivity explorer
  * - Bulk CSV multi-interval processor with summary metrics
+ * - Multi-Period Staffing Simulator (Daily, Weekly, Monthly) with Chart.js visualizer
  * - CSV export & Cross-tool handoff to Scheduling (localStorage)
- * - Auto-loads handoffs from Hero or Forecasting (?from=hero / ?from=forecast)
+ * - Auto-loads handoffs from Hero or Forecasting (?from=hero / ?from=forecast / ?from=plans)
  */
 
 (function() {
@@ -13,7 +14,7 @@
 
   // --- State ---
   var state = {
-    mode: 'single', // 'single' | 'bulk'
+    mode: 'single', // 'single' | 'bulk' | 'sim'
     single: {
       volume: 300,
       aht: 180,
@@ -31,6 +32,25 @@
       shrinkage: 0.30,
       intervalSeconds: 1800,
       results: []
+    },
+    sim: {
+      granularity: 'daily', // 'daily' | 'weekly' | 'monthly'
+      horizon: 7,
+      volume: 5000,
+      aht: 180,
+      growthRatePct: 2.0,
+      ahtDriftPct: 0.0,
+      operatingHours: 12,
+      workWeekHours: 40.0,
+      distribution: 'diurnal',
+      operatingDays: 7,
+      targetServiceLevel: 0.80,
+      targetTimeSeconds: 20,
+      maxOccupancy: 0.85,
+      shrinkage: 0.30,
+      hourlyWage: 25.00,
+      results: null,
+      chart: null
     }
   };
 
@@ -65,8 +85,10 @@
   // --- DOM References ---
   var tabSingle = document.getElementById('tab-single');
   var tabBulk = document.getElementById('tab-bulk');
+  var tabSim = document.getElementById('tab-sim');
   var viewSingle = document.getElementById('view-single');
   var viewBulk = document.getElementById('view-bulk');
+  var viewSim = document.getElementById('view-sim');
 
   // Single inputs
   var inputVol = document.getElementById('input-vol');
@@ -123,11 +145,68 @@
   var handoffMessage = document.getElementById('handoff-message');
   var btnDismissHandoff = document.getElementById('btn-dismiss-handoff');
 
+  // Simulator DOM References
+  var btnGranularityDaily = document.getElementById('btn-granularity-daily');
+  var btnGranularityWeekly = document.getElementById('btn-granularity-weekly');
+  var btnGranularityMonthly = document.getElementById('btn-granularity-monthly');
+  var selectSimHorizon = document.getElementById('select-sim-horizon');
+  var btnResetSim = document.getElementById('btn-reset-sim');
+
+  var simLeversTitle = document.getElementById('sim-levers-title');
+  var lblSimVol = document.getElementById('lbl-sim-vol');
+  var numSimVol = document.getElementById('num-sim-vol');
+  var addonSimVol = document.getElementById('addon-sim-vol');
+  var hintSimVol = document.getElementById('hint-sim-vol');
+  var numSimAht = document.getElementById('num-sim-aht');
+
+  var grpSimGrowth = document.getElementById('grp-sim-growth');
+  var numSimGrowth = document.getElementById('num-sim-growth');
+  var numSimAhtDrift = document.getElementById('num-sim-aht-drift');
+  var addonSimGrowth = document.getElementById('addon-sim-growth');
+
+  var selectSimOpHours = document.getElementById('select-sim-ophours');
+  var selectSimWorkweek = document.getElementById('select-sim-workweek');
+  var grpSimDistribution = document.getElementById('grp-sim-distribution');
+  var selectSimDistribution = document.getElementById('select-sim-distribution');
+  var grpSimOpDays = document.getElementById('grp-sim-opdays');
+  var selectSimOpDays = document.getElementById('select-sim-opdays');
+
+  var numSimSLA = document.getElementById('num-sim-sla');
+  var numSimTargetTime = document.getElementById('num-sim-target-time');
+  var numSimOccupancy = document.getElementById('num-sim-occupancy');
+  var numSimShrinkage = document.getElementById('num-sim-shrinkage');
+  var numSimWage = document.getElementById('num-sim-wage');
+  var btnSaveSimPlan = document.getElementById('btn-save-sim-plan');
+
+  var lblKpiStaffed = document.getElementById('lbl-kpi-staffed');
+  var simKpiPeakStaffed = document.getElementById('sim-kpi-peak-staffed');
+  var simKpiPeakStaffedSub = document.getElementById('sim-kpi-peak-staffed-sub');
+  var lblKpiFte = document.getElementById('lbl-kpi-fte');
+  var simKpiFte = document.getElementById('sim-kpi-fte');
+  var simKpiFteSub = document.getElementById('sim-kpi-fte-sub');
+  var simKpiHours = document.getElementById('sim-kpi-hours');
+  var simKpiHoursSub = document.getElementById('sim-kpi-hours-sub');
+  var simKpiCost = document.getElementById('sim-kpi-cost');
+  var simKpiCostSub = document.getElementById('sim-kpi-cost-sub');
+  var simKpiSL = document.getElementById('sim-kpi-sl');
+  var simKpiSLBadge = document.getElementById('sim-kpi-sl-badge');
+  var simKpiOcc = document.getElementById('sim-kpi-occ');
+  var simKpiOccSub = document.getElementById('sim-kpi-occ-sub');
+
+  var simChartTitle = document.getElementById('sim-chart-title');
+  var chartCanvas = document.getElementById('chart-sim-visualizer');
+  var simTableTitle = document.getElementById('sim-table-title');
+  var theadSimResults = document.getElementById('thead-sim-results');
+  var tbodySimResults = document.getElementById('tbody-sim-results');
+  var btnExportSimCSV = document.getElementById('btn-export-sim-csv');
+  var btnSendSimScheduling = document.getElementById('btn-send-sim-scheduling');
+
   // --- Initialization ---
   function init() {
     setupTabSwitching();
     setupSingleEventListeners();
     setupBulkEventListeners();
+    setupSimulatorEventListeners();
     checkIncomingHandoff();
     calculateSingle();
   }
@@ -138,19 +217,34 @@
       state.mode = 'single';
       tabSingle.className = 'btn btn-sm btn-primary';
       tabBulk.className = 'btn btn-sm btn-ghost';
+      tabSim.className = 'btn btn-sm btn-ghost';
       viewSingle.style.display = 'grid';
       viewBulk.style.display = 'none';
+      viewSim.style.display = 'none';
     });
 
     tabBulk.addEventListener('click', function() {
       state.mode = 'bulk';
       tabBulk.className = 'btn btn-sm btn-primary';
       tabSingle.className = 'btn btn-sm btn-ghost';
+      tabSim.className = 'btn btn-sm btn-ghost';
       viewSingle.style.display = 'none';
       viewBulk.style.display = 'flex';
+      viewSim.style.display = 'none';
       if (state.bulk.rows.length === 0) {
         loadBulkData(SAMPLE_BULK_DATA);
       }
+    });
+
+    tabSim.addEventListener('click', function() {
+      state.mode = 'sim';
+      tabSim.className = 'btn btn-sm btn-primary';
+      tabSingle.className = 'btn btn-sm btn-ghost';
+      tabBulk.className = 'btn btn-sm btn-ghost';
+      viewSingle.style.display = 'none';
+      viewBulk.style.display = 'none';
+      viewSim.style.display = 'flex';
+      runSimulation();
     });
   }
 
@@ -567,6 +661,750 @@
     bulkResultsSection.style.display = 'flex';
   }
 
+  // =========================================================================
+  // MULTI-PERIOD STAFFING SIMULATOR (Daily / Weekly / Monthly)
+  // =========================================================================
+
+  function setupSimulatorEventListeners() {
+    // Granularity Switcher Pills
+    btnGranularityDaily.addEventListener('click', function() {
+      setSimulatorGranularity('daily');
+    });
+
+    btnGranularityWeekly.addEventListener('click', function() {
+      setSimulatorGranularity('weekly');
+    });
+
+    btnGranularityMonthly.addEventListener('click', function() {
+      setSimulatorGranularity('monthly');
+    });
+
+    // Horizon dropdown change
+    selectSimHorizon.addEventListener('change', function() {
+      state.sim.horizon = parseInt(selectSimHorizon.value, 10) || 7;
+      runSimulation();
+    });
+
+    // Simulator input change listeners
+    [
+      numSimVol, numSimAht, numSimGrowth, numSimAhtDrift,
+      selectSimOpHours, selectSimWorkweek, selectSimDistribution, selectSimOpDays,
+      numSimSLA, numSimTargetTime, numSimOccupancy, numSimShrinkage, numSimWage
+    ].forEach(function(el) {
+      if (!el) return;
+      el.addEventListener('input', runSimulation);
+      el.addEventListener('change', runSimulation);
+    });
+
+    // Reset button
+    btnResetSim.addEventListener('click', function() {
+      resetSimulatorDefaults();
+      ErlanglyUtils.showToast('Reset simulator levers to defaults', 'info');
+    });
+
+    // Export CSV
+    btnExportSimCSV.addEventListener('click', exportSimulatorCSV);
+
+    // Send to Scheduling
+    btnSendSimScheduling.addEventListener('click', sendSimulatorToScheduling);
+
+    // Save Plan
+    btnSaveSimPlan.addEventListener('click', saveSimulatorPlan);
+  }
+
+  function setSimulatorGranularity(granularity) {
+    state.sim.granularity = granularity;
+
+    // Update pill buttons style
+    [btnGranularityDaily, btnGranularityWeekly, btnGranularityMonthly].forEach(function(btn) {
+      btn.className = 'btn btn-xs btn-ghost';
+    });
+
+    if (granularity === 'daily') {
+      btnGranularityDaily.className = 'btn btn-xs btn-primary';
+      simLeversTitle.textContent = 'Daily Simulation Parameters';
+      lblSimVol.textContent = 'Daily Interaction Volume';
+      addonSimVol.textContent = 'calls/day';
+      hintSimVol.textContent = 'Day 1 volume distributed across intervals';
+      numSimVol.value = '5000';
+      grpSimGrowth.style.display = 'none';
+      grpSimDistribution.style.display = 'block';
+      grpSimOpDays.style.display = 'none';
+
+      // Update horizon options
+      selectSimHorizon.innerHTML = 
+        '<option value="7" selected>7 Days</option>' +
+        '<option value="14">14 Days</option>' +
+        '<option value="30">30 Days</option>';
+      state.sim.horizon = 7;
+
+    } else if (granularity === 'weekly') {
+      btnGranularityWeekly.className = 'btn btn-xs btn-primary';
+      simLeversTitle.textContent = 'Weekly Simulation Parameters';
+      lblSimVol.textContent = 'Weekly Interaction Volume';
+      addonSimVol.textContent = 'calls/week';
+      hintSimVol.textContent = 'Baseline Week 1 volume distributed across days';
+      numSimVol.value = '35000';
+      grpSimGrowth.style.display = 'block';
+      addonSimGrowth.textContent = '%/week';
+      grpSimDistribution.style.display = 'block';
+      grpSimOpDays.style.display = 'block';
+
+      // Update horizon options
+      selectSimHorizon.innerHTML = 
+        '<option value="4">4 Weeks (1 Mo)</option>' +
+        '<option value="8">8 Weeks (2 Mo)</option>' +
+        '<option value="12" selected>12 Weeks (1 Qtr)</option>' +
+        '<option value="26">26 Weeks (6 Mo)</option>' +
+        '<option value="52">52 Weeks (1 Yr)</option>';
+      state.sim.horizon = 12;
+
+    } else if (granularity === 'monthly') {
+      btnGranularityMonthly.className = 'btn btn-xs btn-primary';
+      simLeversTitle.textContent = 'Monthly Simulation Parameters';
+      lblSimVol.textContent = 'Monthly Interaction Volume';
+      addonSimVol.textContent = 'calls/month';
+      hintSimVol.textContent = 'Month 1 baseline across working calendar';
+      numSimVol.value = '150000';
+      grpSimGrowth.style.display = 'block';
+      addonSimGrowth.textContent = '%/month';
+      grpSimDistribution.style.display = 'block';
+      grpSimOpDays.style.display = 'none';
+
+      // Update horizon options
+      selectSimHorizon.innerHTML = 
+        '<option value="3">3 Months (Qtr)</option>' +
+        '<option value="6">6 Months</option>' +
+        '<option value="12" selected>12 Months (1 Yr)</option>' +
+        '<option value="24">24 Months (2 Yr)</option>';
+      state.sim.horizon = 12;
+    }
+
+    runSimulation();
+  }
+
+  function resetSimulatorDefaults() {
+    numSimAht.value = 180;
+    numSimGrowth.value = 2.0;
+    numSimAhtDrift.value = 0.0;
+    selectSimOpHours.value = '12';
+    selectSimWorkweek.value = '40';
+    selectSimDistribution.value = 'diurnal';
+    selectSimOpDays.value = '7';
+    numSimSLA.value = 80;
+    numSimTargetTime.value = 20;
+    numSimOccupancy.value = 85;
+    numSimShrinkage.value = 30;
+    numSimWage.value = '25.00';
+
+    if (state.sim.granularity === 'daily') {
+      numSimVol.value = '5000';
+      selectSimHorizon.value = '7';
+      state.sim.horizon = 7;
+    } else if (state.sim.granularity === 'weekly') {
+      numSimVol.value = '35000';
+      selectSimHorizon.value = '12';
+      state.sim.horizon = 12;
+    } else {
+      numSimVol.value = '150000';
+      selectSimHorizon.value = '12';
+      state.sim.horizon = 12;
+    }
+
+    runSimulation();
+  }
+
+  function getSimulatorInputs() {
+    return {
+      granularity: state.sim.granularity,
+      horizon: parseInt(selectSimHorizon.value, 10) || state.sim.horizon || 7,
+      volume: Math.max(0, parseFloat(numSimVol.value) || 0),
+      aht: Math.max(1, parseFloat(numSimAht.value) || 180),
+      growthRatePct: parseFloat(numSimGrowth.value) || 0,
+      ahtDriftPct: parseFloat(numSimAhtDrift.value) || 0,
+      operatingHours: parseInt(selectSimOpHours.value, 10) || 12,
+      workWeekHours: parseFloat(selectSimWorkweek.value) || 40.0,
+      distribution: selectSimDistribution.value || 'diurnal',
+      operatingDays: parseInt(selectSimOpDays.value, 10) || 7,
+      targetServiceLevel: (parseFloat(numSimSLA.value) || 80) / 100,
+      targetTimeSeconds: Math.max(1, parseFloat(numSimTargetTime.value) || 20),
+      maxOccupancy: (parseFloat(numSimOccupancy.value) || 85) / 100,
+      shrinkage: (parseFloat(numSimShrinkage.value) || 0) / 100,
+      hourlyWage: Math.max(0, parseFloat(numSimWage.value) || 0)
+    };
+  }
+
+  function runSimulation() {
+    var p = getSimulatorInputs();
+    state.sim = Object.assign({}, state.sim, p);
+
+    if (p.granularity === 'daily') {
+      runDailySimulation(p);
+    } else if (p.granularity === 'weekly') {
+      runWeeklySimulation(p);
+    } else if (p.granularity === 'monthly') {
+      runMonthlySimulation(p);
+    }
+  }
+
+  // --- 1. Daily Simulation Runner ---
+  function runDailySimulation(p) {
+    // 7-day or N-day schedule simulation
+    var DAY_NAMES_7 = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    var DAY_WEIGHTS_7 = [0.18, 0.17, 0.16, 0.16, 0.15, 0.10, 0.08];
+
+    var totalVolume = 0;
+    var totalGrossHours = 0;
+    var totalNetHours = 0;
+    var peakStaffed = 0;
+    var totalCost = 0;
+    var weightedSLSum = 0;
+    var weightedOccSum = 0;
+    var days = [];
+
+    for (var i = 0; i < p.horizon; i++) {
+      var dayIdx = i % 7;
+      var dayVol = p.volume * (DAY_WEIGHTS_7[dayIdx] / (1 / 7)); // Scaled around base daily average
+
+      var daySim = Erlangly.simulateDailyProfile({
+        dailyVolume: dayVol,
+        aht: p.aht,
+        operatingHours: p.operatingHours,
+        intervalMinutes: 30,
+        distribution: p.distribution,
+        targetServiceLevel: p.targetServiceLevel,
+        targetTimeSeconds: p.targetTimeSeconds,
+        maxOccupancy: p.maxOccupancy,
+        shrinkage: p.shrinkage,
+        workWeekHours: p.workWeekHours,
+        hourlyWage: p.hourlyWage
+      });
+
+      totalVolume += dayVol;
+      totalGrossHours += daySim.totalGrossStaffHours;
+      totalNetHours += daySim.totalNetStaffHours;
+      totalCost += daySim.laborCost;
+
+      if (daySim.peakStaffedAgents > peakStaffed) {
+        peakStaffed = daySim.peakStaffedAgents;
+      }
+
+      weightedSLSum += daySim.averageServiceLevel * dayVol;
+      weightedOccSum += daySim.averageOccupancy * dayVol;
+
+      var label = p.horizon <= 7 ? DAY_NAMES_7[dayIdx] : ('Day ' + (i + 1) + ' (' + DAY_NAMES_7[dayIdx].substring(0, 3) + ')');
+
+      days.push({
+        index: i + 1,
+        label: label,
+        volume: dayVol,
+        aht: p.aht,
+        peakAgents: daySim.peakStaffedAgents,
+        peakErlangs: daySim.peakErlangs,
+        baseFTE: daySim.baseFTE,
+        staffedFTE: daySim.staffedFTE,
+        grossHours: daySim.totalGrossStaffHours,
+        serviceLevel: daySim.averageServiceLevel,
+        occupancy: daySim.averageOccupancy,
+        laborCost: daySim.laborCost,
+        intervals: daySim.intervals
+      });
+    }
+
+    var avgSL = totalVolume > 0 ? (weightedSLSum / totalVolume) : 1.0;
+    var avgOcc = totalVolume > 0 ? (weightedOccSum / totalVolume) : 0.0;
+    var dailyHoursPerFTE = p.workWeekHours / 5;
+    var avgDailyStaffedFTE = (totalGrossHours / p.horizon) / dailyHoursPerFTE;
+
+    state.sim.results = {
+      granularity: 'daily',
+      horizon: p.horizon,
+      totalVolume: totalVolume,
+      totalGrossHours: totalGrossHours,
+      totalLaborCost: totalCost,
+      peakStaffed: peakStaffed,
+      averageStaffedFTE: avgDailyStaffedFTE,
+      averageServiceLevel: avgSL,
+      averageOccupancy: avgOcc,
+      periods: days
+    };
+
+    // Update KPI Cards
+    lblKpiStaffed.textContent = 'Peak Staffed Agents';
+    simKpiPeakStaffed.textContent = ErlanglyUtils.formatNumber(peakStaffed);
+    simKpiPeakStaffedSub.textContent = 'Peak concurrent agents';
+
+    lblKpiFte.textContent = 'Avg Daily Staffed FTE';
+    simKpiFte.textContent = avgDailyStaffedFTE.toFixed(1);
+    simKpiFteSub.textContent = 'Based on ' + p.workWeekHours + 'h workweek';
+
+    simKpiHours.textContent = Math.round(totalGrossHours).toLocaleString() + ' hrs';
+    simKpiHoursSub.textContent = p.horizon + '-day gross paid hours';
+
+    simKpiCost.textContent = '$' + Math.round(totalCost).toLocaleString();
+    simKpiCostSub.textContent = 'At $' + p.hourlyWage.toFixed(2) + '/hr';
+
+    simKpiSL.textContent = ErlanglyUtils.formatPercent(avgSL, 1);
+    updateSLAStatusBadge(simKpiSLBadge, avgSL, p.targetServiceLevel);
+
+    simKpiOcc.textContent = ErlanglyUtils.formatPercent(avgOcc, 1);
+    updateOccupancySubtext(simKpiOccSub, avgOcc);
+
+    // Update Chart & Table
+    simChartTitle.textContent = 'Daily Staffed Headcount & Volume Profile (' + p.horizon + ' Days)';
+    simTableTitle.textContent = 'Daily Staffing & Capacity Breakdown (' + p.horizon + ' Days)';
+    renderSimulationTable(days, 'daily');
+    updateSimulationChart(days, 'Day', 'Staffed Agents', 'calls');
+  }
+
+  // --- 2. Weekly Simulation Runner ---
+  function runWeeklySimulation(p) {
+    var res = Erlangly.simulateWeeklyProfile({
+      weeklyVolume: p.volume,
+      aht: p.aht,
+      weeks: p.horizon,
+      growthRatePct: p.growthRatePct,
+      ahtDriftPct: p.ahtDriftPct,
+      operatingDays: p.operatingDays,
+      operatingHours: p.operatingHours,
+      diurnalPattern: p.distribution,
+      targetServiceLevel: p.targetServiceLevel,
+      targetTimeSeconds: p.targetTimeSeconds,
+      maxOccupancy: p.maxOccupancy,
+      shrinkage: p.shrinkage,
+      workWeekHours: p.workWeekHours,
+      hourlyWage: p.hourlyWage
+    });
+
+    state.sim.results = {
+      granularity: 'weekly',
+      horizon: p.horizon,
+      totalVolume: res.totalVolume,
+      totalGrossHours: res.totalGrossHours,
+      totalLaborCost: res.totalLaborCost,
+      peakStaffed: res.peakConcurrentAgents,
+      averageStaffedFTE: res.averageStaffedFTE,
+      averageServiceLevel: res.averageServiceLevel,
+      averageOccupancy: res.averageOccupancy,
+      periods: res.weeks
+    };
+
+    // Update KPI Cards
+    lblKpiStaffed.textContent = 'Peak Concurrent Staff';
+    simKpiPeakStaffed.textContent = ErlanglyUtils.formatNumber(res.peakConcurrentAgents);
+    simKpiPeakStaffedSub.textContent = 'Across ' + p.horizon + ' weeks';
+
+    lblKpiFte.textContent = 'Average Required FTE';
+    simKpiFte.textContent = res.averageStaffedFTE.toFixed(1);
+    simKpiFteSub.textContent = 'Gross shrinkage-adjusted';
+
+    simKpiHours.textContent = Math.round(res.totalGrossHours).toLocaleString() + ' hrs';
+    simKpiHoursSub.textContent = p.horizon + '-week gross paid hours';
+
+    simKpiCost.textContent = '$' + Math.round(res.totalLaborCost).toLocaleString();
+    simKpiCostSub.textContent = 'At $' + p.hourlyWage.toFixed(2) + '/hr';
+
+    simKpiSL.textContent = ErlanglyUtils.formatPercent(res.averageServiceLevel, 1);
+    updateSLAStatusBadge(simKpiSLBadge, res.averageServiceLevel, p.targetServiceLevel);
+
+    simKpiOcc.textContent = ErlanglyUtils.formatPercent(res.averageOccupancy, 1);
+    updateOccupancySubtext(simKpiOccSub, res.averageOccupancy);
+
+    // Update Chart & Table
+    simChartTitle.textContent = 'Weekly Staffed FTE & Volume Horizon (' + p.horizon + ' Weeks)';
+    simTableTitle.textContent = 'Weekly Capacity & Staffing Projections (' + p.horizon + ' Weeks)';
+    renderSimulationTable(res.weeks, 'weekly');
+    updateSimulationChart(res.weeks, 'Week', 'Staffed FTE', 'calls/wk');
+  }
+
+  // --- 3. Monthly Simulation Runner ---
+  function runMonthlySimulation(p) {
+    var res = Erlangly.simulateMonthlyProfile({
+      monthlyVolume: p.volume,
+      aht: p.aht,
+      months: p.horizon,
+      growthRatePct: p.growthRatePct,
+      ahtDriftPct: p.ahtDriftPct,
+      operatingHours: p.operatingHours,
+      targetServiceLevel: p.targetServiceLevel,
+      targetTimeSeconds: p.targetTimeSeconds,
+      maxOccupancy: p.maxOccupancy,
+      shrinkage: p.shrinkage,
+      workWeekHours: p.workWeekHours,
+      hourlyWage: p.hourlyWage
+    });
+
+    state.sim.results = {
+      granularity: 'monthly',
+      horizon: p.horizon,
+      totalVolume: res.totalVolume,
+      totalGrossHours: res.totalGrossHours,
+      totalLaborCost: res.totalLaborCost,
+      peakStaffed: res.peakConcurrentAgents,
+      averageStaffedFTE: res.averageStaffedFTE,
+      averageServiceLevel: res.averageServiceLevel,
+      averageOccupancy: res.averageOccupancy,
+      periods: res.months
+    };
+
+    // Update KPI Cards
+    lblKpiStaffed.textContent = 'Peak Concurrent Staff';
+    simKpiPeakStaffed.textContent = ErlanglyUtils.formatNumber(res.peakConcurrentAgents);
+    simKpiPeakStaffedSub.textContent = 'Peak concurrent agents';
+
+    lblKpiFte.textContent = 'Average Monthly FTE';
+    simKpiFte.textContent = res.averageStaffedFTE.toFixed(1);
+    simKpiFteSub.textContent = 'Gross staffed FTE';
+
+    simKpiHours.textContent = Math.round(res.totalGrossHours).toLocaleString() + ' hrs';
+    simKpiHoursSub.textContent = p.horizon + '-month gross paid hours';
+
+    simKpiCost.textContent = '$' + Math.round(res.totalLaborCost).toLocaleString();
+    simKpiCostSub.textContent = 'Total horizon labor budget';
+
+    simKpiSL.textContent = ErlanglyUtils.formatPercent(res.averageServiceLevel, 1);
+    updateSLAStatusBadge(simKpiSLBadge, res.averageServiceLevel, p.targetServiceLevel);
+
+    simKpiOcc.textContent = ErlanglyUtils.formatPercent(res.averageOccupancy, 1);
+    updateOccupancySubtext(simKpiOccSub, res.averageOccupancy);
+
+    // Update Chart & Table
+    simChartTitle.textContent = 'Monthly Staffed FTE & Volume Projections (' + p.horizon + ' Months)';
+    simTableTitle.textContent = 'Monthly Capacity & Staffing Plan (' + p.horizon + ' Months)';
+    renderSimulationTable(res.months, 'monthly');
+    updateSimulationChart(res.months, 'Month', 'Staffed FTE', 'calls/mo');
+  }
+
+  function updateSLAStatusBadge(el, sl, target) {
+    if (sl >= target) {
+      el.innerHTML = '<span class="badge badge-success">On Target</span>';
+    } else if (sl >= target * 0.9) {
+      el.innerHTML = '<span class="badge badge-warn">At Risk</span>';
+    } else {
+      el.innerHTML = '<span class="badge badge-danger">Breach</span>';
+    }
+  }
+
+  function updateOccupancySubtext(el, occ) {
+    if (occ > 0.90) {
+      el.innerHTML = '<span class="text-warn">High burnout risk (&gt;90%)</span>';
+    } else {
+      el.textContent = 'Productive utilization';
+    }
+  }
+
+  // --- Render Table for Simulation ---
+  function renderSimulationTable(periods, granularity) {
+    theadSimResults.innerHTML = '';
+    tbodySimResults.innerHTML = '';
+
+    if (!periods || periods.length === 0) {
+      tbodySimResults.innerHTML = '<tr><td colspan="10" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No simulation data generated.</td></tr>';
+      return;
+    }
+
+    var trHead = document.createElement('tr');
+    if (granularity === 'daily') {
+      trHead.innerHTML = 
+        '<th>Period</th>' +
+        '<th>Volume</th>' +
+        '<th>Peak Erlangs</th>' +
+        '<th>Peak Staffed</th>' +
+        '<th>Daily FTE</th>' +
+        '<th>Paid Hours</th>' +
+        '<th>Projected SLA</th>' +
+        '<th>Occupancy</th>' +
+        '<th>Labor Cost</th>' +
+        '<th>Status</th>';
+    } else if (granularity === 'weekly') {
+      trHead.innerHTML = 
+        '<th>Week</th>' +
+        '<th>Weekly Volume</th>' +
+        '<th>Peak Agents</th>' +
+        '<th>Base FTE</th>' +
+        '<th>Staffed FTE</th>' +
+        '<th>Gross Hours</th>' +
+        '<th>Avg SLA</th>' +
+        '<th>Avg Occupancy</th>' +
+        '<th>Weekly Cost</th>' +
+        '<th>Status</th>';
+    } else {
+      trHead.innerHTML = 
+        '<th>Month</th>' +
+        '<th>Monthly Volume</th>' +
+        '<th>Work Days</th>' +
+        '<th>Daily Avg Vol</th>' +
+        '<th>Peak Agents</th>' +
+        '<th>Staffed FTE</th>' +
+        '<th>Monthly Hours</th>' +
+        '<th>Avg SLA</th>' +
+        '<th>Occupancy</th>' +
+        '<th>Monthly Cost</th>' +
+        '<th>Status</th>';
+    }
+    theadSimResults.appendChild(trHead);
+
+    var targetSLA = state.sim.targetServiceLevel;
+
+    periods.forEach(function(row) {
+      var tr = document.createElement('tr');
+      var isMet = row.serviceLevel >= targetSLA;
+      var badgeClass = isMet ? 'badge-success' : 'badge-danger';
+      var statusLabel = isMet ? 'Target Met' : 'Breach';
+
+      if (granularity === 'daily') {
+        tr.innerHTML = 
+          '<td class="mono"><strong>' + row.label + '</strong></td>' +
+          '<td class="mono">' + ErlanglyUtils.formatNumber(row.volume) + '</td>' +
+          '<td class="mono">' + ErlanglyUtils.formatErlangs(row.peakErlangs) + '</td>' +
+          '<td class="mono text-accent"><strong>' + row.peakAgents + '</strong></td>' +
+          '<td class="mono">' + row.staffedFTE.toFixed(1) + '</td>' +
+          '<td class="mono">' + Math.round(row.grossHours) + 'h</td>' +
+          '<td class="mono ' + (isMet ? 'text-success' : 'text-danger') + '">' + ErlanglyUtils.formatPercent(row.serviceLevel, 1) + '</td>' +
+          '<td class="mono ' + (row.occupancy > 0.90 ? 'text-warn' : '') + '">' + ErlanglyUtils.formatPercent(row.occupancy, 1) + '</td>' +
+          '<td class="mono text-accent">$' + Math.round(row.laborCost).toLocaleString() + '</td>' +
+          '<td><span class="badge ' + badgeClass + '">' + statusLabel + '</span></td>';
+      } else if (granularity === 'weekly') {
+        tr.innerHTML = 
+          '<td class="mono"><strong>' + row.label + '</strong></td>' +
+          '<td class="mono">' + ErlanglyUtils.formatNumber(row.volume) + '</td>' +
+          '<td class="mono text-accent"><strong>' + row.peakAgents + '</strong></td>' +
+          '<td class="mono">' + row.baseFTE.toFixed(1) + '</td>' +
+          '<td class="mono text-accent"><strong>' + row.staffedFTE.toFixed(1) + '</strong></td>' +
+          '<td class="mono">' + Math.round(row.grossHours).toLocaleString() + 'h</td>' +
+          '<td class="mono ' + (isMet ? 'text-success' : 'text-danger') + '">' + ErlanglyUtils.formatPercent(row.serviceLevel, 1) + '</td>' +
+          '<td class="mono ' + (row.occupancy > 0.90 ? 'text-warn' : '') + '">' + ErlanglyUtils.formatPercent(row.occupancy, 1) + '</td>' +
+          '<td class="mono text-accent">$' + Math.round(row.laborCost).toLocaleString() + '</td>' +
+          '<td><span class="badge ' + badgeClass + '">' + statusLabel + '</span></td>';
+      } else {
+        tr.innerHTML = 
+          '<td class="mono"><strong>' + row.label + '</strong></td>' +
+          '<td class="mono">' + ErlanglyUtils.formatNumber(row.volume) + '</td>' +
+          '<td class="mono">' + row.workingDays + '</td>' +
+          '<td class="mono">' + ErlanglyUtils.formatNumber(row.dailyVolume) + '</td>' +
+          '<td class="mono text-accent"><strong>' + row.peakConcurrentAgents + '</strong></td>' +
+          '<td class="mono text-accent"><strong>' + row.staffedFTE.toFixed(1) + '</strong></td>' +
+          '<td class="mono">' + Math.round(row.grossHours).toLocaleString() + 'h</td>' +
+          '<td class="mono ' + (isMet ? 'text-success' : 'text-danger') + '">' + ErlanglyUtils.formatPercent(row.serviceLevel, 1) + '</td>' +
+          '<td class="mono ' + (row.occupancy > 0.90 ? 'text-warn' : '') + '">' + ErlanglyUtils.formatPercent(row.occupancy, 1) + '</td>' +
+          '<td class="mono text-accent">$' + Math.round(row.laborCost).toLocaleString() + '</td>' +
+          '<td><span class="badge ' + badgeClass + '">' + statusLabel + '</span></td>';
+      }
+
+      tbodySimResults.appendChild(tr);
+    });
+  }
+
+  // --- Update Simulation Chart.js Visualizer ---
+  function updateSimulationChart(periods, labelPrefix, staffMetricName, volUnit) {
+    if (!chartCanvas || typeof Chart === 'undefined') return;
+
+    if (state.sim.chart) {
+      state.sim.chart.destroy();
+      state.sim.chart = null;
+    }
+
+    var labels = periods.map(function(p) { return p.label; });
+    var staffData = periods.map(function(p) { return p.staffedFTE || p.peakAgents; });
+    var baseData = periods.map(function(p) { return p.baseFTE || (p.peakAgents ? Math.round(p.peakAgents * 0.7) : 0); });
+    var volData = periods.map(function(p) { return p.volume; });
+
+    var ctx = chartCanvas.getContext('2d');
+    state.sim.chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: staffMetricName + ' (Shrinkage-Adjusted)',
+            data: staffData,
+            backgroundColor: 'rgba(0, 210, 211, 0.45)',
+            borderColor: '#00d2d3',
+            borderWidth: 1.5,
+            borderRadius: 4,
+            yAxisID: 'y',
+            order: 2
+          },
+          {
+            label: 'Base Net Productive FTE',
+            data: baseData,
+            type: 'line',
+            borderColor: '#38bdf8',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            borderDash: [4, 4],
+            pointRadius: 3,
+            pointBackgroundColor: '#38bdf8',
+            yAxisID: 'y',
+            order: 1
+          },
+          {
+            label: 'Interaction Volume (' + volUnit + ')',
+            data: volData,
+            type: 'line',
+            borderColor: '#f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+            fill: true,
+            borderWidth: 2,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: '#f59e0b',
+            yAxisID: 'y1',
+            order: 3
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: {
+              color: '#cbd5e1',
+              font: { family: 'Inter', size: 11 },
+              boxWidth: 12,
+              padding: 12
+            }
+          },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleColor: '#f8fafc',
+            bodyColor: '#cbd5e1',
+            borderColor: '#2b3954',
+            borderWidth: 1,
+            padding: 10
+          }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(43, 57, 84, 0.4)' },
+            ticks: { color: '#94a3b8', font: { family: 'IBM Plex Mono', size: 10 } }
+          },
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            grid: { color: 'rgba(43, 57, 84, 0.4)' },
+            ticks: { color: '#00d2d3', font: { family: 'IBM Plex Mono', size: 10 } },
+            title: { display: true, text: staffMetricName, color: '#00d2d3', font: { size: 10 } }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { color: '#f59e0b', font: { family: 'IBM Plex Mono', size: 10 } },
+            title: { display: true, text: 'Volume', color: '#f59e0b', font: { size: 10 } }
+          }
+        }
+      }
+    });
+  }
+
+  // --- Export Simulation CSV ---
+  function exportSimulatorCSV() {
+    if (!state.sim.results || !state.sim.results.periods || state.sim.results.periods.length === 0) {
+      ErlanglyUtils.showToast('No simulation data to export.', 'error');
+      return;
+    }
+
+    var gran = state.sim.granularity;
+    var filename = 'erlang_simulation_' + gran + '_' + state.sim.horizon + 'periods.csv';
+    var headers = ['Period', 'Volume', 'Peak_Agents', 'Staffed_FTE', 'Gross_Hours', 'Service_Level', 'Occupancy', 'Labor_Cost', 'Status'];
+
+    var rows = state.sim.results.periods.map(function(r) {
+      return [
+        r.label,
+        r.volume,
+        r.peakAgents || r.peakConcurrentAgents || 0,
+        (r.staffedFTE || 0).toFixed(2),
+        Math.round(r.grossHours || 0),
+        ((r.serviceLevel || 0) * 100).toFixed(1) + '%',
+        ((r.occupancy || 0) * 100).toFixed(1) + '%',
+        Math.round(r.laborCost || 0),
+        (r.serviceLevel >= state.sim.targetServiceLevel) ? 'TARGET_MET' : 'BREACH'
+      ];
+    });
+
+    ErlanglyUtils.exportCSV(filename, headers, rows);
+    ErlanglyUtils.showToast('Exported ' + filename, 'success');
+  }
+
+  // --- Send Simulator Requirement to Scheduling Tool ---
+  function sendSimulatorToScheduling() {
+    if (!state.sim.results || !state.sim.results.periods || state.sim.results.periods.length === 0) {
+      ErlanglyUtils.showToast('No simulation results to hand off.', 'error');
+      return;
+    }
+
+    // Convert simulation periods into interval-level or daily schedule requirements
+    var periods = state.sim.results.periods;
+    var handoffPayload = {
+      source: 'capacity_simulation',
+      granularity: state.sim.granularity,
+      targetSLA: state.sim.targetServiceLevel,
+      shrinkage: state.sim.shrinkage,
+      workWeekHours: state.sim.workWeekHours,
+      intervals: []
+    };
+
+    if (state.sim.granularity === 'daily' && periods[0].intervals) {
+      // Pass the first day's 24 intervals
+      handoffPayload.intervals = periods[0].intervals.map(function(inv) {
+        return {
+          interval: inv.time,
+          volume: Math.round(inv.volume),
+          aht: state.sim.aht,
+          erlangs: inv.erlangs,
+          requiredAgents: inv.baseAgents,
+          staffedAgents: inv.staffedAgents
+        };
+      });
+    } else {
+      // Pass period-by-period blocks
+      handoffPayload.intervals = periods.map(function(p) {
+        return {
+          interval: p.label,
+          volume: Math.round(p.volume),
+          aht: state.sim.aht,
+          erlangs: p.peakErlangs || 0,
+          requiredAgents: Math.round(p.baseFTE || p.peakAgents || 0),
+          staffedAgents: Math.round(p.staffedFTE || p.peakAgents || 0)
+        };
+      });
+    }
+
+    ErlanglyUtils.setHandoff('scheduling', handoffPayload);
+    window.location.href = 'scheduling.html?from=capacity';
+  }
+
+  // --- Save Simulation Plan to My Plans ---
+  function saveSimulatorPlan() {
+    var p = getSimulatorInputs();
+    var res = state.sim.results;
+
+    if (typeof ErlanglyPlans !== 'undefined') {
+      ErlanglyPlans.showSaveModal('capacity', {
+        type: 'simulation',
+        simulation: p
+      }, {
+        granularity: p.granularity,
+        horizon: p.horizon,
+        peakStaffed: res ? res.peakStaffed : 0,
+        averageStaffedFTE: res ? res.averageStaffedFTE : 0,
+        totalLaborCost: res ? res.totalLaborCost : 0,
+        averageServiceLevel: res ? res.averageServiceLevel : 0.8
+      });
+    } else {
+      ErlanglyUtils.showToast('Plans persistence module loading...', 'info');
+    }
+  }
+
   // --- Incoming Handoff Handler (from hero / forecast / plans / shared link) ---
   function checkIncomingHandoff() {
     var params = new URLSearchParams(window.location.search);
@@ -585,6 +1423,8 @@
       // Disable save controls in shared mode
       var saveBtn = document.getElementById('btn-save-single-plan');
       if (saveBtn) { saveBtn.style.display = 'none'; }
+      var saveSimBtn = document.getElementById('btn-save-sim-plan');
+      if (saveSimBtn) { saveSimBtn.style.display = 'none'; }
       return;
     }
 
@@ -609,7 +1449,29 @@
       handoffMessage.textContent = 'Loaded ' + handoff.intervals.length + ' intervals from Forecasting tool.';
       handoffBanner.style.display = 'flex';
     } else if (from === 'plans') {
-      // Restore saved plan — handoff contains the plan's inputs object
+      // Check if this was a saved simulation plan
+      if (handoff.type === 'simulation' && handoff.simulation) {
+        tabSim.click();
+        var simCfg = handoff.simulation;
+        if (simCfg.granularity) setSimulatorGranularity(simCfg.granularity);
+        if (simCfg.volume) numSimVol.value = simCfg.volume;
+        if (simCfg.aht) numSimAht.value = simCfg.aht;
+        if (simCfg.growthRatePct !== undefined) numSimGrowth.value = simCfg.growthRatePct;
+        if (simCfg.operatingHours) selectSimOpHours.value = String(simCfg.operatingHours);
+        if (simCfg.workWeekHours) selectSimWorkweek.value = String(simCfg.workWeekHours);
+        if (simCfg.distribution) selectSimDistribution.value = simCfg.distribution;
+        if (simCfg.targetServiceLevel) numSimSLA.value = Math.round(simCfg.targetServiceLevel * 100);
+        if (simCfg.targetTimeSeconds) numSimTargetTime.value = simCfg.targetTimeSeconds;
+        if (simCfg.maxOccupancy) numSimOccupancy.value = Math.round(simCfg.maxOccupancy * 100);
+        if (simCfg.shrinkage !== undefined) numSimShrinkage.value = Math.round(simCfg.shrinkage * 100);
+        if (simCfg.hourlyWage !== undefined) numSimWage.value = simCfg.hourlyWage.toFixed(2);
+        runSimulation();
+        handoffMessage.textContent = 'Restored simulation plan from My Plans.';
+        handoffBanner.style.display = 'flex';
+        return;
+      }
+
+      // Restore saved single or bulk plan
       if (handoff.volume) { inputVol.value = handoff.volume; numVol.value = handoff.volume; }
       if (handoff.aht) { inputAht.value = handoff.aht; numAht.value = handoff.aht; }
       if (handoff.intervalSeconds) { selectInterval.value = String(handoff.intervalSeconds); }
