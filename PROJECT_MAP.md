@@ -25,10 +25,14 @@ a working portfolio piece as much as a usable tool.
 
 ## Current status
 
-**Nothing has been implemented yet.** The project is fully specified (`FEATURES.md`) and
-sequenced (`ROADMAP.md`), but no phase has started. Check `ROADMAP.md`'s phase status
-lines for the authoritative, up-to-date answer — this paragraph will go stale as work
-progresses, `ROADMAP.md` will not.
+**v1 is complete (Phases 0–7).** All five WFM tools (Forecasting, Capacity Planning,
+Scheduling, Real-Time/Intraday, Simulator), accounts & persistence (Supabase), shareable
+links, multi-skill pooling proof-of-concept, and portfolio polish are built and signed off.
+
+**v2 is planned (Phases 8–11):** Advanced Forecasting Models, Scheduling Labor Rules,
+Enhanced Simulation & Real-Time (Monte Carlo, mobile view, live data feed), and
+Collaboration & Multi-Skill Routing. Check `ROADMAP.md` for the authoritative phase
+status — this paragraph will go stale as work progresses, `ROADMAP.md` will not.
 
 ## How the docs relate to each other
 
@@ -46,30 +50,34 @@ you're deciding *when/whether it's your turn to build it*, check `ROADMAP.md`. I
 deciding *how to build it*, check `AGENTS.md`. If you want to know what already
 happened, check `CHANGELOG.md`.
 
-## Planned file structure
+## File structure
 
-Nothing below exists yet — this is the target layout per `AGENTS.md`, shown here so a new
-agent can predict where things belong without re-deriving it from `AGENTS.md`'s prose.
+All v1 files exist. This is the current layout per `AGENTS.md`:
 
 ```
 /index.html              landing page, live Erlang C hero demo
-/forecasting.html         Phase 2
-/capacity.html            Phase 1
-/scheduling.html          Phase 3 (includes Forecast → FTE converter)
-/realtime.html            Phase 4 (includes VTO calculator)
-/simulator.html           Phase 6
-/plans.html               Phase 5 — "My Plans" dashboard
-/login.html               Phase 5 — sign up / log in
+/forecasting.html         Forecasting tool
+/capacity.html            Capacity planning tool
+/scheduling.html          Scheduling tool (includes Forecast → FTE converter)
+/realtime.html            Real-time / Intraday tool (includes VTO calculator)
+/simulator.html           Workforce Planning Simulator
+/plans.html               "My Plans" dashboard
+/login.html               Sign up / log in
 /css/styles.css           shared design tokens + all styling
 /js/erlang.js             shared Erlang C math engine — single source of truth
 /js/main.js               shared nav/CSV/file-drop helpers
-/js/supabaseClient.js     Phase 5 — Supabase client init
-/js/auth.js               Phase 5 — auth helpers
-/js/plans.js              Phase 5 — save/load/list/delete against the `plans` table
+/js/supabaseClient.js     Supabase client init
+/js/auth.js               auth helpers
+/js/plans.js              save/load/list/delete against the `plans` table
 /js/<tool>.js             one per tool page (capacity.js, forecasting.js, etc.)
-/js/workers/csv-parser.js Phase 2 — large-CSV Web Worker
-/sql/schema.sql           Phase 5 — Postgres schema + RLS policies
+/js/workers/csv-parser.js large-CSV Web Worker
+/sql/schema.sql           Postgres schema + RLS policies
+/test/run-tests.js        automated math verification suite (29 tests)
 ```
+
+v2 phases (8–11) don't add new HTML pages. Phase 11 adds new schema tables
+(`plan_collaborators`, `plan_versions`) to `sql/schema.sql`. Phases 8–10 extend
+existing JS files only.
 
 ## How data flows between tools
 

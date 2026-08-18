@@ -116,16 +116,214 @@ needs evolve over a multi-week or multi-month horizon, not just one interval or 
 - Export a scenario as CSV (period-by-period projection) or as a simple summary a planner
   could paste into a business case
 
-## Explicitly out of scope for v1
-- Multi-skill / multi-queue routing math (single queue Erlang C only)
-- Native mobile app — responsive web only
-- Real-time collaborative editing (multiple users on the same plan at once)
+## Explicitly out of scope (not planned)
+- Native mobile app — responsive web only (but see mobile-optimized real-time view below)
+- Real-time collaborative editing with live cursors / presence indicators (see simpler collaborative plans below instead)
+- Server-side computation, ML model training, or external optimization solvers — all math stays client-side and pure
+- WebSocket / SSE live data infrastructure — the live data feed is client-side polling only
 
-## Future developments (post-v1, see ROADMAP.md "Future Developments")
-- Multi-skill, multi-queue Erlang C (blended/overflow routing)
-- Smarter forecasting: seasonal decomposition, holiday/event flags, or a pluggable model swap (e.g. simple exponential smoothing vs. weighted average vs. a regression model)
-- Scheduling constraints: labor rules (max hours, required rest between shifts), agent preferences/availability, part-time patterns
-- Real-time data feeds: optional live connection to a contact-center API instead of manual/CSV entry for the real-time tool
-- Team/collaborative mode: shared plans, comments, versioning, multiple editors
-- Native mobile-optimized "real-time" view, since that tool is the one most likely to be checked from a phone mid-shift
-- Monte Carlo / confidence-interval simulation in the Simulator (range of outcomes, not just point estimates)
+---
+
+## v2 Features (Phases 8–11 — see ROADMAP.md for build order and status)
+
+### 8. Advanced Forecasting Models (Phase 8)
+Extends the forecasting tool from three basic models (WMA, SMA, Linear Trend) to a
+pluggable model architecture with richer options. All models remain pure client-side
+JavaScript functions — no external ML libraries.
+
+- **Pluggable model architecture**: refactored `forecasting.js` with a common model
+  interface so algorithms are interchangeable without touching the rest of the tool.
+  Each model exposes: `fit(historyData)`, `predict(horizon)`, and `metrics()` (fit
+  quality). The existing WMA/SMA/Trend models are migrated to this interface, then new
+  models are added alongside them.
+- **Seasonal decomposition**: additive and multiplicative decomposition
+  (Trend × Seasonal × Residual or Trend + Seasonal + Residual). User picks the
+  decomposition type; the tool extracts the seasonal component and uses it for
+  deseasonalized forecasting. Builds on the existing day-of-week seasonality weighting
+  but adds formal decomposition math.
+- **Exponential smoothing**:
+  - Simple Exponential Smoothing (SES) with configurable smoothing constant α — best
+    for level data without trend or seasonality
+  - Holt's Double Exponential Smoothing with separate α (level) and β (trend) parameters
+    — captures trend without seasonality
+  - Both support auto-optimization of smoothing parameters by minimizing in-sample MSE
+    (grid search or golden-section, not gradient descent — keep it simple and debuggable)
+- **Holiday / event flag system**: user marks specific dates as holidays or events via a
+  simple table (date + label + expected impact %) or CSV upload. Flagged dates are either
+  excluded from training data (so they don't distort the baseline) or treated with a
+  user-specified multiplicative adjustment (e.g. "Black Friday = 250% of normal"). The
+  flag list is saved with the forecast plan.
+- **Regression model**: simple linear regression on detrended data (OLS with time as the
+  independent variable). Optional inclusion of day-of-week dummy variables for basic
+  multi-variable regression. This is deliberately simple — a step above trend projection,
+  not a full statistical modeling package.
+- **Model comparison view**: select 2–3 models, run them all on the same history, and see
+  side-by-side Chart.js lines plus a metrics table (MAE, MAPE, RMSE, in-sample fit %).
+  Helps the user pick the model that best fits their data characteristics without needing
+  to understand the math deeply. The selected model's forecast feeds into the existing
+  "Send to Capacity Planning" handoff.
+
+### 9. Scheduling Labor Rules & Constraints (Phase 9)
+Makes the scheduling tool production-realistic by adding the labor-rule guardrails that
+real WFM teams operate under. Extends the existing shift-pattern allocator — does not
+replace it.
+
+- **Labor rule engine**: configurable constraints that the shift allocator must respect as
+  hard limits:
+  - Maximum daily working hours (e.g. 10h including breaks)
+  - Maximum weekly working hours (e.g. 48h, per local labor law)
+  - Minimum rest period between shifts (e.g. 11h — prevents clopening)
+  - Maximum consecutive working days before a mandatory rest day (e.g. 6)
+  - These rules are global defaults with optional per-agent or per-group overrides
+- **Agent availability / preference input**: per-agent or per-group scheduling data:
+  - Availability windows: "Agent A is available Mon–Fri 06:00–22:00, not weekends"
+  - Shift preferences: preferred shifts (weighted higher in allocation), available shifts
+    (acceptable), and unavailable shifts (hard block)
+  - Input via manual form or CSV upload (agent ID, day, availability start/end, preference)
+  - Preferences are soft constraints (optimizer tries to satisfy them); availability is a
+    hard constraint (optimizer never assigns a shift outside availability)
+- **Part-time shift patterns**: support variable-length shifts (4h, 6h, 8h) each with
+  their own break rules (e.g. 4h shift = no meal break, 6h = 15min, 8h = 30min unpaid
+  meal). Integrates with the existing part-time mix % from the FTE converter — the
+  scheduler now actually assigns part-time shifts, not just accounts for them as a ratio.
+- **Constraint-aware shift allocator**: the existing greedy coverage optimizer is extended
+  to check labor rules before each assignment. If no feasible allocation exists that
+  satisfies all hard constraints, the tool reports the gap clearly ("need 3 more agents
+  on Tuesday 14:00–22:00 but no one is available") rather than silently violating a rule.
+- **Constraint violation highlighting**: any shift assignment that breaches a rule is
+  flagged inline with a severity indicator:
+  - ⚠️ Warning: soft preference violated (e.g. agent assigned a non-preferred shift)
+  - 🚫 Error: hard rule violated (e.g. less than 11h rest between shifts) — this only
+    appears if the user forces an override; the allocator never produces these on its own
+- **CSV export**: updated to include constraint compliance status per shift assignment
+  (pass / warning / override columns)
+
+### 10a. Monte Carlo / Confidence-Interval Simulation (Phase 10)
+Upgrades the Simulator from point-estimate projections to probabilistic range-of-outcomes
+modeling. Uses the same `Erlangly.*` math engine — Monte Carlo is a loop over existing
+simulation logic with randomized inputs, not a new math system.
+
+- **Variability configuration**: for each what-if lever (volume growth, AHT change,
+  shrinkage, attrition rate), the user can specify a ± range (standard deviation as % of
+  the base value). These ranges define the distribution from which each iteration samples.
+  Default distribution is normal (truncated to avoid negative values); uniform is available
+  as an alternative.
+- **Iteration engine**: runs N iterations (user-configurable, default 500, max 2000) of
+  the full period-by-period simulation. Each iteration draws randomized values for every
+  lever from the configured distributions. Performance target: 1000 iterations over 24
+  months should complete in under 3 seconds on a modern browser (the per-iteration math
+  is just Erlang C lookups, which are fast).
+- **Percentile aggregation**: across all iterations, compute P10, P25, P50 (median), P75,
+  P90 for each output metric (required agents, staffed agents, service level, occupancy,
+  labor cost) per period. Store these as the Monte Carlo result set.
+- **Confidence band visualization**: on the existing scenario chart, shade the P10–P90
+  range as a translucent band, plot the P50 (median) as a solid line, and highlight the
+  worst-case (P90 for staffing need / P10 for service level) breach period with a marker.
+  The existing point-estimate scenario lines can be overlaid for comparison.
+- **Export**: CSV with one row per period, columns for each percentile (P10/P25/P50/P75/P90)
+  of each metric. Plain-language summary includes confidence-interval narrative (e.g.
+  "There is a 90% chance you will need between 45 and 62 agents by month 12").
+- **Saved plans**: Monte Carlo configuration (variability ranges, iteration count) and
+  results (percentile arrays) are stored in the existing `inputs`/`outputs` jsonb fields
+  alongside the point-estimate scenario data.
+
+### 10b. Mobile-Optimized Real-Time View (Phase 10)
+The real-time / intraday tool is the one most likely to be checked from a phone mid-shift
+by an RTA analyst. This feature gives it a dedicated mobile layout.
+
+- **Responsive single-column layout** at ≤ 480px viewport width: inputs stack vertically,
+  the interval stepper becomes a swipeable card carousel (previous/next with touch
+  gesture support), and the day-to-date scorecard condenses into a compact summary bar.
+- **Large-touch controls**: VTO approve/revoke buttons sized ≥ 44×44px for phone use,
+  with generous tap targets and visual feedback on press.
+- **Swipeable interval cards**: each interval's data (volume, staffing, SLA, adherence,
+  VTO status) is displayed as a card that can be swiped left/right to advance through the
+  day. The stepper controls (Play/Pause, Jump) remain accessible but secondary to swipe.
+- **Condensed scorecard**: the day-to-date performance metrics collapse into a single
+  horizontal bar with key numbers (cumulative SLA %, total VTO hours, alert count) and
+  expand on tap for the full breakdown.
+
+### 10c. Optional Live Data Feed (Phase 10)
+Replaces manual or CSV entry of forecast-vs-actual data in the real-time tool with an
+optional automatic polling connection to an external data source.
+
+- **Endpoint configuration**: user provides a URL (JSON or CSV format) and a polling
+  interval (30s, 60s, 120s, or manual refresh). The URL and format are stored in
+  `localStorage` (not in Supabase — this is a local device setting, not a saved plan).
+- **Data format**: the endpoint must return interval-level data matching the real-time
+  tool's expected schema: `interval, forecast_volume, actual_volume, forecast_agents,
+  actual_agents`. JSON and CSV formats are both supported; the tool auto-detects based
+  on Content-Type or file extension.
+- **Client-side `fetch()` only**: no WebSocket, no SSE, no custom server. The browser
+  polls the user-provided URL using standard `fetch()`. This means the endpoint must
+  support CORS, or the user must serve it from the same origin. This is a conscious
+  trade-off to stay within the no-custom-backend architecture.
+- **Error handling**:
+  - Connection failure: show a "Last updated: X minutes ago" badge with amber warning;
+    continue displaying last-known-good data; retry on next poll cycle
+  - Malformed response: skip the update, show a "Feed error" indicator with the HTTP
+    status or parse error, log to console
+  - Stale data: if the most recent interval timestamp in the feed is more than 2 polling
+    cycles old, show a "Stale feed" warning so the analyst knows data isn't current
+- **Fallback**: the manual and CSV entry paths remain fully functional alongside the
+  live feed. Switching from feed to manual doesn't lose already-loaded data.
+
+### 11a. Shared / Collaborative Plans (Phase 11)
+Extends the Phase 5 persistence layer so users can share saved plans with teammates.
+Requires Supabase schema changes and new RLS policies.
+
+- **Invite flow**: from the My Plans dashboard or the Save modal, the plan owner can
+  invite another user by email. The invited user sees the plan in their own dashboard
+  with a "Shared with me" badge.
+- **Permission model**: three roles per plan:
+  - **Owner**: full control (edit, share, unshare, delete, rename, version history)
+  - **Editor**: can modify inputs/outputs and save new versions; cannot delete or change
+    sharing settings
+  - **Viewer**: read-only access; can open and view the plan but not modify or save
+- **Schema changes** (`sql/schema.sql`):
+  - New `plan_collaborators` table: `plan_id uuid, user_id uuid, role text
+    ('editor'|'viewer'), invited_by uuid, invited_at timestamptz`
+  - RLS policies: a user can read any plan where they appear in `plan_collaborators` OR
+    where they are the `user_id` (owner). Write access depends on role. This is the first
+    time RLS goes beyond the simple `auth.uid() = user_id` pattern — it needs extra review.
+  - The `plans` table itself is unchanged; collaboration is a join-table concern.
+- **Plan versioning** (pairs with sharing):
+  - New `plan_versions` table: `id uuid, plan_id uuid, version_number integer,
+    inputs jsonb, outputs jsonb, created_by uuid, created_at timestamptz`
+  - Every save creates a new version row (append-only). The `plans` table always reflects
+    the latest version.
+  - Version history UI: list of versions with timestamps and author, diff view between
+    any two versions (JSON comparison of inputs/outputs), restore a previous version
+    (which creates a new version from the restored snapshot, preserving history)
+  - RLS on `plan_versions`: mirrors the `plan_collaborators` permissions — if you can see
+    the plan, you can see its version history.
+- **Conflict handling**: optimistic concurrency via the `updated_at` timestamp. If an
+  editor saves and the plan's `updated_at` has changed since they loaded it, the save
+  shows a warning: "This plan was updated by [user] at [time]. Save anyway (overwrites)
+  or reload their version first?" This is last-write-wins with awareness, not real-time
+  collaborative editing.
+
+### 11b. Extended Multi-Skill / Multi-Queue Erlang C (Phase 11)
+Extends Phase 7's `blendedWorkload` and `multiSkillPoolingEfficiency` proof-of-concept
+into a usable multi-queue modeling system.
+
+- **Overflow routing model**: two or more queues where calls that wait beyond a
+  configurable threshold in the primary queue overflow to a secondary queue. Math:
+  iterative fixed-point method to compute the overflow traffic (Hayward's approximation
+  or equivalent) that feeds the secondary queue's Erlang C calculation. New function:
+  `Erlangly.overflowRouting(queues, overflowThresholdSec)` in `js/erlang.js`.
+- **Skill-based routing model**: agents are tagged with one or more skills; queues are
+  mapped to required skills. The tool computes staffing requirements per skill group,
+  accounting for agents who can serve multiple queues (pooling efficiency). New function:
+  `Erlangly.skillBasedRouting(queues, agentSkillMatrix)` in `js/erlang.js`. Uses the
+  existing `blendedWorkload` logic as a building block for the shared-agent pool portion.
+- **Multi-queue UI mode**: capacity planning and simulator pages get a "Multi-Queue"
+  toggle that replaces the single-queue input panel with:
+  - A queue definition table (queue name, volume, AHT, SLA target, answer threshold)
+  - A routing rules panel (overflow threshold, skill mappings)
+  - Combined results showing per-queue and total staffing requirements, with a
+    "pooling savings" comparison (siloed vs. blended vs. overflow-routed)
+- **All math stays in `js/erlang.js`**: the new functions are pure, numerically stable,
+  and tested in `test/run-tests.js`. Tool pages call them the same way they call
+  `Erlangly.agentsRequired` — no duplicated formulas.
+

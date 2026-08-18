@@ -154,6 +154,19 @@ node test/run-tests.js
 
 ---
 
+## 🗺️ What's Next (v2 Roadmap)
+
+v1 (Phases 0–7) is complete. Four new phases are planned — see [`ROADMAP.md`](ROADMAP.md) for detailed task lists and status:
+
+| Phase | Name | Highlights |
+|---|---|---|
+| **8** | Advanced Forecasting Models | Pluggable model architecture, seasonal decomposition, exponential smoothing (SES, Holt), holiday/event flags, model comparison view with fit metrics |
+| **9** | Scheduling Labor Rules | Max hours/rest constraints, agent availability & preferences, part-time shift patterns, constraint-aware allocator with violation highlighting |
+| **10** | Enhanced Simulation & Real-Time | Monte Carlo confidence intervals (P10–P90 bands), mobile-optimized real-time view with swipeable cards, optional live data feed polling |
+| **11** | Collaboration & Multi-Skill Routing | Shared plans with invite/permissions, plan versioning with diff view, overflow & skill-based queue routing math |
+
+---
+
 ## 📄 License & Attribution
 
 Built with queueing theory principles for workforce management practitioners. Released under the MIT License.

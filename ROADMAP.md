@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status: Phases 0 through 6 Complete. All 5 WFM tools, persistence layer, and core suite fully built and signed off.**
+**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. v2 Phases 8–11 planned and queued for implementation.**
 
 This file is the single source of truth for project progress. Any agentic coding tool
 (Claude Code, Cursor, or otherwise) picking up this project must read it before writing
@@ -26,7 +26,7 @@ code, and must follow the update rules below rather than editing checkboxes free
    `CHANGELOG.md`, then continue.
 
 Once every phase below is checked, the project is complete per the current scope in
-`FEATURES.md`. New scope goes in the "Future Developments" backlog at the bottom until
+`FEATURES.md`. New scope goes in the "Post-v2 Backlog" at the bottom until
 it's promoted into a numbered phase.
 
 ---
@@ -125,18 +125,91 @@ it's promoted into a numbered phase.
 - [x] Optional stretch: multi-skill/multi-queue Erlang C variant
 - [x] `erlangly-qa` final full-suite sign-off
 
+## Phase 8 — Advanced Forecasting Models
+**Status:** Not started
+- [ ] Pluggable model architecture: refactor `forecasting.js` to support swappable forecast algorithms behind a common interface (model selector UI, shared input/output contract)
+- [ ] Seasonal decomposition model: additive and multiplicative decomposition (trend + seasonal + residual)
+- [ ] Exponential smoothing models: Simple Exponential Smoothing (SES) and Holt's Double Exponential Smoothing (trend-aware)
+- [ ] Holiday / event flag system: user marks specific dates as holidays or events (manual or CSV upload), forecast model adjusts predictions accordingly (multiplicative scaling or exclusion from training)
+- [ ] Regression model option: simple linear regression on detrended data as a forecast alternative
+- [ ] Model comparison view: run 2–3 selected models on the same history, display side-by-side with fit metrics (MAE, MAPE, RMSE) to help user pick the best model for their data
+- [ ] `erlangly-qa` sign-off
+
+## Phase 9 — Scheduling Labor Rules & Constraints
+**Status:** Not started
+- [ ] Labor rule engine: configurable max daily hours, max weekly hours, minimum rest period between shifts, max consecutive working days
+- [ ] Agent availability / preference input: per-agent or per-group availability windows (e.g. "available Mon–Fri 06:00–22:00") and shift preferences (preferred vs. available vs. unavailable)
+- [ ] Part-time shift patterns: support variable-length shifts (4h, 6h, 8h) with break rules that adjust by shift length
+- [ ] Constraint-aware shift allocator: extend the existing greedy optimizer to respect labor rules as hard constraints, with a fallback warning when no feasible allocation exists
+- [ ] Constraint violation highlighting: flag any shift assignment that breaches a labor rule, with severity level (warning = soft preference violated, error = hard rule violated)
+- [ ] Updated CSV export: include constraint compliance status per shift assignment
+- [ ] `erlangly-qa` sign-off
+
+## Phase 10 — Enhanced Simulation & Real-Time
+**Status:** Not started
+- [ ] Monte Carlo simulation mode in the Simulator:
+  - [ ] User configures variability ranges (volume ± σ%, AHT ± σ%, attrition ± σ%) on top of existing what-if levers
+  - [ ] Run N iterations (configurable, default 500) with randomized inputs drawn from those ranges
+  - [ ] Compute percentile outcomes: P10, P25, P50 (median), P75, P90 for staffing need, service level, and budget impact per period
+  - [ ] Must reuse `Erlangly.*` per iteration — loop over existing simulation engine with randomized inputs, not a new math system
+- [ ] Confidence band visualization: shade P10–P90 range on the scenario chart, plot median line, highlight worst-case breach period
+- [ ] Export Monte Carlo results: CSV with percentile columns per period, plain-language summary with confidence-interval narrative
+- [ ] Mobile-optimized real-time view:
+  - [ ] Responsive single-column layout for `realtime.html` at ≤ 480px viewport
+  - [ ] Swipeable interval cards (touch-friendly navigation)
+  - [ ] Large-touch VTO approve/revoke buttons sized for phone use
+  - [ ] Condensed day-to-date scorecard for small screens
+- [ ] Optional live data feed connector for the real-time tool:
+  - [ ] Define a polling endpoint URL (JSON or CSV format) in the tool settings
+  - [ ] Configurable polling interval (e.g. every 30s, 60s, 120s)
+  - [ ] Auto-populate forecast-vs-actual interval data from the feed instead of manual/CSV entry
+  - [ ] Client-side `fetch()` only — no WebSocket server, no custom backend
+  - [ ] Error handling: connection failure, malformed response, stale-data detection with visual indicators and fallback to last-known-good data
+- [ ] `erlangly-qa` sign-off
+
+## Phase 11 — Collaboration & Multi-Skill Routing
+**Status:** Not started
+- [ ] Shared / collaborative plans:
+  - [ ] Invite other users (by email) to view or edit a saved plan
+  - [ ] Permission model: owner (full control), editor (can modify), viewer (read-only)
+  - [ ] Supabase schema update: `plan_collaborators` join table (`plan_id, user_id, role, invited_at`) with RLS policies allowing users to see plans shared with them
+- [ ] Plan versioning:
+  - [ ] Automatic version snapshot on each save (append-only `plan_versions` table)
+  - [ ] Version history list with timestamps and author
+  - [ ] Diff view between any two versions (inputs/outputs JSON comparison)
+  - [ ] Restore a previous version (creates a new version from the restored snapshot)
+  - [ ] Supabase schema update: `plan_versions` table (`id, plan_id, version_number, inputs jsonb, outputs jsonb, created_by, created_at`) with RLS
+- [ ] Collaborative conflict handling: last-write-wins with a visual indicator when another editor has saved since you loaded (optimistic concurrency via `updated_at` check)
+- [ ] Multi-skill / multi-queue Erlang C routing:
+  - [ ] Extend beyond Phase 7's `blendedWorkload` proof-of-concept to model overflow routing (primary queue → overflow queue with configurable threshold, e.g. "overflow after 30s wait")
+  - [ ] Skill-based routing: agents tagged with skills, queues mapped to required skills, staffing computed per skill group
+  - [ ] New math functions in `js/erlang.js`: `Erlangly.overflowRouting()` and `Erlangly.skillBasedRouting()` — pure functions, iterative numerical methods for overflow probabilities
+  - [ ] Multi-queue UI mode: capacity planning and simulator pages get a "multi-queue mode" toggle to define 2+ queues with routing rules and see combined staffing requirements
+- [ ] `erlangly-qa` sign-off
+
 ---
 
-## Future Developments (not yet scheduled into a phase)
-- [ ] Multi-skill / multi-queue Erlang C (blended and overflow routing)
-- [ ] Pluggable forecasting models (seasonal decomposition, holiday/event flags, regression)
-- [ ] Scheduling labor-rule constraints (max hours, rest periods, availability/preferences)
-- [ ] Optional live data feed into the real-time tool
-- [ ] Shared/collaborative plans with versioning and multiple editors
-- [ ] Mobile-optimized real-time view
-- [ ] Monte Carlo / confidence-interval simulation in the Simulator
+## Post-v2 Backlog (not yet scheduled)
+
+All original Future Developments items have been promoted into Phases 8–11 above. New
+ideas and stretch goals go here until they're scoped and promoted into a numbered phase.
+
+- _(empty — add new backlog items here as they arise)_
 
 ## Suggested cadence
-Phase 0 and 1 first, to get a live, linkable MVP before anything else. Phases 2–4 can
-each ship independently once Phase 1 is live. Phase 5 (persistence) should land before
-Phase 6 (Simulator), since the Simulator depends on saved data.
+
+**v1 (Phases 0–7) is complete.** For v2:
+
+- **Phase 8** (Advanced Forecasting) can start immediately — it extends an existing tool
+  with no schema changes and no new pages.
+- **Phase 9** (Scheduling Labor Rules) can start independently of Phase 8, or after it —
+  no dependency between them. However, improved forecasts from Phase 8 make scheduling
+  more realistic, so the ordering is recommended.
+- **Phase 10** (Enhanced Simulation & Real-Time) depends loosely on the existing tools
+  being stable. Monte Carlo simulation benefits from any forecasting improvements in
+  Phase 8, but doesn't strictly require them. The mobile real-time view and live data
+  feed are fully independent.
+- **Phase 11** (Collaboration & Multi-Skill Routing) should come last. Shared plans
+  require schema changes and new RLS complexity. Multi-skill routing extends the math
+  engine significantly. Both are best tackled after the simpler enhancements are stable.
+
