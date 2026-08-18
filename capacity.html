@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Erlangly Capacity Planning — Erlang C calculator and bulk interval staffing planner for contact centers.">
+  <meta name="theme-color" content="#080c14">
+  <title>Capacity Planning — Erlangly</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="site-nav">
+    <div class="nav-container">
+      <a href="index.html" class="brand-link" aria-label="Erlangly Home">
+        <div class="brand-icon">E</div>
+        <div class="brand-text">Erlang<span>ly</span></div>
+        <span class="brand-tagline">WFM ENGINEERING</span>
+      </a>
+
+      <button class="mobile-menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="index.html" class="nav-link">Overview</a></li>
+        <li><a href="forecasting.html" class="nav-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="nav-link active">Capacity</a></li>
+        <li><a href="scheduling.html" class="nav-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="nav-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="nav-link">Simulator</a></li>
+        <li><a href="plans.html" class="nav-link">My Plans</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Page Body -->
+  <main class="page-container">
+    <div class="tool-header">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+        <div>
+          <span class="tool-badge">Erlang C Engine</span>
+          <h1 class="tool-title">Capacity &amp; Staffing Planner</h1>
+          <p class="tool-description">
+            Calculate precise base productive headcount and shrinkage-adjusted staffing requirements using M/M/m queueing theory to meet target Service Level and Occupancy constraints.
+          </p>
+        </div>
+
+        <!-- Mode Toggle Tabs -->
+        <div style="display: flex; gap: var(--space-2); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+          <button id="tab-single" class="btn btn-sm btn-primary">Single Interval</button>
+          <button id="tab-bulk" class="btn btn-sm btn-ghost">Bulk Interval CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Handoff Banner (if arriving from Forecasting or Hero) -->
+    <div id="handoff-banner" class="panel" style="display: none; background: rgba(0, 210, 211, 0.08); border-color: var(--accent); margin-bottom: var(--space-6); padding: var(--space-3) var(--space-5);">
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3);">
+        <div style="font-size: var(--text-sm); display: flex; align-items: center; gap: var(--space-2);">
+          <span class="badge badge-success">Data Loaded</span>
+          <span id="handoff-message">Loaded interval forecast data.</span>
+        </div>
+        <button id="btn-dismiss-handoff" class="btn btn-ghost btn-sm">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- VIEW 1: Single Interval Calculator -->
+    <div id="view-single" class="tool-body">
+      <!-- Input Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Interval Parameters</div>
+          <button id="btn-reset-single" class="btn btn-ghost btn-sm">Reset</button>
+        </div>
+
+        <div class="panel-body">
+          <!-- Volume -->
+          <div class="form-group">
+            <div class="form-label">
+              <span>Call Volume</span>
+              <span class="form-label-val" id="lbl-vol">300</span>
+            </div>
+            <input type="range" id="input-vol" min="0" max="3000" step="10" value="300">
+            <div class="input-group" style="margin-top: var(--space-1);">
+              <input type="number" id="num-vol" class="form-control mono" min="0" max="100000" value="300">
+              <span class="input-addon">calls</span>
+            </div>
+          </div>
+
+          <!-- AHT -->
+          <div class="form-group">
+            <div class="form-label">
+              <span>Average Handle Time (AHT)</span>
+              <span class="form-label-val" id="lbl-aht">180s</span>
+            </div>
+            <input type="range" id="input-aht" min="10" max="1200" step="5" value="180">
+            <div class="input-group" style="margin-top: var(--space-1);">
+              <input type="number" id="num-aht" class="form-control mono" min="1" max="10000" value="180">
+              <span class="input-addon">seconds</span>
+            </div>
+          </div>
+
+          <!-- Interval Length -->
+          <div class="form-group">
+            <label for="select-interval" class="form-label">Interval Duration</label>
+            <select id="select-interval" class="form-control mono">
+              <option value="900">15 Minutes (900s)</option>
+              <option value="1800" selected>30 Minutes (1,800s)</option>
+              <option value="3600">60 Minutes (3,600s)</option>
+            </select>
+          </div>
+
+          <!-- Target SLA & Threshold -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+            <div class="form-group">
+              <label for="num-sla" class="form-label">Target SLA %</label>
+              <div class="input-group">
+                <input type="number" id="num-sla" class="form-control mono" min="1" max="100" value="80">
+                <span class="input-addon">%</span>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="num-threshold" class="form-label">Target Time</label>
+              <div class="input-group">
+                <input type="number" id="num-threshold" class="form-control mono" min="1" max="600" value="20">
+                <span class="input-addon">sec</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Max Occupancy & Shrinkage -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
+            <div class="form-group">
+              <label for="num-occupancy" class="form-label">Max Occupancy</label>
+              <div class="input-group">
+                <input type="number" id="num-occupancy" class="form-control mono" min="50" max="100" value="85">
+                <span class="input-addon">%</span>
+              </div>
+              <span class="form-hint">Prevents burnout (&lt;88% rec.)</span>
+            </div>
+
+            <div class="form-group">
+              <label for="num-shrinkage" class="form-label">Shrinkage %</label>
+              <div class="input-group">
+                <input type="number" id="num-shrinkage" class="form-control mono" min="0" max="99" value="30">
+                <span class="input-addon">%</span>
+              </div>
+              <span class="form-hint">PTO, breaks, training</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-footer">
+          <button id="btn-save-single-plan" class="btn btn-secondary btn-sm">Save to Plans</button>
+        </div>
+      </div>
+
+      <!-- Results Panel -->
+      <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+        <!-- Stat Cards -->
+        <div class="stat-grid">
+          <div class="metric-card highlight">
+            <div class="metric-label">Staffed Agents</div>
+            <div class="metric-value" id="res-staffed">--</div>
+            <div class="metric-subtext" id="res-staffed-sub">Includes shrinkage</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Base Net Agents</div>
+            <div class="metric-value" id="res-base">--</div>
+            <div class="metric-subtext">Productive on queue</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Projected SLA</div>
+            <div class="metric-value" id="res-sl">--%</div>
+            <div class="metric-subtext" id="res-sl-badge"><span class="badge badge-success">On Target</span></div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Average Speed (ASA)</div>
+            <div class="metric-value" id="res-asa">--s</div>
+            <div class="metric-subtext">Average wait time</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Occupancy</div>
+            <div class="metric-value" id="res-occ">--%</div>
+            <div class="metric-subtext" id="res-occ-sub">Handle time ratio</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Workload</div>
+            <div class="metric-value" id="res-erlangs">--</div>
+            <div class="metric-subtext">Erlangs intensity (A)</div>
+          </div>
+        </div>
+
+        <!-- Sensitivity Analysis Panel -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Headcount Sensitivity Table</div>
+            <span class="form-hint">Trade-offs around solved requirement</span>
+          </div>
+          <div class="panel-body" style="padding: 0;">
+            <div class="table-container" style="border: none; border-radius: 0;">
+              <table class="data-table" id="table-sensitivity">
+                <thead>
+                  <tr>
+                    <th>Base Agents</th>
+                    <th>Staffed Agents</th>
+                    <th>Service Level</th>
+                    <th>ASA</th>
+                    <th>Occupancy</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-sensitivity"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel-footer">
+            <button id="btn-send-to-scheduling-single" class="btn btn-primary">
+              Send Requirement to Scheduling →
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: Bulk CSV Interval Mode -->
+    <div id="view-bulk" style="display: none; flex-direction: column; gap: var(--space-6);">
+      <!-- Dropzone & Config Row -->
+      <div style="display: grid; grid-template-columns: 1fr; gap: var(--space-6);">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Upload Interval Schedule CSV</div>
+            <div style="display: flex; gap: var(--space-2);">
+              <button id="btn-sample-csv" class="btn btn-secondary btn-sm">Load Sample Day</button>
+              <button id="btn-download-template" class="btn btn-ghost btn-sm">Download Template</button>
+            </div>
+          </div>
+
+          <div class="panel-body">
+            <div class="dropzone" id="bulk-dropzone">
+              <div class="dropzone-icon">📄</div>
+              <div class="dropzone-text">
+                <strong>Click to browse</strong> or drag and drop your interval CSV here
+              </div>
+              <span class="form-hint">Expected format: <code>interval, volume, aht</code> (e.g. 08:00, 240, 180)</span>
+              <input type="file" id="bulk-file-input" accept=".csv,text/csv" style="display: none;">
+            </div>
+
+            <!-- Global Bulk Constraints -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); margin-top: var(--space-2);">
+              <div class="form-group">
+                <label for="bulk-target-sla" class="form-label">Target SLA %</label>
+                <div class="input-group">
+                  <input type="number" id="bulk-target-sla" class="form-control mono" min="1" max="100" value="80">
+                  <span class="input-addon">%</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="bulk-target-time" class="form-label">Target Time</label>
+                <div class="input-group">
+                  <input type="number" id="bulk-target-time" class="form-control mono" min="1" max="600" value="20">
+                  <span class="input-addon">sec</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="bulk-occupancy-cap" class="form-label">Max Occupancy</label>
+                <div class="input-group">
+                  <input type="number" id="bulk-occupancy-cap" class="form-control mono" min="50" max="100" value="85">
+                  <span class="input-addon">%</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="bulk-shrinkage" class="form-label">Shrinkage %</label>
+                <div class="input-group">
+                  <input type="number" id="bulk-shrinkage" class="form-control mono" min="0" max="99" value="30">
+                  <span class="input-addon">%</span>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="bulk-interval-len" class="form-label">Interval Length</label>
+                <select id="bulk-interval-len" class="form-control mono">
+                  <option value="900">15 min</option>
+                  <option value="1800" selected>30 min</option>
+                  <option value="3600">60 min</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Bulk Summary KPI Bar -->
+      <div id="bulk-results-section" style="display: none; flex-direction: column; gap: var(--space-6);">
+        <div class="stat-grid">
+          <div class="metric-card">
+            <div class="metric-label">Total Volume</div>
+            <div class="metric-value" id="bulk-total-vol">--</div>
+            <div class="metric-subtext">Total interactions</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Weighted AHT</div>
+            <div class="metric-value" id="bulk-avg-aht">--s</div>
+            <div class="metric-subtext">Average handle time</div>
+          </div>
+
+          <div class="metric-card highlight">
+            <div class="metric-label">Peak Staffed Headcount</div>
+            <div class="metric-value" id="bulk-peak-staffed">--</div>
+            <div class="metric-subtext" id="bulk-peak-time">Peak interval</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Total Staff-Hours</div>
+            <div class="metric-value" id="bulk-total-hours">--</div>
+            <div class="metric-subtext">Gross paid hours</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Average SLA</div>
+            <div class="metric-value" id="bulk-avg-sl">--%</div>
+            <div class="metric-subtext" id="bulk-sl-summary">Target: 80%</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Average Occupancy</div>
+            <div class="metric-value" id="bulk-avg-occ">--%</div>
+            <div class="metric-subtext">Overall utilization</div>
+          </div>
+        </div>
+
+        <!-- Bulk Interval Table -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <span>Interval Staffing Plan (<span id="bulk-interval-count">0</span> intervals)</span>
+            </div>
+            <div style="display: flex; gap: var(--space-2);">
+              <button id="btn-export-bulk-csv" class="btn btn-secondary btn-sm">Export Plan CSV</button>
+              <button id="btn-send-bulk-scheduling" class="btn btn-primary btn-sm">Send to Scheduling →</button>
+            </div>
+          </div>
+
+          <div class="panel-body" style="padding: 0;">
+            <div class="table-container" style="border: none; max-height: 480px; overflow-y: auto;">
+              <table class="data-table" id="table-bulk-results">
+                <thead>
+                  <tr>
+                    <th>Interval</th>
+                    <th>Volume</th>
+                    <th>AHT</th>
+                    <th>Erlangs (A)</th>
+                    <th>Base Agents</th>
+                    <th>Staffed Agents</th>
+                    <th>Projected SLA</th>
+                    <th>ASA</th>
+                    <th>Occupancy</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-bulk-results"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-text">
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Single shared Erlang C engine.
+      </div>
+      <ul class="footer-links">
+        <li><a href="index.html" class="footer-link">Overview</a></li>
+        <li><a href="forecasting.html" class="footer-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="footer-link">Capacity</a></li>
+        <li><a href="scheduling.html" class="footer-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="footer-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="footer-link">Simulator</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/plans.js"></script>
+  <script src="js/erlang.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/capacity.js"></script>
+</body>
+</html>

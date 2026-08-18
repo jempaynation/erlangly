@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Erlangly Real-Time & VTO Calculator — Intraday queue monitoring, adherence alerts, day simulator, and Voluntary Time Off guardrails.">
+  <meta name="theme-color" content="#080c14">
+  <title>Real-Time &amp; VTO — Erlangly</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- Chart.js for Intraday Trend -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="site-nav">
+    <div class="nav-container">
+      <a href="index.html" class="brand-link" aria-label="Erlangly Home">
+        <div class="brand-icon">E</div>
+        <div class="brand-text">Erlang<span>ly</span></div>
+        <span class="brand-tagline">WFM ENGINEERING</span>
+      </a>
+
+      <button class="mobile-menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="index.html" class="nav-link">Overview</a></li>
+        <li><a href="forecasting.html" class="nav-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="nav-link">Capacity</a></li>
+        <li><a href="scheduling.html" class="nav-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="nav-link active">Real-Time</a></li>
+        <li><a href="simulator.html" class="nav-link">Simulator</a></li>
+        <li><a href="plans.html" class="nav-link">My Plans</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Page Body -->
+  <main class="page-container">
+    <div class="tool-header">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+        <div>
+          <span class="tool-badge">Intraday Command Center</span>
+          <h1 class="tool-title">Real-Time Analysis &amp; VTO Calculator</h1>
+          <p class="tool-description">
+            Track live forecast vs. actual variance, step through the day with the shift simulator, detect adherence breaches, and compute safe Voluntary Time Off (VTO) releases with strict SLA guardrails.
+          </p>
+        </div>
+
+        <!-- Mode / Tool Switcher -->
+        <div style="display: flex; gap: var(--space-2); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+          <button id="tab-intraday-sim" class="btn btn-sm btn-primary">Intraday Stepper</button>
+          <button id="tab-vto-calc" class="btn btn-sm btn-ghost">VTO Calculator</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stepper Control Bar -->
+    <div class="panel" style="background: var(--bg-surface-elevated); border-color: var(--accent); margin-bottom: var(--space-6);">
+      <div class="panel-body" style="padding: var(--space-4) var(--space-6); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-4);">
+        <div style="display: flex; align-items: center; gap: var(--space-4);">
+          <div>
+            <span class="form-hint" style="text-transform: uppercase;">Simulated Shift Time</span>
+            <div class="metric-value mono text-accent" id="sim-current-time" style="font-size: var(--text-2xl);">08:00</div>
+          </div>
+          <span class="badge badge-success" id="sim-status-badge">Interval 1 of 24</span>
+        </div>
+
+        <!-- Step Controls -->
+        <div style="display: flex; align-items: center; gap: var(--space-2);">
+          <button id="btn-sim-prev" class="btn btn-secondary btn-sm">⏪ Prev</button>
+          <button id="btn-sim-play" class="btn btn-primary btn-sm">▶ Play Auto-Advance</button>
+          <button id="btn-sim-next" class="btn btn-secondary btn-sm">Next ⏩</button>
+          <button id="btn-sim-reset" class="btn btn-ghost btn-sm">Reset Day</button>
+        </div>
+
+        <!-- Jump Dropdown -->
+        <div style="display: flex; align-items: center; gap: var(--space-2);">
+          <label for="select-sim-interval" class="form-label" style="margin: 0; font-size: var(--text-xs);">Jump to:</label>
+          <select id="select-sim-interval" class="form-control mono" style="width: 110px; height: 32px; font-size: var(--text-xs);"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 1: Intraday Stepper & Real-Time Monitoring -->
+    <div id="view-intraday" style="display: flex; flex-direction: column; gap: var(--space-6);">
+      <!-- Current Interval Spotlight Cards -->
+      <div class="stat-grid">
+        <div class="metric-card highlight">
+          <div class="metric-label">Actual Service Level</div>
+          <div class="metric-value" id="rt-current-sl">--%</div>
+          <div class="metric-subtext" id="rt-sl-status"><span class="badge badge-success">On Target</span></div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Queue ASA</div>
+          <div class="metric-value" id="rt-current-asa">--s</div>
+          <div class="metric-subtext" id="rt-asa-target">Target: &lt; 20s</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Agent Occupancy</div>
+          <div class="metric-value" id="rt-current-occ">--%</div>
+          <div class="metric-subtext" id="rt-occ-status">Handle load</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Volume: Act vs Plan</div>
+          <div class="metric-value" id="rt-current-vol">--</div>
+          <div class="metric-subtext" id="rt-vol-variance">+0% vs forecast</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Staffing Adherence</div>
+          <div class="metric-value" id="rt-current-adherence">--%</div>
+          <div class="metric-subtext" id="rt-adherence-count">0 / 0 on queue</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Queue Intensity</div>
+          <div class="metric-value" id="rt-current-erlangs">--</div>
+          <div class="metric-subtext">Active Erlangs (A)</div>
+        </div>
+      </div>
+
+      <!-- Intraday Cumulative Summary Bar -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Day-to-Date Performance Scorecard</div>
+          <span class="form-hint" id="dtd-interval-span">Intervals 1 to 1</span>
+        </div>
+        <div class="panel-body" style="padding: var(--space-4) var(--space-6);">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-6);">
+            <div>
+              <div class="form-hint">Day-to-Date Volume</div>
+              <div class="metric-value mono" id="dtd-total-vol">0 calls</div>
+              <div class="metric-subtext" id="dtd-vol-var">+0% vs plan</div>
+            </div>
+            <div>
+              <div class="form-hint">Weighted Cumulative SLA</div>
+              <div class="metric-value mono text-success" id="dtd-cum-sl">0.0%</div>
+              <div class="metric-subtext">80.0% target SLA</div>
+            </div>
+            <div>
+              <div class="form-hint">Average Cumulative ASA</div>
+              <div class="metric-value mono" id="dtd-cum-asa">0.0s</div>
+              <div class="metric-subtext">Queue wait time</div>
+            </div>
+            <div>
+              <div class="form-hint">Cumulative Adherence</div>
+              <div class="metric-value mono" id="dtd-cum-adherence">100%</div>
+              <div class="metric-subtext" id="dtd-breach-count">0 breach intervals</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline Table -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Intraday Interval Progression Table</div>
+          <button id="btn-export-rt-csv" class="btn btn-secondary btn-sm">Export Actuals CSV</button>
+        </div>
+
+        <div class="panel-body" style="padding: 0;">
+          <div class="table-container" style="border: none; max-height: 400px; overflow-y: auto;">
+            <table class="data-table" id="table-intraday-timeline">
+              <thead>
+                <tr>
+                  <th>Interval</th>
+                  <th>Fcst Vol</th>
+                  <th>Act Vol</th>
+                  <th>Variance</th>
+                  <th>Sched Staff</th>
+                  <th>Act Staff</th>
+                  <th>Adherence</th>
+                  <th>Actual SLA</th>
+                  <th>ASA</th>
+                  <th>Occupancy</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-intraday-timeline"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 2: Voluntary Time Off (VTO) Calculator -->
+    <div id="view-vto" style="display: none; flex-direction: column; gap: var(--space-6);">
+      <!-- VTO Guardrails & Configuration Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">VTO Safety Guardrails &amp; Financial Parameters</div>
+          <button id="btn-recalc-vto" class="btn btn-secondary btn-sm">Re-evaluate VTO Offers</button>
+        </div>
+
+        <div class="panel-body">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4);">
+            <!-- SLA Safety Buffer -->
+            <div class="form-group">
+              <label for="num-vto-buffer" class="form-label">SLA Protection Buffer</label>
+              <div class="input-group">
+                <input type="number" id="num-vto-buffer" class="form-control mono" min="0" max="20" value="5">
+                <span class="input-addon">%</span>
+              </div>
+              <span class="form-hint">Buffer above 80% SLA (e.g. &ge;85% post-VTO)</span>
+            </div>
+
+            <!-- Occupancy Ceiling -->
+            <div class="form-group">
+              <label for="num-vto-occ-ceiling" class="form-label">Occupancy Ceiling</label>
+              <div class="input-group">
+                <input type="number" id="num-vto-occ-ceiling" class="form-control mono" min="60" max="95" value="85">
+                <span class="input-addon">%</span>
+              </div>
+              <span class="form-hint">Prevents overloading remaining staff</span>
+            </div>
+
+            <!-- Max VTO per Interval -->
+            <div class="form-group">
+              <label for="num-vto-max-cap" class="form-label">Max VTO Cap per Interval</label>
+              <div class="input-group">
+                <input type="number" id="num-vto-max-cap" class="form-control mono" min="1" max="50" value="8">
+                <span class="input-addon">agents</span>
+              </div>
+              <span class="form-hint">Prevents sudden single-interval drops</span>
+            </div>
+
+            <!-- Hourly Agent Labor Rate -->
+            <div class="form-group">
+              <label for="num-vto-hourly-rate" class="form-label">Agent Hourly Wage</label>
+              <div class="input-group">
+                <span class="input-addon">$</span>
+                <input type="number" id="num-vto-hourly-rate" class="form-control mono" min="10" max="100" value="22.00">
+                <span class="input-addon">/hr</span>
+              </div>
+              <span class="form-hint">Calculates cumulative cost savings</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VTO KPI Metrics -->
+      <div class="stat-grid">
+        <div class="metric-card">
+          <div class="metric-label">Surplus Intervals</div>
+          <div class="metric-value" id="vto-surplus-count">--</div>
+          <div class="metric-subtext">Eligible for time off</div>
+        </div>
+
+        <div class="metric-card">
+          <div class="metric-label">Max Offerable VTO Hours</div>
+          <div class="metric-value" id="vto-max-hours">-- hrs</div>
+          <div class="metric-subtext">Safe under guardrails</div>
+        </div>
+
+        <div class="metric-card highlight">
+          <div class="metric-label">Approved VTO Hours</div>
+          <div class="metric-value" id="vto-approved-hours">0.0 hrs</div>
+          <div class="metric-subtext" id="vto-approved-count">0 agent-intervals</div>
+        </div>
+
+        <div class="metric-card highlight">
+          <div class="metric-label">Estimated Labor Cost Saved</div>
+          <div class="metric-value" id="vto-cost-saved" style="color: var(--success-light);">$0.00</div>
+          <div class="metric-subtext" id="vto-rate-note">@ $22.00 / hour</div>
+        </div>
+      </div>
+
+      <!-- VTO Offer Table -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">Surplus Interval VTO Offer Management Sheet</div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button id="btn-approve-all-vto" class="btn btn-secondary btn-sm">Approve All Safe VTO</button>
+            <button id="btn-export-vto-csv" class="btn btn-primary btn-sm">Export VTO Sheet CSV</button>
+          </div>
+        </div>
+
+        <div class="panel-body" style="padding: 0;">
+          <div class="table-container" style="border: none; max-height: 420px; overflow-y: auto;">
+            <table class="data-table" id="table-vto-sheet">
+              <thead>
+                <tr>
+                  <th>Interval</th>
+                  <th>Actual Staff</th>
+                  <th>Erlang Required</th>
+                  <th>Max Safe VTO</th>
+                  <th>Approved VTO</th>
+                  <th>Projected SLA</th>
+                  <th>Projected Occ</th>
+                  <th>Cost Saved</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-vto-sheet"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-text">
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Intraday queue control &amp; VTO guardrails.
+      </div>
+      <ul class="footer-links">
+        <li><a href="index.html" class="footer-link">Overview</a></li>
+        <li><a href="forecasting.html" class="footer-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="footer-link">Capacity</a></li>
+        <li><a href="scheduling.html" class="footer-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="footer-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="footer-link">Simulator</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/plans.js"></script>
+  <script src="js/erlang.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/realtime.js"></script>
+</body>
+</html>

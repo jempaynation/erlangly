@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Erlangly — Math Engine Verification</title>
+  <link rel="stylesheet" href="../css/styles.css">
+  <style>
+    .test-log {
+      font-family: var(--mono);
+      background: var(--bg-input);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      font-size: var(--text-sm);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-2);
+    }
+    .test-pass { color: var(--success-light); }
+    .test-fail { color: var(--danger-light); font-weight: bold; }
+    .test-header { color: var(--accent); margin-top: var(--space-3); font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="page-container" style="max-width: 900px;">
+    <div class="tool-header">
+      <span class="tool-badge">Verification</span>
+      <h1 class="tool-title">Erlangly Math Test Suite</h1>
+      <p class="tool-description">Automated in-browser verification of Erlang B, Erlang C, Service Level, ASA, Occupancy, and Shrinkage solvers.</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">Test Results</div>
+        <button id="btn-rerun" class="btn btn-primary btn-sm">Re-run Tests</button>
+      </div>
+      <div class="panel-body">
+        <div id="test-summary" style="display: flex; gap: var(--space-4); margin-bottom: var(--space-4);"></div>
+        <div id="test-log" class="test-log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/erlang.js"></script>
+  <script src="../js/main.js"></script>
+  <script>
+    function runSuite() {
+      const logEl = document.getElementById('test-log');
+      const summaryEl = document.getElementById('test-summary');
+      logEl.innerHTML = '';
+      let passed = 0;
+      let failed = 0;
+
+      function log(msg, cls) {
+        const line = document.createElement('div');
+        line.className = cls || '';
+        line.textContent = msg;
+        logEl.appendChild(line);
+      }
+
+      function assert(cond, msg) {
+        if (cond) {
+          passed++;
+          log('  ✓ ' + msg, 'test-pass');
+        } else {
+          failed++;
+          log('  ✗ FAIL: ' + msg, 'test-fail');
+        }
+      }
+
+      function assertClose(actual, expected, tol, msg) {
+        const diff = Math.abs(actual - expected);
+        assert(diff <= tol, msg + ` (expected ~${expected.toFixed(4)}, got ${actual.toFixed(4)})`);
+      }
+
+      log('Running Erlangly Mathematical Suite...', 'test-header');
+
+      // Traffic
+      log('[1] Traffic Intensity', 'test-header');
+      assert(Erlangly.trafficIntensity(300, 180, 1800) === 30, '300 calls * 180s / 1800s = 30 Erlangs');
+      assert(Erlangly.trafficIntensity(0, 180, 1800) === 0, 'Zero volume gives 0 Erlangs');
+
+      // 100 Erlangs reference
+      log('[2] Reference: 100 Erlangs, 110 Servers', 'test-header');
+      assertClose(Erlangly.erlangB(100, 110), 0.02746, 0.001, 'Erlang B loss ~ 0.0275');
+      assertClose(Erlangly.erlangC(100, 110), 0.2370, 0.001, 'Erlang C Pw ~ 0.2370');
+      assertClose(Erlangly.serviceLevel(100, 110, 180, 20), 0.9220, 0.001, 'Service Level (20s) ~ 92.2%');
+      assertClose(Erlangly.averageSpeedOfAnswer(100, 110, 180), 4.266, 0.01, 'ASA ~ 4.27s');
+      assertClose(Erlangly.occupancy(100, 110), 100/110, 0.0001, 'Occupancy = 90.91%');
+
+      // Monotonicity
+      log('[3] Monotonicity', 'test-header');
+      let mono = true;
+      let lastSL = -1, lastASA = 999999;
+      for (let s = 52; s <= 70; s++) {
+        const sl = Erlangly.serviceLevel(50, s, 240, 20);
+        const asa = Erlangly.averageSpeedOfAnswer(50, s, 240);
+        if (sl <= lastSL || asa >= lastASA) mono = false;
+        lastSL = sl;
+        lastASA = asa;
+      }
+      assert(mono, 'Service level strictly increases and ASA strictly decreases with servers');
+
+      // Stability
+      log('[4] Stability & Boundary States (m <= A)', 'test-header');
+      assert(Erlangly.erlangC(50, 50) === 1.0, 'Erlang C is 1.0 when servers <= traffic');
+      assert(Erlangly.serviceLevel(50, 50, 180, 20) === 0.0, 'Service level is 0.0 when servers <= traffic');
+      assert(Erlangly.averageSpeedOfAnswer(50, 50, 180) === Infinity, 'ASA is Infinity when servers <= traffic');
+
+      // Shrinkage
+      log('[5] Shrinkage', 'test-header');
+      assert(Erlangly.shrinkageAdjust(10, 0) === 10, '0% shrinkage returns 10');
+      assertClose(Erlangly.shrinkageAdjust(10, 0.30), 14.2857, 0.001, '10 base + 30% shrinkage = 14.2857 gross');
+      assert(Erlangly.shrinkageAdjust(10, 1.0) === Infinity, '100% shrinkage returns Infinity safely');
+
+      // Solver
+      log('[6] Headcount Requirement Solver', 'test-header');
+      const res = Erlangly.agentsRequired({ volume: 300, aht: 180, intervalSeconds: 1800, targetServiceLevel: 0.80, maxOccupancy: 0.85, shrinkage: 0.30 });
+      assert(res.baseAgents > 30, 'Found valid base headcount: ' + res.baseAgents);
+      assert(res.serviceLevel >= 0.80, 'Met SL target: ' + ErlanglyUtils.formatPercent(res.serviceLevel));
+      assert(res.occupancy <= 0.85, 'Met Occ ceiling: ' + ErlanglyUtils.formatPercent(res.occupancy));
+      assert(res.staffedAgents === Math.ceil(res.baseAgents / 0.70), 'Staffed headcount applies shrinkage: ' + res.staffedAgents);
+
+      summaryEl.innerHTML = `
+        <span class="badge ${failed === 0 ? 'badge-success' : 'badge-danger'}">${passed} Passed</span>
+        <span class="badge ${failed === 0 ? 'badge-neutral' : 'badge-danger'}">${failed} Failed</span>
+      `;
+    }
+
+    document.getElementById('btn-rerun').addEventListener('click', runSuite);
+    runSuite();
+  </script>
+</body>
+</html>

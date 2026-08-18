@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="My Plans — Erlangly Workforce Management saved plans and scenarios dashboard.">
+  <meta name="theme-color" content="#080c14">
+  <title>My Plans — Erlangly</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="site-nav">
+    <div class="nav-container">
+      <a href="index.html" class="brand-link" aria-label="Erlangly Home">
+        <div class="brand-icon">E</div>
+        <div class="brand-text">Erlang<span>ly</span></div>
+        <span class="brand-tagline">WFM ENGINEERING</span>
+      </a>
+
+      <button class="mobile-menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="index.html" class="nav-link">Overview</a></li>
+        <li><a href="forecasting.html" class="nav-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="nav-link">Capacity</a></li>
+        <li><a href="scheduling.html" class="nav-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="nav-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="nav-link">Simulator</a></li>
+        <li><a href="plans.html" class="nav-link active">My Plans</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <button id="btn-sign-out" class="btn btn-ghost btn-sm" style="display: none;">Sign Out</button>
+        <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Page Body -->
+  <main class="page-container">
+    <div class="tool-header">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
+        <div>
+          <span class="tool-badge">Persistent Storage</span>
+          <h1 class="tool-title">My Saved Plans</h1>
+          <p class="tool-description">
+            Access, re-open, and organize your workforce management models across Forecasting, Capacity Planning, Shift Scheduling, and What-If Simulations.
+          </p>
+        </div>
+
+        <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <input type="text" id="input-search-plans" class="form-control" placeholder="🔍 Search plans by name..." style="width: 220px; height: 36px; font-size: var(--text-xs);">
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Pills & KPI Row -->
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-4); margin-bottom: var(--space-6);">
+      <!-- Tool Filters -->
+      <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;" id="filter-tool-pills">
+        <button class="btn btn-sm btn-primary" data-tool="all">All Plans</button>
+        <button class="btn btn-sm btn-ghost" data-tool="capacity">Capacity</button>
+        <button class="btn btn-sm btn-ghost" data-tool="forecasting">Forecasting</button>
+        <button class="btn btn-sm btn-ghost" data-tool="scheduling">Scheduling</button>
+        <button class="btn btn-sm btn-ghost" data-tool="realtime">Real-Time</button>
+        <button class="btn btn-sm btn-ghost" data-tool="simulation">Simulation</button>
+      </div>
+
+      <div style="font-family: var(--mono); font-size: var(--text-xs); color: var(--text-muted);">
+        Total Plans: <span id="lbl-total-plans" class="text-accent">0</span>
+      </div>
+    </div>
+
+    <!-- Plans Grid Container -->
+    <div id="plans-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: var(--space-6);">
+      <!-- Rendered dynamically -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="plans-empty-state" class="panel" style="display: none; padding: var(--space-12); text-align: center; justify-content: center; align-items: center;">
+      <div style="font-size: var(--text-4xl); margin-bottom: var(--space-3);">📋</div>
+      <h3 style="margin-bottom: var(--space-2);">No saved plans found</h3>
+      <p style="max-width: 460px; color: var(--text-secondary); margin-bottom: var(--space-6);">
+        You haven't saved any workforce plans in this category yet. Run any calculator and click "Save to Plans" to persist your models.
+      </p>
+      <div style="display: flex; gap: var(--space-3); flex-wrap: wrap; justify-content: center;">
+        <a href="capacity.html" class="btn btn-primary btn-sm">Open Capacity Planner</a>
+        <a href="forecasting.html" class="btn btn-secondary btn-sm">Open Forecasting</a>
+      </div>
+    </div>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-text">
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Supabase Persistence.
+      </div>
+      <ul class="footer-links">
+        <li><a href="index.html" class="footer-link">Home</a></li>
+        <li><a href="capacity.html" class="footer-link">Capacity</a></li>
+        <li><a href="forecasting.html" class="footer-link">Forecasting</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/plans.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    (function() {
+      var activeFilter = 'all';
+      var searchQuery = '';
+      var allPlans = [];
+
+      var plansContainer = document.getElementById('plans-container');
+      var plansEmptyState = document.getElementById('plans-empty-state');
+      var lblTotalPlans = document.getElementById('lbl-total-plans');
+      var inputSearch = document.getElementById('input-search-plans');
+      var filterPills = document.querySelectorAll('#filter-tool-pills button');
+      var btnSignOut = document.getElementById('btn-sign-out');
+
+      function init() {
+        checkAuth();
+        setupFilters();
+        loadPlans();
+      }
+
+      function checkAuth() {
+        ErlanglyAuth.getUser().then(function(user) {
+          if (user) {
+            btnSignOut.style.display = 'inline-flex';
+            btnSignOut.addEventListener('click', function() {
+              ErlanglyAuth.signOut().then(function() {
+                window.location.reload();
+              });
+            });
+          }
+        });
+      }
+
+      function setupFilters() {
+        filterPills.forEach(function(pill) {
+          pill.addEventListener('click', function() {
+            filterPills.forEach(function(p) { p.className = 'btn btn-sm btn-ghost'; });
+            pill.className = 'btn btn-sm btn-primary';
+            activeFilter = pill.getAttribute('data-tool');
+            renderPlans();
+          });
+        });
+
+        inputSearch.addEventListener('input', function() {
+          searchQuery = inputSearch.value.trim().toLowerCase();
+          renderPlans();
+        });
+      }
+
+      function loadPlans() {
+        ErlanglyPlans.listPlans('all').then(function(plans) {
+          allPlans = plans || [];
+          renderPlans();
+        }).catch(function(err) {
+          console.warn('Error loading plans:', err);
+          allPlans = [];
+          renderPlans();
+        });
+      }
+
+      function renderPlans() {
+        var filtered = allPlans.filter(function(p) {
+          var matchesTool = activeFilter === 'all' || p.tool === activeFilter;
+          var matchesSearch = !searchQuery || (p.name && p.name.toLowerCase().indexOf(searchQuery) !== -1);
+          return matchesTool && matchesSearch;
+        });
+
+        lblTotalPlans.textContent = filtered.length;
+        plansContainer.innerHTML = '';
+
+        if (filtered.length === 0) {
+          plansContainer.style.display = 'none';
+          plansEmptyState.style.display = 'flex';
+          return;
+        }
+
+        plansContainer.style.display = 'grid';
+        plansEmptyState.style.display = 'none';
+
+        filtered.forEach(function(plan) {
+          var card = document.createElement('div');
+          card.className = 'panel';
+          card.style.transition = 'transform 150ms, border-color 150ms';
+
+          var toolIcons = {
+            capacity: '⚡ Capacity',
+            forecasting: '📈 Forecasting',
+            scheduling: '🗓️ Scheduling',
+            realtime: '⏱️ Real-Time',
+            simulation: '🎯 Simulator'
+          };
+          var toolLabel = toolIcons[plan.tool] || plan.tool.toUpperCase();
+          var updatedStr = new Date(plan.updated_at || plan.created_at).toLocaleDateString(undefined, {
+            month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+
+          // Summary details
+          var summaryHtml = '';
+          if (plan.inputs) {
+            var keys = Object.keys(plan.inputs).slice(0, 3);
+            summaryHtml = keys.map(function(k) {
+              return '<span style="color: var(--text-muted);">' + k + ':</span> <strong class="mono">' + plan.inputs[k] + '</strong>';
+            }).join(' &bull; ');
+          }
+
+          card.innerHTML = 
+            '<div class="panel-header" style="background: var(--bg-surface-elevated);">' +
+              '<span class="badge badge-success">' + toolLabel + '</span>' +
+              '<span style="font-size: var(--text-xs); color: var(--text-muted); font-family: var(--mono);">' + updatedStr + '</span>' +
+            '</div>' +
+            '<div class="panel-body">' +
+              '<h3 style="font-size: var(--text-lg); margin-bottom: var(--space-1);">' + plan.name + '</h3>' +
+              '<div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.6;">' + (summaryHtml || 'Saved workforce parameter set.') + '</div>' +
+            '</div>' +
+            '<div class="panel-footer" style="justify-content: space-between; flex-wrap: wrap; gap: var(--space-2);">' +
+              '<div style="display: flex; gap: var(--space-2);">' +
+                '<button class="btn btn-ghost btn-sm btn-share" title="Share read-only plan link">🔗 Share</button>' +
+                '<button class="btn btn-ghost btn-sm btn-rename" title="Rename plan">✏️</button>' +
+                '<button class="btn btn-ghost btn-sm btn-delete" style="color: var(--danger);" title="Delete plan">🗑️</button>' +
+              '</div>' +
+              '<button class="btn btn-primary btn-sm btn-open">Open Plan →</button>' +
+            '</div>';
+
+          // Actions
+          var btnOpen = card.querySelector('.btn-open');
+          var btnShare = card.querySelector('.btn-share');
+          var btnRename = card.querySelector('.btn-rename');
+          var btnDelete = card.querySelector('.btn-delete');
+
+          btnShare.addEventListener('click', function() {
+            ErlanglyPlans.showShareModal(plan.tool, plan.name, plan.inputs);
+          });
+
+          btnOpen.addEventListener('click', function() {
+            // Reopen plan into the respective tool
+            var tool = plan.tool || 'capacity';
+            var toolPages = {
+              capacity: 'capacity.html',
+              forecasting: 'forecasting.html',
+              scheduling: 'scheduling.html',
+              realtime: 'realtime.html',
+              simulation: 'simulator.html'
+            };
+            var targetPage = toolPages[tool] || 'capacity.html';
+
+            ErlanglyUtils.setHandoff(tool, plan.inputs);
+            window.location.href = targetPage + '?from=plans&plan_id=' + plan.id;
+          });
+
+          btnRename.addEventListener('click', function() {
+            var newName = prompt('Enter new name for plan:', plan.name);
+            if (newName && newName.trim() && newName.trim() !== plan.name) {
+              ErlanglyPlans.renamePlan(plan.id, newName.trim()).then(function() {
+                ErlanglyUtils.showToast('Renamed plan to "' + newName.trim() + '"', 'success');
+                loadPlans();
+              });
+            }
+          });
+
+          btnDelete.addEventListener('click', function() {
+            if (confirm('Are you sure you want to delete "' + plan.name + '"?')) {
+              ErlanglyPlans.deletePlan(plan.id).then(function() {
+                ErlanglyUtils.showToast('Deleted plan "' + plan.name + '"', 'info');
+                loadPlans();
+              });
+            }
+          });
+
+          plansContainer.appendChild(card);
+        });
+      }
+
+      document.addEventListener('DOMContentLoaded', init);
+    })();
+  </script>
+</body>
+</html>

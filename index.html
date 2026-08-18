@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Erlangly — Modern Workforce Management engineering toolkit for contact centers. Interactive Erlang C capacity planning, forecasting, scheduling, real-time intraday analysis, and what-if simulation.">
+  <meta name="theme-color" content="#080c14">
+  <title>Erlangly — Workforce Management Engineering Toolkit</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="site-nav">
+    <div class="nav-container">
+      <a href="index.html" class="brand-link" aria-label="Erlangly Home">
+        <div class="brand-icon">E</div>
+        <div class="brand-text">Erlang<span>ly</span></div>
+        <span class="brand-tagline">WFM ENGINEERING</span>
+      </a>
+
+      <button class="mobile-menu-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="index.html" class="nav-link">Overview</a></li>
+        <li><a href="forecasting.html" class="nav-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="nav-link">Capacity</a></li>
+        <li><a href="scheduling.html" class="nav-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="nav-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="nav-link">Simulator</a></li>
+        <li><a href="plans.html" class="nav-link">My Plans</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="page-container">
+    <!-- Hero Section with Interactive Erlang C Mini-Calculator -->
+    <section class="hero-wrapper">
+      <div class="hero-grid">
+        <!-- Hero Introduction -->
+        <div class="hero-content">
+          <div class="hero-tags">
+            <span class="badge badge-success">v1.0 Ready</span>
+            <span class="badge badge-neutral">Pure Queueing Theory</span>
+            <span class="badge badge-neutral">Zero Build Step</span>
+          </div>
+
+          <h1 class="hero-headline">
+            Workforce engineering built on <span class="text-accent">exact math</span>, not guesswork.
+          </h1>
+
+          <p class="hero-subhead">
+            The complete open WFM toolkit for contact centers and operations teams: interval forecasting, Erlang C capacity planning, shift scheduling, real-time intraday analysis, and scenario simulation.
+          </p>
+
+          <div style="display: flex; gap: var(--space-4); flex-wrap: wrap; margin-top: var(--space-2);">
+            <a href="capacity.html" class="btn btn-primary btn-lg">Launch Capacity Planner →</a>
+            <a href="#suite-features" class="btn btn-secondary btn-lg">Explore Suite Tools</a>
+          </div>
+
+          <div style="display: flex; gap: var(--space-6); margin-top: var(--space-4); border-top: 1px solid var(--border-subtle); padding-top: var(--space-6);">
+            <div>
+              <div class="metric-value mono" style="font-size: var(--text-xl); color: var(--accent-light);">M/M/m</div>
+              <div class="metric-label">Queueing Model</div>
+            </div>
+            <div>
+              <div class="metric-value mono" style="font-size: var(--text-xl); color: var(--accent-light);">100%</div>
+              <div class="metric-label">Client-Side Speed</div>
+            </div>
+            <div>
+              <div class="metric-value mono" style="font-size: var(--text-xl); color: var(--accent-light);">5 Tools</div>
+              <div class="metric-label">Integrated Suite</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Hero Interactive Mini-Calculator -->
+        <div class="panel" id="hero-calculator-panel">
+          <div class="panel-header">
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><path d="M8 2v4M16 2v4M2 10h20"/></svg>
+              Live Erlang C Mini-Calculator
+            </div>
+            <span class="badge badge-success" id="calc-status-badge">Live Reactive</span>
+          </div>
+
+          <div class="panel-body">
+            <!-- Inputs Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4);">
+              <!-- Call Volume -->
+              <div class="form-group">
+                <label for="hero-volume" class="form-label">
+                  Volume (calls)
+                  <span class="form-label-val" id="val-volume">250</span>
+                </label>
+                <input type="range" id="hero-volume" min="10" max="2000" step="10" value="250" aria-label="Call Volume">
+              </div>
+
+              <!-- AHT -->
+              <div class="form-group">
+                <label for="hero-aht" class="form-label">
+                  AHT (seconds)
+                  <span class="form-label-val" id="val-aht">180s</span>
+                </label>
+                <input type="range" id="hero-aht" min="30" max="900" step="10" value="180" aria-label="Average Handle Time">
+              </div>
+
+              <!-- Target SLA -->
+              <div class="form-group">
+                <label for="hero-sla" class="form-label">
+                  Target SLA
+                  <span class="form-label-val" id="val-sla">80%</span>
+                </label>
+                <input type="range" id="hero-sla" min="50" max="99" step="1" value="80" aria-label="Target Service Level">
+              </div>
+
+              <!-- Shrinkage -->
+              <div class="form-group">
+                <label for="hero-shrinkage" class="form-label">
+                  Shrinkage
+                  <span class="form-label-val" id="val-shrinkage">30%</span>
+                </label>
+                <input type="range" id="hero-shrinkage" min="0" max="60" step="1" value="30" aria-label="Shrinkage Percentage">
+              </div>
+            </div>
+
+            <!-- Interval & Threshold Quick Selectors -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: -4px;">
+              <div class="form-group">
+                <label for="hero-interval" class="form-label">Interval Length</label>
+                <select id="hero-interval" class="form-control mono">
+                  <option value="900">15 Minutes</option>
+                  <option value="1800" selected>30 Minutes</option>
+                  <option value="3600">60 Minutes</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="hero-target-time" class="form-label">Target Answer Time</label>
+                <select id="hero-target-time" class="form-control mono">
+                  <option value="15">15 seconds</option>
+                  <option value="20" selected>20 seconds</option>
+                  <option value="30">30 seconds</option>
+                  <option value="60">60 seconds</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Output KPI Metric Grid -->
+            <div class="stat-grid" style="margin-top: var(--space-2);">
+              <div class="metric-card highlight">
+                <div class="metric-label">Staffed Agents</div>
+                <div class="metric-value" id="kpi-staffed">--</div>
+                <div class="metric-subtext" id="kpi-shrinkage-note">Includes 30% shrinkage</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Base Net Headcount</div>
+                <div class="metric-value" id="kpi-base">--</div>
+                <div class="metric-subtext">Productive on queue</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Projected SLA</div>
+                <div class="metric-value" id="kpi-sl">--%</div>
+                <div class="metric-subtext" id="kpi-sl-status"><span class="badge badge-success">Target Met</span></div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Average Speed of Answer</div>
+                <div class="metric-value" id="kpi-asa">--s</div>
+                <div class="metric-subtext">Queue wait time</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Agent Occupancy</div>
+                <div class="metric-value" id="kpi-occupancy">--%</div>
+                <div class="metric-subtext">Active handle ratio</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Workload Intensity</div>
+                <div class="metric-value" id="kpi-erlangs">--</div>
+                <div class="metric-subtext">Erlangs (A)</div>
+              </div>
+            </div>
+
+            <!-- Staffing Sensitivity Sparkline -->
+            <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); padding: var(--space-3);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+                <span style="font-size: var(--text-xs); color: var(--text-muted); font-family: var(--mono); text-transform: uppercase;">Staffing Sensitivity vs Service Level</span>
+                <span style="font-size: var(--text-xs); color: var(--accent); font-family: var(--mono);" id="sensitivity-range">±3 Headcount Range</span>
+              </div>
+              <div class="sparkline-container" id="hero-sparkline"></div>
+            </div>
+          </div>
+
+          <div class="panel-footer">
+            <button id="btn-hero-handoff" class="btn btn-primary">
+              Open in Full Capacity Planner →
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Product Suite Overview Section -->
+    <section id="suite-features" style="padding: var(--space-12) 0;">
+      <div class="section-header">
+        <div class="section-tag">Integrated WFM Architecture</div>
+        <h2>Five tools. One unified math engine.</h2>
+        <p style="max-width: 650px; margin: var(--space-3) auto 0;">
+          Erlangly connects the entire workforce planning lifecycle from historical time series forecasting all the way to real-time intraday adherence.
+        </p>
+      </div>
+
+      <div class="feature-grid">
+        <!-- 1. Forecasting -->
+        <div class="feature-card">
+          <div class="feature-icon">📈</div>
+          <h3 class="feature-title">1. Time Series Forecasting</h3>
+          <p class="feature-desc">
+            Model multi-period contact volume with weighted moving averages, trend projections, and day-of-week seasonality curves. Built to process 100k+ historical intervals off-thread via Web Workers.
+          </p>
+          <div class="feature-meta">
+            <span>Large CSV Web Worker</span>
+            <a href="forecasting.html">Explore →</a>
+          </div>
+        </div>
+
+        <!-- 2. Capacity Planning -->
+        <div class="feature-card">
+          <div class="feature-icon">⚡</div>
+          <h3 class="feature-title">2. Erlang C Capacity</h3>
+          <p class="feature-desc">
+            Calculate exact net productive agents and gross scheduled staffing needed to hit target SLAs and occupancy ceilings. Supports single-interval modeling and full multi-day bulk CSV uploads.
+          </p>
+          <div class="feature-meta">
+            <span>Single & Bulk CSV</span>
+            <a href="capacity.html">Explore →</a>
+          </div>
+        </div>
+
+        <!-- 3. Scheduling & FTE Converter -->
+        <div class="feature-card">
+          <div class="feature-icon">🗓️</div>
+          <h3 class="feature-title">3. Scheduling & FTE</h3>
+          <p class="feature-desc">
+            Bridge interval volume into required FTE headcount accounting for standard work hours and part-time mixes, then allocate shifts across multi-hour patterns to eliminate coverage gaps.
+          </p>
+          <div class="feature-meta">
+            <span>FTE Converter + Patterns</span>
+            <a href="scheduling.html">Explore →</a>
+          </div>
+        </div>
+
+        <!-- 4. Real-Time & VTO Calculator -->
+        <div class="feature-card">
+          <div class="feature-icon">⏱️</div>
+          <h3 class="feature-title">4. Real-Time & VTO</h3>
+          <p class="feature-desc">
+            Simulate intraday shift progression against actual call spikes, detect adherence breaches, and compute safe Voluntary Time Off (VTO) releases with strict SLA guardrails.
+          </p>
+          <div class="feature-meta">
+            <span>Live Stepper + VTO Guardrails</span>
+            <a href="realtime.html">Explore →</a>
+          </div>
+        </div>
+
+        <!-- 5. Planning Simulator -->
+        <div class="feature-card">
+          <div class="feature-icon">🎯</div>
+          <h3 class="feature-title">5. What-If Simulator</h3>
+          <p class="feature-desc">
+            Simulate multi-month staffing scenarios under variable volume growth, AHT changes, attrition rates, and new-hire ramp delays. Compare up to 3 scenarios side-by-side.
+          </p>
+          <div class="feature-meta">
+            <span>Multi-Scenario Modeling</span>
+            <a href="simulator.html">Explore →</a>
+          </div>
+        </div>
+
+        <!-- 6. Persistence & Accounts -->
+        <div class="feature-card">
+          <div class="feature-icon">💾</div>
+          <h3 class="feature-title">Saved Plans & Persistence</h3>
+          <p class="feature-desc">
+            Save named, timestamped plans across any tool to reload anytime. Zero login required for same-session calculations; Supabase account persistence for cross-device storage.
+          </p>
+          <div class="feature-meta">
+            <span>Row Level Security</span>
+            <a href="plans.html">Explore →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mathematical Explainer Section -->
+    <section style="padding: var(--space-10) 0;">
+      <div class="explainer-box">
+        <div>
+          <div class="section-tag">Queueing Theory Principles</div>
+          <h3 style="font-size: var(--text-2xl); margin-bottom: var(--space-4);">Why Erlang C Matters in WFM</h3>
+          <p style="margin-bottom: var(--space-4);">
+            A common operational mistake in contact centers is <strong>naive division</strong>: taking total call workload (e.g. 300 calls × 180s = 54,000 work seconds in a 30-min window) and dividing by 1,800 seconds to conclude that 30 agents are sufficient.
+          </p>
+          <p style="margin-bottom: var(--space-4);">
+            Because customer arrivals follow a <strong>Poisson distribution</strong> with random variance, having exactly 30 agents creates an infinite queue buildup. Erlang C calculates the extra agent buffer needed to absorb statistical peaks and guarantee target wait times.
+          </p>
+          <div class="hero-tags">
+            <span class="badge badge-success">M/M/m Queue</span>
+            <span class="badge badge-warn">Occupancy &lt; 88% Sane Ceiling</span>
+            <span class="badge badge-neutral">Stable Recursion</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="formula-display">
+            <div style="color: var(--text-muted); margin-bottom: var(--space-2);">// Traffic Intensity (Erlangs)</div>
+            <div>A = (Volume × AHT) / IntervalSeconds</div>
+            <br>
+            <div style="color: var(--text-muted); margin-bottom: var(--space-2);">// Erlang C Delay Probability P(Wait &gt; 0)</div>
+            <div>C(m, A) = B(m, A) / [1 - (A / m) × (1 - B(m, A))]</div>
+            <br>
+            <div style="color: var(--text-muted); margin-bottom: var(--space-2);">// Service Level within Target Time T</div>
+            <div>SL(T) = 1 - C(m, A) × exp(-(m - A) × (T / AHT))</div>
+            <br>
+            <div style="color: var(--text-muted); margin-bottom: var(--space-2);">// Average Speed of Answer (ASA)</div>
+            <div>ASA = (C(m, A) × AHT) / (m - A)</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-text">
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Built with pure vanilla JS &amp; modern queueing mathematics.
+      </div>
+      <ul class="footer-links">
+        <li><a href="test/math-test.html" class="footer-link">Math Test Suite</a></li>
+        <li><a href="capacity.html" class="footer-link">Capacity Planning</a></li>
+        <li><a href="forecasting.html" class="footer-link">Forecasting</a></li>
+        <li><a href="scheduling.html" class="footer-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="footer-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="footer-link">Simulator</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/plans.js"></script>
+  <script src="js/erlang.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    (function() {
+      // DOM Elements
+      var elVolume = document.getElementById('hero-volume');
+      var elAHT = document.getElementById('hero-aht');
+      var elSLA = document.getElementById('hero-sla');
+      var elShrinkage = document.getElementById('hero-shrinkage');
+      var elInterval = document.getElementById('hero-interval');
+      var elTargetTime = document.getElementById('hero-target-time');
+
+      var valVolume = document.getElementById('val-volume');
+      var valAHT = document.getElementById('val-aht');
+      var valSLA = document.getElementById('val-sla');
+      var valShrinkage = document.getElementById('val-shrinkage');
+
+      var kpiStaffed = document.getElementById('kpi-staffed');
+      var kpiBase = document.getElementById('kpi-base');
+      var kpiSL = document.getElementById('kpi-sl');
+      var kpiSLStatus = document.getElementById('kpi-sl-status');
+      var kpiASA = document.getElementById('kpi-asa');
+      var kpiOccupancy = document.getElementById('kpi-occupancy');
+      var kpiErlangs = document.getElementById('kpi-erlangs');
+      var kpiShrinkageNote = document.getElementById('kpi-shrinkage-note');
+      var sparklineEl = document.getElementById('hero-sparkline');
+      var btnHandoff = document.getElementById('btn-hero-handoff');
+
+      function calculate() {
+        var volume = parseFloat(elVolume.value) || 0;
+        var aht = parseFloat(elAHT.value) || 0;
+        var slaTarget = (parseFloat(elSLA.value) || 80) / 100;
+        var shrinkage = (parseFloat(elShrinkage.value) || 0) / 100;
+        var intervalSeconds = parseFloat(elInterval.value) || 1800;
+        var targetTime = parseFloat(elTargetTime.value) || 20;
+
+        // Update display labels
+        valVolume.textContent = ErlanglyUtils.formatNumber(volume);
+        valAHT.textContent = aht + 's';
+        valSLA.textContent = Math.round(slaTarget * 100) + '%';
+        valShrinkage.textContent = Math.round(shrinkage * 100) + '%';
+        kpiShrinkageNote.textContent = 'Includes ' + Math.round(shrinkage * 100) + '% shrinkage';
+
+        // Run Erlang solver
+        var result = Erlangly.agentsRequired({
+          volume: volume,
+          aht: aht,
+          intervalSeconds: intervalSeconds,
+          targetServiceLevel: slaTarget,
+          targetTimeSeconds: targetTime,
+          shrinkage: shrinkage
+        });
+
+        // Update KPIs
+        kpiStaffed.textContent = result.staffedAgents === Infinity ? '∞' : ErlanglyUtils.formatNumber(result.staffedAgents);
+        kpiBase.textContent = ErlanglyUtils.formatNumber(result.baseAgents);
+        kpiSL.textContent = ErlanglyUtils.formatPercent(result.serviceLevel, 1);
+        kpiASA.textContent = ErlanglyUtils.formatSeconds(result.asa);
+        kpiOccupancy.textContent = ErlanglyUtils.formatPercent(result.occupancy, 1);
+        kpiErlangs.textContent = ErlanglyUtils.formatErlangs(result.trafficIntensity);
+
+        // Status badge
+        if (result.serviceLevel >= slaTarget) {
+          kpiSLStatus.innerHTML = '<span class="badge badge-success">Target Met</span>';
+        } else {
+          kpiSLStatus.innerHTML = '<span class="badge badge-danger">Breach</span>';
+        }
+
+        // Render sensitivity sparkline
+        renderSensitivity(result.trafficIntensity, aht, targetTime, result.baseAgents, slaTarget);
+      }
+
+      function renderSensitivity(traffic, aht, targetTime, baseAgents, slaTarget) {
+        if (!sparklineEl) return;
+        sparklineEl.innerHTML = '';
+        if (baseAgents <= 0 || traffic <= 0) return;
+
+        var minAgents = Math.max(Math.floor(traffic) + 1, baseAgents - 3);
+        var maxAgents = baseAgents + 3;
+        var curve = Erlangly.sensitivityCurve(traffic, aht, targetTime, minAgents, maxAgents);
+
+        curve.forEach(function(item) {
+          var bar = document.createElement('div');
+          bar.className = 'sparkline-bar';
+          var slPct = Math.round(item.serviceLevel * 100);
+          bar.style.height = Math.max(8, slPct * 0.44) + 'px';
+
+          if (item.agents === baseAgents) {
+            bar.classList.add('target');
+          } else if (item.serviceLevel >= slaTarget) {
+            bar.classList.add('active');
+          }
+
+          bar.title = item.agents + ' agents: ' + slPct + '% SLA | ASA: ' + ErlanglyUtils.formatSeconds(item.asa) + ' | Occ: ' + ErlanglyUtils.formatPercent(item.occupancy);
+          sparklineEl.appendChild(bar);
+        });
+      }
+
+      // Event listeners
+      [elVolume, elAHT, elSLA, elShrinkage, elInterval, elTargetTime].forEach(function(ctrl) {
+        if (ctrl) {
+          ctrl.addEventListener('input', calculate);
+          ctrl.addEventListener('change', calculate);
+        }
+      });
+
+      if (btnHandoff) {
+        btnHandoff.addEventListener('click', function() {
+          var params = {
+            volume: parseFloat(elVolume.value) || 250,
+            aht: parseFloat(elAHT.value) || 180,
+            targetServiceLevel: (parseFloat(elSLA.value) || 80) / 100,
+            shrinkage: (parseFloat(elShrinkage.value) || 30) / 100,
+            intervalSeconds: parseFloat(elInterval.value) || 1800,
+            targetTimeSeconds: parseFloat(elTargetTime.value) || 20
+          };
+          ErlanglyUtils.setHandoff('capacity', params);
+          window.location.href = 'capacity.html?from=hero';
+        });
+      }
+
+      // Initial run
+      calculate();
+    })();
+  </script>
+</body>
+</html>

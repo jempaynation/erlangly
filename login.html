@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Sign In to Erlangly — Access your saved workforce capacity, forecasting, scheduling, and simulation plans.">
+  <meta name="theme-color" content="#080c14">
+  <title>Sign In — Erlangly</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <!-- Navigation Header -->
+  <header class="site-nav">
+    <div class="nav-container">
+      <a href="index.html" class="brand-link" aria-label="Erlangly Home">
+        <div class="brand-icon">E</div>
+        <div class="brand-text">Erlang<span>ly</span></div>
+        <span class="brand-tagline">WFM ENGINEERING</span>
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="index.html" class="nav-link">Overview</a></li>
+        <li><a href="forecasting.html" class="nav-link">Forecasting</a></li>
+        <li><a href="capacity.html" class="nav-link">Capacity</a></li>
+        <li><a href="scheduling.html" class="nav-link">Scheduling</a></li>
+        <li><a href="realtime.html" class="nav-link">Real-Time</a></li>
+        <li><a href="simulator.html" class="nav-link">Simulator</a></li>
+        <li><a href="plans.html" class="nav-link">My Plans</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- Login Main -->
+  <main class="page-container" style="display: flex; align-items: center; justify-content: center; min-height: 75vh;">
+    <div class="panel" style="max-width: 440px; width: 100%; box-shadow: var(--shadow-lg);">
+      <div class="panel-header" style="justify-content: center; flex-direction: column; text-align: center; gap: var(--space-1); padding: var(--space-6);">
+        <div class="brand-icon" style="margin: 0 auto var(--space-2);">E</div>
+        <h2 style="font-size: var(--text-2xl);" id="auth-title">Sign in to Erlangly</h2>
+        <p style="font-size: var(--text-sm); color: var(--text-secondary);" id="auth-subtitle">
+          Save, manage, and sync your contact center plans across devices.
+        </p>
+      </div>
+
+      <div class="panel-body" style="padding: var(--space-6);">
+        <!-- Auth Mode Toggle -->
+        <div style="display: flex; gap: var(--space-2); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default); margin-bottom: var(--space-4);">
+          <button id="tab-auth-login" class="btn btn-sm btn-primary" style="flex: 1;">Log In</button>
+          <button id="tab-auth-signup" class="btn btn-sm btn-ghost" style="flex: 1;">Sign Up</button>
+        </div>
+
+        <form id="auth-form" style="display: flex; flex-direction: column; gap: var(--space-4);">
+          <div class="form-group">
+            <label for="auth-email" class="form-label">Email Address</label>
+            <input type="email" id="auth-email" class="form-control" placeholder="wfm.analyst@contactcenter.com" required autocomplete="email">
+          </div>
+
+          <div class="form-group" id="group-password">
+            <label for="auth-password" class="form-label">Password</label>
+            <input type="password" id="auth-password" class="form-control" placeholder="••••••••••••" autocomplete="current-password">
+          </div>
+
+          <button type="submit" id="btn-submit-auth" class="btn btn-primary" style="width: 100%; margin-top: var(--space-2);">
+            Sign In →
+          </button>
+        </form>
+
+        <div style="text-align: center; margin-top: var(--space-4); border-top: 1px solid var(--border-subtle); padding-top: var(--space-4);">
+          <button id="btn-magic-link" class="btn btn-ghost btn-sm" style="font-size: var(--text-xs); color: var(--accent);">
+            ✉️ Sign in with Magic Link instead
+          </button>
+        </div>
+      </div>
+
+      <div class="panel-footer" style="justify-content: center; background: var(--bg-input);">
+        <span style="font-size: var(--text-xs); color: var(--text-muted);">
+          Accounts are optional. Core calculators work 100% offline without login.
+        </span>
+      </div>
+    </div>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="footer-container">
+      <div class="footer-text">
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit.
+      </div>
+      <ul class="footer-links">
+        <li><a href="index.html" class="footer-link">Home</a></li>
+        <li><a href="plans.html" class="footer-link">My Plans</a></li>
+      </ul>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="js/supabaseClient.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    (function() {
+      var isSignUp = false;
+      var tabLogin = document.getElementById('tab-auth-login');
+      var tabSignUp = document.getElementById('tab-auth-signup');
+      var authTitle = document.getElementById('auth-title');
+      var authSubtitle = document.getElementById('auth-subtitle');
+      var authForm = document.getElementById('auth-form');
+      var authEmail = document.getElementById('auth-email');
+      var authPassword = document.getElementById('auth-password');
+      var btnSubmit = document.getElementById('btn-submit-auth');
+      var btnMagicLink = document.getElementById('btn-magic-link');
+
+      tabLogin.addEventListener('click', function() {
+        isSignUp = false;
+        tabLogin.className = 'btn btn-sm btn-primary';
+        tabSignUp.className = 'btn btn-sm btn-ghost';
+        authTitle.textContent = 'Sign in to Erlangly';
+        authSubtitle.textContent = 'Save, manage, and sync your contact center plans across devices.';
+        btnSubmit.textContent = 'Sign In →';
+      });
+
+      tabSignUp.addEventListener('click', function() {
+        isSignUp = true;
+        tabSignUp.className = 'btn btn-sm btn-primary';
+        tabLogin.className = 'btn btn-sm btn-ghost';
+        authTitle.textContent = 'Create your Erlangly Account';
+        authSubtitle.textContent = 'Persist and organize your workforce engineering models.';
+        btnSubmit.textContent = 'Create Account →';
+      });
+
+      authForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        var email = authEmail.value.trim();
+        var password = authPassword.value;
+
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = 'Authenticating...';
+
+        var promise = isSignUp ? 
+          ErlanglyAuth.signUp(email, password) : 
+          ErlanglyAuth.signIn(email, password);
+
+        promise
+          .then(function(res) {
+            if (res.error) throw res.error;
+            ErlanglyUtils.showToast(isSignUp ? 'Account created successfully!' : 'Signed in successfully!', 'success');
+            setTimeout(function() {
+              window.location.href = 'plans.html';
+            }, 800);
+          })
+          .catch(function(err) {
+            btnSubmit.disabled = false;
+            btnSubmit.textContent = isSignUp ? 'Create Account →' : 'Sign In →';
+            ErlanglyUtils.showToast(err.message || 'Authentication error', 'error');
+          });
+      });
+
+      btnMagicLink.addEventListener('click', function() {
+        var email = authEmail.value.trim();
+        if (!email) {
+          ErlanglyUtils.showToast('Please enter your email above first', 'warn');
+          authEmail.focus();
+          return;
+        }
+
+        btnMagicLink.disabled = true;
+        btnMagicLink.textContent = 'Sending Magic Link...';
+
+        ErlanglyAuth.signInWithMagicLink(email)
+          .then(function(res) {
+            if (res.error) throw res.error;
+            ErlanglyUtils.showToast('Magic link sent to ' + email, 'success');
+            setTimeout(function() {
+              window.location.href = 'plans.html';
+            }, 800);
+          })
+          .catch(function(err) {
+            btnMagicLink.disabled = false;
+            btnMagicLink.textContent = '✉️ Sign in with Magic Link instead';
+            ErlanglyUtils.showToast(err.message || 'Error sending link', 'error');
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
