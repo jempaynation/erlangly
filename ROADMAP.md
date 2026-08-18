@@ -126,14 +126,14 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` final full-suite sign-off
 
 ## Phase 8 — Advanced Forecasting Models
-**Status:** Not started
-- [ ] Pluggable model architecture: refactor `forecasting.js` to support swappable forecast algorithms behind a common interface (model selector UI, shared input/output contract)
-- [ ] Seasonal decomposition model: additive and multiplicative decomposition (trend + seasonal + residual)
-- [ ] Exponential smoothing models: Simple Exponential Smoothing (SES) and Holt's Double Exponential Smoothing (trend-aware)
-- [ ] Holiday / event flag system: user marks specific dates as holidays or events (manual or CSV upload), forecast model adjusts predictions accordingly (multiplicative scaling or exclusion from training)
-- [ ] Regression model option: simple linear regression on detrended data as a forecast alternative
-- [ ] Model comparison view: run 2–3 selected models on the same history, display side-by-side with fit metrics (MAE, MAPE, RMSE) to help user pick the best model for their data
-- [ ] `erlangly-qa` sign-off
+**Status:** Complete
+- [x] Pluggable model architecture: refactor `forecasting.js` to support swappable forecast algorithms behind a common interface (model selector UI, shared input/output contract)
+- [x] Seasonal decomposition model: additive and multiplicative decomposition (trend + seasonal + residual)
+- [x] Exponential smoothing models: Simple Exponential Smoothing (SES) and Holt's Double Exponential Smoothing (trend-aware)
+- [x] Holiday / event flag system: user marks specific dates as holidays or events (manual or CSV upload), forecast model adjusts predictions accordingly (multiplicative scaling or exclusion from training)
+- [x] Regression model option: simple linear regression on detrended data as a forecast alternative
+- [x] Model comparison view: run 2–3 selected models on the same history, display side-by-side with fit metrics (MAE, MAPE, RMSE) to help user pick the best model for their data
+- [x] `erlangly-qa` sign-off
 
 ## Phase 9 — Scheduling Labor Rules & Constraints
 **Status:** Not started

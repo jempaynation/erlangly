@@ -307,6 +307,158 @@
   };
 
   /**
+   * Parse and Normalize Date Strings
+   * Supports ISO (YYYY-MM-DD), US/European slash formats (M/D/YYYY, MM/DD/YYYY, D/M/YYYY),
+   * 2-digit years (M/D/YY), month/day pairs (M/D), and timestamps (YYYY-MM-DD HH:mm).
+   * Uses UTC epoch math to prevent timezone drift across client environments.
+   *
+   * @param {string|Date} dateStr - Input date string or Date object
+   * @returns {Object|null} { year, month, day, isoDate: 'YYYY-MM-DD', timestamp, dayOfWeek, isDate: true } or null
+   */
+  ErlanglyUtils.parseDate = function(dateStr) {
+    if (!dateStr) return null;
+    if (dateStr instanceof Date) {
+      if (isNaN(dateStr.getTime())) return null;
+      var y = dateStr.getFullYear();
+      var m = dateStr.getMonth() + 1;
+      var d = dateStr.getDate();
+      var pad = function(n) { return n < 10 ? '0' + n : String(n); };
+      var utcTime = Date.UTC(y, m - 1, d);
+      var dObj = new Date(utcTime);
+      return {
+        year: y,
+        month: m,
+        day: d,
+        isoDate: y + '-' + pad(m) + '-' + pad(d),
+        timestamp: utcTime,
+        dayOfWeek: dObj.getUTCDay(),
+        isDate: true
+      };
+    }
+
+    var str = String(dateStr).trim();
+    if (!str) return null;
+
+    // Strip time/interval component if present (e.g. "8/1/2026 09:30:00", "2026-08-01T09:30:00")
+    var rawDatePart = str;
+    if (rawDatePart.indexOf('T') !== -1) {
+      rawDatePart = rawDatePart.split('T')[0];
+    } else if (rawDatePart.indexOf(' ') !== -1) {
+      rawDatePart = rawDatePart.split(' ')[0];
+    }
+
+    var year = null;
+    var month = null;
+    var day = null;
+
+    // 1. ISO format: YYYY-MM-DD or YYYY/MM/DD or YYYY.MM.DD
+    var mIso = rawDatePart.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+    if (mIso) {
+      year = parseInt(mIso[1], 10);
+      month = parseInt(mIso[2], 10);
+      day = parseInt(mIso[3], 10);
+    }
+
+    // 2. M/D/YYYY or MM/DD/YYYY (or D/M/YYYY if first > 12)
+    if (!year) {
+      var mSlash4 = rawDatePart.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})$/);
+      if (mSlash4) {
+        var n1 = parseInt(mSlash4[1], 10);
+        var n2 = parseInt(mSlash4[2], 10);
+        var yr = parseInt(mSlash4[3], 10);
+        if (n1 > 12 && n2 <= 12) {
+          day = n1;
+          month = n2;
+        } else {
+          month = n1;
+          day = n2;
+        }
+        year = yr;
+      }
+    }
+
+    // 3. M/D/YY or MM/DD/YY
+    if (!year) {
+      var mSlash2 = rawDatePart.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2})$/);
+      if (mSlash2) {
+        var n1 = parseInt(mSlash2[1], 10);
+        var n2 = parseInt(mSlash2[2], 10);
+        var yr2 = parseInt(mSlash2[3], 10);
+        var fullYr = yr2 < 70 ? (2000 + yr2) : (1900 + yr2);
+        if (n1 > 12 && n2 <= 12) {
+          day = n1;
+          month = n2;
+        } else {
+          month = n1;
+          day = n2;
+        }
+        year = fullYr;
+      }
+    }
+
+    // 4. M/D or MM/DD without year (defaults to current year)
+    if (!year) {
+      var mShort = rawDatePart.match(/^(\d{1,2})[-\/.](\d{1,2})$/);
+      if (mShort) {
+        var n1 = parseInt(mShort[1], 10);
+        var n2 = parseInt(mShort[2], 10);
+        if (n1 <= 12 && n2 <= 31) {
+          month = n1;
+          day = n2;
+          year = new Date().getFullYear();
+        } else if (n1 > 12 && n2 <= 12) {
+          day = n1;
+          month = n2;
+          year = new Date().getFullYear();
+        }
+      }
+    }
+
+    // 5. Fallback to native Date parsing ONLY if string contains textual month names (e.g. "Aug 1, 2026", "1-Aug-2026")
+    if (!year && /(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(str)) {
+      var dNative = new Date(str);
+      if (!isNaN(dNative.getTime())) {
+        year = dNative.getFullYear();
+        month = dNative.getMonth() + 1;
+        day = dNative.getDate();
+      }
+    }
+
+    if (year && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+      var utcTime = Date.UTC(year, month - 1, day);
+      var dObj = new Date(utcTime);
+      if (dObj.getUTCFullYear() === year && (dObj.getUTCMonth() + 1) === month && dObj.getUTCDate() === day) {
+        var pad = function(n) { return n < 10 ? '0' + n : String(n); };
+        return {
+          year: year,
+          month: month,
+          day: day,
+          isoDate: year + '-' + pad(month) + '-' + pad(day),
+          timestamp: utcTime,
+          dayOfWeek: dObj.getUTCDay(),
+          isDate: true
+        };
+      }
+    }
+
+    return null;
+  };
+
+  /**
+   * Advance a Date by N Days (UTC-safe)
+   *
+   * @param {string|Date|Object} dateInput - Date string, Date instance, or parsed date info
+   * @param {number} days - Number of days to add (can be negative)
+   * @returns {Object|null} New parsed date info object
+   */
+  ErlanglyUtils.addDays = function(dateInput, days) {
+    var info = dateInput && dateInput.isDate ? dateInput : ErlanglyUtils.parseDate(dateInput);
+    if (!info) return null;
+    var newTimestamp = info.timestamp + (days * 86400000);
+    return ErlanglyUtils.parseDate(new Date(newTimestamp));
+  };
+
+  /**
    * Cross-Tool Handoff Utilities (Session persistence via localStorage)
    */
   ErlanglyUtils.setHandoff = function(toolName, data) {
@@ -381,8 +533,11 @@
     }
   };
 
-  // Expose to global namespace
+  // Expose to global namespace and CommonJS
   root.ErlanglyUtils = ErlanglyUtils;
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = ErlanglyUtils;
+  }
 
   // Auto-init nav and shared preview when DOM is ready
   if (typeof document !== 'undefined') {

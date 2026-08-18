@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Erlangly Forecasting — Time series demand forecasting with seasonality weighting, trend projection, and large-CSV Web Worker support for contact centers.">
+  <meta name="description" content="Erlangly Forecasting — Advanced time series demand forecasting with pluggable algorithms (Seasonal Decomposition, Holt's Smoothing, SES, Regression), holiday/event flags, model comparison, and large-CSV Web Worker support for contact centers.">
   <meta name="theme-color" content="#080c14">
   <title>Forecasting — Erlangly</title>
   <link rel="stylesheet" href="css/styles.css">
@@ -26,7 +26,7 @@
 
       <ul class="nav-links">
         <li><a href="index.html" class="nav-link">Overview</a></li>
-        <li><a href="forecasting.html" class="nav-link active">Forecasting</a></li>
+        <li><a href="forecasting.html" class="nav-link active" aria-current="page">Forecasting</a></li>
         <li><a href="capacity.html" class="nav-link">Capacity</a></li>
         <li><a href="scheduling.html" class="nav-link">Scheduling</a></li>
         <li><a href="realtime.html" class="nav-link">Real-Time</a></li>
@@ -45,31 +45,40 @@
     <div class="tool-header">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
         <div>
-          <span class="tool-badge">Time Series Modeling</span>
+          <span class="tool-badge">Time Series Modeling • Phase 8</span>
           <h1 class="tool-title">Contact Center Demand Forecasting</h1>
           <p class="tool-description">
-            Generate future call and interaction forecasts using Weighted Moving Average, linear trend modeling, and day-of-week seasonality weighting. Supports 100k+ historical row CSV streaming via Web Workers.
+            Pluggable time series forecasting suite: Seasonal Decomposition, Holt's Double Exponential Smoothing, SES, Multi-variable Regression, and Moving Averages. Includes holiday/event flag modeling and multi-model fit comparison (MAE, MAPE, RMSE).
           </p>
         </div>
 
-        <!-- Input Source Tabs -->
-        <div style="display: flex; gap: var(--space-2); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
-          <button id="tab-history-sample" class="btn btn-sm btn-primary">Historical Series</button>
-          <button id="tab-history-csv" class="btn btn-sm btn-ghost">Upload CSV (Worker)</button>
+        <!-- Tool Actions & Input Source Tabs -->
+        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2);">
+          <div style="display: flex; gap: var(--space-2);">
+            <button id="btn-save-forecast-plan" class="btn btn-secondary btn-sm">💾 Save Plan</button>
+            <button id="btn-share-forecast-plan" class="btn btn-ghost btn-sm">🔗 Share Link</button>
+          </div>
+
+          <div style="display: flex; gap: var(--space-1); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+            <button id="tab-history-sample" class="btn btn-sm btn-primary">Historical Series</button>
+            <button id="tab-history-csv" class="btn btn-sm btn-ghost">Upload CSV (Worker)</button>
+            <button id="tab-holidays" class="btn btn-sm btn-ghost">Events &amp; Holidays (<span id="lbl-holidays-count">2</span>)</button>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- Main 2-Column Grid -->
-    <div class="tool-body" style="grid-template-columns: 390px 1fr;">
-      <!-- Left Column: Input & Model Config Panel -->
+    <div class="tool-body" style="grid-template-columns: 410px 1fr;">
+      <!-- Left Column: Input & Model Config Panels -->
       <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+        
         <!-- Data Input Panel -->
         <div class="panel">
           <div class="panel-header">
             <div class="panel-title">Historical Data Source</div>
             <div style="display: flex; gap: var(--space-2);">
-              <button id="btn-load-sample-forecast" class="btn btn-secondary btn-sm">Sample 12 Wks</button>
+              <button id="btn-load-sample-forecast" class="btn btn-secondary btn-sm">Sample Data</button>
               <button id="btn-clear-history" class="btn btn-ghost btn-sm">Clear</button>
             </div>
           </div>
@@ -88,7 +97,7 @@
                     <tr>
                       <th>Period / Date</th>
                       <th>Volume</th>
-                      <th style="width: 40px;"></th>
+                      <th style="width: 36px;"></th>
                     </tr>
                   </thead>
                   <tbody id="tbody-history-inputs"></tbody>
@@ -127,52 +136,62 @@
                 </select>
               </div>
             </div>
+
+            <!-- Mode 3: Holiday & Event Flags Table -->
+            <div id="section-holidays" style="display: none;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+                <span class="form-hint">Holiday / Event Adjustments:</span>
+                <div style="display: flex; gap: var(--space-1);">
+                  <button id="btn-add-holiday" class="btn btn-ghost btn-sm">+ Add Event</button>
+                  <button id="btn-clear-holidays" class="btn btn-ghost btn-sm" style="color: var(--danger);">Clear</button>
+                </div>
+              </div>
+
+              <div class="table-container" style="max-height: 220px; overflow-y: auto;">
+                <table class="data-table" id="table-holidays">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Event Label</th>
+                      <th>Impact / Action</th>
+                      <th style="width: 36px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-holidays"></tbody>
+                </table>
+              </div>
+              <span class="form-hint" style="margin-top: var(--space-2); display: block;">
+                Events scale projections or exclude anomalous historical dates from training.
+              </span>
+            </div>
           </div>
         </div>
 
         <!-- Model Configuration Panel -->
         <div class="panel">
           <div class="panel-header">
-            <div class="panel-title">Model Parameters</div>
+            <div class="panel-title">Pluggable Model Architecture</div>
+            <button id="btn-toggle-comparison" class="btn btn-ghost btn-sm">Compare 2–4 Models</button>
           </div>
 
           <div class="panel-body">
-            <!-- Model Type -->
+            <!-- Model Type Selector -->
             <div class="form-group">
-              <label for="select-model-type" class="form-label">Algorithm</label>
-              <select id="select-model-type" class="form-control">
-                <option value="wma" selected>Weighted Moving Average (WMA)</option>
-                <option value="trend">Linear Trend Projection</option>
-                <option value="sma">Simple Moving Average (SMA)</option>
-              </select>
+              <label for="select-model-type" class="form-label">Active Forecast Algorithm</label>
+              <select id="select-model-type" class="form-control mono"></select>
+              <span id="model-description-text" class="form-hint" style="margin-top: var(--space-1); display: block; color: var(--text-secondary);"></span>
             </div>
 
-            <!-- Historical Window & Horizon -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
-              <div class="form-group">
-                <label for="num-history-window" class="form-label">Lookback Window</label>
-                <div class="input-group">
-                  <input type="number" id="num-history-window" class="form-control mono" min="2" max="52" value="6">
-                  <span class="input-addon">periods</span>
-                </div>
-              </div>
+            <!-- Dynamic Model Parameters (Injected by Model Registry) -->
+            <div id="dynamic-model-params" style="margin-bottom: var(--space-4);"></div>
 
+            <!-- Horizon & Growth Modifier -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
               <div class="form-group">
                 <label for="num-forecast-horizon" class="form-label">Forecast Horizon</label>
                 <div class="input-group">
                   <input type="number" id="num-forecast-horizon" class="form-control mono" min="1" max="52" value="8">
                   <span class="input-addon">periods</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Seasonality & Growth Modifier -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
-              <div class="form-group">
-                <label for="check-seasonality" class="form-label">Day Seasonality</label>
-                <div style="display: flex; align-items: center; height: 40px; gap: var(--space-2);">
-                  <input type="checkbox" id="check-seasonality" checked style="width: 18px; height: 18px; cursor: pointer;">
-                  <span style="font-size: var(--text-xs); color: var(--text-secondary);">Apply indices</span>
                 </div>
               </div>
 
@@ -195,7 +214,7 @@
                 <input type="number" id="num-forecast-aht" class="form-control mono" min="10" max="1200" value="180">
                 <span class="input-addon">seconds</span>
               </div>
-              <span class="form-hint">Used when transferring forecast into Capacity Planning</span>
+              <span class="form-hint">Used for Erlang calculation and Capacity Planning transfer</span>
             </div>
           </div>
 
@@ -207,9 +226,10 @@
         </div>
       </div>
 
-      <!-- Right Column: Visualization & Forecast Results Table -->
+      <!-- Right Column: Visualization & Results Tables -->
       <div style="display: flex; flex-direction: column; gap: var(--space-6);">
-        <!-- Summary KPI Stats -->
+        
+        <!-- Summary KPI & Fit Stats -->
         <div class="stat-grid">
           <div class="metric-card">
             <div class="metric-label">Historical Volume</div>
@@ -217,14 +237,8 @@
             <div class="metric-subtext" id="stat-hist-count">-- periods</div>
           </div>
 
-          <div class="metric-card">
-            <div class="metric-label">Hist. Avg / Period</div>
-            <div class="metric-value" id="stat-hist-avg">--</div>
-            <div class="metric-subtext">Baseline rate</div>
-          </div>
-
           <div class="metric-card highlight">
-            <div class="metric-label">Forecasted Total</div>
+            <div class="metric-label">Forecast Total</div>
             <div class="metric-value" id="stat-fc-total">--</div>
             <div class="metric-subtext" id="stat-fc-count">-- future periods</div>
           </div>
@@ -236,9 +250,51 @@
           </div>
 
           <div class="metric-card">
-            <div class="metric-label">Peak Forecast Period</div>
+            <div class="metric-label">In-Sample MAPE</div>
+            <div class="metric-value text-accent" id="stat-fit-mape">--%</div>
+            <div class="metric-subtext">Mean Absolute % Error</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Goodness of Fit (R²)</div>
+            <div class="metric-value" id="stat-fit-r2">--%</div>
+            <div class="metric-subtext">Variance explained</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-label">Peak Future Period</div>
             <div class="metric-value" id="stat-fc-peak">--</div>
             <div class="metric-subtext" id="stat-fc-peak-time">Highest demand</div>
+          </div>
+        </div>
+
+        <!-- Model Comparison Panel (Toggled) -->
+        <div class="panel" id="panel-model-comparison" style="display: none; border-color: var(--accent);">
+          <div class="panel-header" style="background: rgba(0, 210, 211, 0.05);">
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+              <span>Model Comparison &amp; Fit Metrics (MAE, MAPE, RMSE)</span>
+            </div>
+            <span class="badge badge-success">Multi-Model Audit</span>
+          </div>
+
+          <div class="panel-body" style="padding: 0;">
+            <div class="table-container" style="border: none;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Model Algorithm</th>
+                    <th>In-Sample MAPE</th>
+                    <th>MAE (calls)</th>
+                    <th>RMSE (calls)</th>
+                    <th>R² Fit %</th>
+                    <th>Projected Total</th>
+                    <th style="width: 80px;">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-model-comparison"></tbody>
+              </table>
+            </div>
           </div>
         </div>
 
@@ -247,11 +303,11 @@
           <div class="panel-header">
             <div class="panel-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-              Historical Actuals vs. Projected Forecast
+              Time Series Forecast Projections
             </div>
             <div style="display: flex; gap: var(--space-3); font-size: var(--text-xs); font-family: var(--mono);">
               <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary);">
-                <span style="display: inline-block; width: 10px; height: 10px; background: #00d2d3; border-radius: 50%;"></span> History
+                <span style="display: inline-block; width: 10px; height: 10px; background: #00d2d3; border-radius: 50%;"></span> Historical Actuals
               </span>
               <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary);">
                 <span style="display: inline-block; width: 10px; height: 10px; background: #10b981; border-radius: 50%;"></span> Forecast
@@ -283,7 +339,7 @@
                   <tr>
                     <th>Future Period</th>
                     <th>Base Model</th>
-                    <th>Trend Component</th>
+                    <th>Trend Factor</th>
                     <th>Seasonality Index</th>
                     <th>Projected Volume</th>
                     <th>Est. Erlangs (A)</th>
@@ -302,7 +358,7 @@
   <footer class="site-footer">
     <div class="footer-container">
       <div class="footer-text">
-        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Off-thread Web Worker forecasting.
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Advanced pluggable time series forecasting.
       </div>
       <ul class="footer-links">
         <li><a href="index.html" class="footer-link">Overview</a></li>

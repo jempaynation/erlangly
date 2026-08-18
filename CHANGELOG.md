@@ -33,6 +33,46 @@ When a phase passes audit:
 
 ---
 
+## [Phase 8] — Advanced Forecasting Models — 2026-08-19
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Pluggable Model Architecture (`js/forecasting.js`)**:
+  - Modular model registry exposing a unified contract (`id`, `name`, `category`, `params`, `fit`, `predict`, `getMetrics`).
+  - Standardized in-sample fit metrics: MAE, MAPE %, MSE, RMSE, and $R^2$ goodness-of-fit %.
+  - 8 Time-Series Forecasting Algorithms:
+    1. **Weighted Moving Average (WMA)** with local window trend estimation.
+    2. **Simple Moving Average (SMA)** unweighted rolling mean.
+    3. **Linear Trend Projection (OLS)** Ordinary Least Squares linear regression.
+    4. **Seasonal Decomposition (Multiplicative)**: Extracts cyclical day-of-week indices ($Y = T \times S \times I$), deseasonalizes history, and fits trend projection.
+    5. **Seasonal Decomposition (Additive)**: Extracts zero-sum seasonal offsets ($Y = T + S + I$).
+    6. **Simple Exponential Smoothing (SES)**: Level recursion with 1D grid search auto-optimization of $\alpha$ minimizing MSE.
+    7. **Holt's Double Exponential Smoothing**: Level and trend tracking with 2D grid search auto-optimization of $(\alpha, \beta)$ minimizing MSE.
+    8. **Multi-Variable Regression**: Matrix OLS estimating time slope plus 6 day-of-week binary indicator dummy variables ($D_1 \dots D_6$) solved via Gaussian elimination with partial pivoting.
+- **Holiday & Event Flag System (`forecasting.html` + `js/forecasting.js`)**:
+  - Event manager table supporting custom dates, event names, and actions (`scale` multiplicative adjustment or `exclude` outlier from training).
+  - Outlier handling: excludes or interpolates historical spikes/dips before model training.
+  - Future projection scaling: multiplies forecast on flagged dates by $(1 + \text{impact}\%)$ and displays event badge (e.g. `🎉 Memorial Day Spike`).
+- **Model Comparison View & Multi-Model Visualizer**:
+  - Side-by-side comparative table ranking models by in-sample fit metrics (MAPE, MAE, RMSE, $R^2$) with "Best Fit" highlight and 1-click model activation.
+  - Chart.js multi-curve visualizer plotting historical actuals alongside multiple candidate forecast projections in distinct control-room dashed colors.
+- **Persistence & Cross-Tool Handoff**:
+  - Save Plan modal (`ErlanglyPlans.showSaveModal('forecasting', ...)`) and Shareable Link modal (`ErlanglyPlans.showShareModal('forecasting', ...)`).
+  - Cross-tool handoff receiver for `?from=plans` and `window.ERLANGLY_SHARED_DATA`.
+  - Handoff sender to Capacity Planning (`capacity.html?from=forecast`) and RFC-4180 CSV export.
+- **Automated Test Suite (`test/run-tests.js`)**:
+  - 32 new unit tests covering all 8 models, fit metrics, auto-optimization search, seasonal decomposition, matrix solvers, and holiday scaling (92 total tests passing with 0 failures).
+
+### Found & fixed during QA
+- Verified 2D grid search for Holt's parameters correctly disables manual slider inputs when auto-optimization is checked.
+- Verified holiday scaling dynamically adjusts forecast table and reflects in Capacity Planning handoff (`13,395` total volume transferred).
+- Verified responsive layout and clean console logs across all interactions.
+
+### Deviations from spec (if any)
+- None.
+
+---
+
 ## [Phase 7] — Polish & Portfolio Packaging — 2026-08-18
 **QA sign-off:** erlangly-qa
 

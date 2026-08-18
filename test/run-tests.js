@@ -193,6 +193,141 @@ assert(monthlySim.months[0].staffedFTE > 0, `Month 1 staffed FTE > 0 (got: ${mon
 assert(monthlySim.totalVolume > 1500000, `Total 12-month volume aggregated correctly (${monthlySim.totalVolume.toLocaleString()})`);
 assert(monthlySim.totalLaborCost > 0, `Total annual labor budget calculated ($${monthlySim.totalLaborCost.toLocaleString()})`);
 
+// 10. Date Parsing, Chronological Ordering & Forecast Progression
+console.log('\n[10] Date Parsing, Chronological Ordering & Forecast Progression');
+const ErlanglyUtils = require('../js/main.js');
+
+// 10a. Date Parsing Across Formats
+const d1 = ErlanglyUtils.parseDate('2026-08-01');
+assert(d1 && d1.isoDate === '2026-08-01' && d1.dayOfWeek === 6, 'Parses ISO date 2026-08-01 (Saturday)');
+
+const d2 = ErlanglyUtils.parseDate('8/1/2026');
+assert(d2 && d2.isoDate === '2026-08-01' && d2.month === 8 && d2.day === 1, 'Parses US slash date 8/1/2026 into 2026-08-01');
+
+const d3 = ErlanglyUtils.parseDate('10/31/2026');
+assert(d3 && d3.isoDate === '2026-10-31' && d3.month === 10 && d3.day === 31, 'Parses US slash date 10/31/2026 into 2026-10-31');
+
+const d4 = ErlanglyUtils.parseDate('8/1/26');
+assert(d4 && d4.isoDate === '2026-08-01', 'Parses 2-digit year 8/1/26 into 2026-08-01');
+
+const d5 = ErlanglyUtils.parseDate('08/01/2026 09:30:00');
+assert(d5 && d5.isoDate === '2026-08-01', 'Parses date with timestamp 08/01/2026 09:30:00');
+
+const dNon = ErlanglyUtils.parseDate('Period 1');
+assert(dNon === null, 'Non-date string returns null safely');
+
+// 10b. Chronological Multi-Month Ordering (Fixes 10/1 before 8/1 bug)
+const rawDates = ['10/1/2026', '8/1/2026', '9/1/2026', '10/31/2026', '8/15/2026'];
+const sortedDates = rawDates.slice().sort((a, b) => {
+  const infoA = ErlanglyUtils.parseDate(a);
+  const infoB = ErlanglyUtils.parseDate(b);
+  if (infoA && infoB) return infoA.timestamp - infoB.timestamp;
+  return 0;
+}).map(d => ErlanglyUtils.parseDate(d).isoDate);
+
+assert(sortedDates[0] === '2026-08-01', `First date is Aug 1 (got: ${sortedDates[0]})`);
+assert(sortedDates[1] === '2026-08-15', `Second date is Aug 15 (got: ${sortedDates[1]})`);
+assert(sortedDates[2] === '2026-09-01', `Third date is Sep 1 (got: ${sortedDates[2]})`);
+assert(sortedDates[3] === '2026-10-01', `Fourth date is Oct 1 (got: ${sortedDates[3]})`);
+assert(sortedDates[4] === '2026-10-31', `Fifth date is Oct 31 (got: ${sortedDates[4]})`);
+assert(sortedDates.indexOf('2026-08-01') < sortedDates.indexOf('2026-10-01'), 'Aug 1 is strictly sorted BEFORE Oct 1');
+
+// 10c. Future Date Progression
+const nextDayAfterOct31 = ErlanglyUtils.addDays('10/31/2026', 1);
+assert(nextDayAfterOct31 && nextDayAfterOct31.isoDate === '2026-11-01', 'Oct 31 + 1 day correctly advances to Nov 1 (2026-11-01)');
+
+const future8Days = [];
+for (let h = 1; h <= 8; h++) {
+  future8Days.push(ErlanglyUtils.addDays('10/31/2026', h).isoDate);
+}
+assert(future8Days[0] === '2026-11-01' && future8Days[7] === '2026-11-08', '8-day forecast horizon from 10/31 spans 2026-11-01 to 2026-11-08');
+
+// 10d. Leap Year Date Progression
+const leapNext = ErlanglyUtils.addDays('2024-02-28', 1);
+assert(leapNext && leapNext.isoDate === '2024-02-29', 'Leap year 2024-02-28 + 1 day advances to 2024-02-29');
+const leapNext2 = ErlanglyUtils.addDays('2024-02-29', 1);
+assert(leapNext2 && leapNext2.isoDate === '2024-03-01', 'Leap year 2024-02-29 + 1 day advances to 2024-03-01');
+
+// 11. Phase 8 — Advanced Forecasting Models & Pluggable Architecture
+console.log('\n[11] Phase 8 — Advanced Forecasting Models & Algorithms');
+const ErlanglyForecast = require('../js/forecasting.js');
+
+// 11a. Model Registry Verification
+const registeredModels = Object.keys(ErlanglyForecast.models);
+assert(registeredModels.includes('wma'), 'WMA model registered');
+assert(registeredModels.includes('sma'), 'SMA model registered');
+assert(registeredModels.includes('trend'), 'Linear Trend model registered');
+assert(registeredModels.includes('decomp_mult'), 'Multiplicative Decomposition model registered');
+assert(registeredModels.includes('decomp_add'), 'Additive Decomposition model registered');
+assert(registeredModels.includes('ses'), 'Simple Exponential Smoothing model registered');
+assert(registeredModels.includes('holt'), "Holt's Double Exponential Smoothing model registered");
+assert(registeredModels.includes('regression'), 'Multi-variable Regression model registered');
+assert(registeredModels.length === 8, `All 8 forecasting models registered (found: ${registeredModels.length})`);
+
+// 11b. Test Fit Metrics Calculation
+const actuals = [100, 150, 200, 250];
+const fitted = [110, 140, 210, 240];
+const metrics = ErlanglyForecast.calculateFitMetrics(actuals, fitted);
+assert(metrics.mae === 10, `MAE is 10 (got: ${metrics.mae})`);
+assertClose(metrics.rmse, 10, 0.001, 'RMSE is 10');
+assert(metrics.mse === 100, 'MSE is 100');
+assert(metrics.r2 > 90, `R2 fit is high (>90%, got: ${metrics.r2.toFixed(1)}%)`);
+
+// 11c. Seasonal Decomposition (Multiplicative & Additive)
+const sampleHistory = ErlanglyForecast.SAMPLE_HISTORY;
+const multDecompRes = ErlanglyForecast.executeForecast(sampleHistory, 'decomp_mult', { seasonLength: 7 }, { horizon: 7 });
+assert(multDecompRes.forecast.length === 7, 'Multiplicative decomposition produces 7 horizon periods');
+assert(multDecompRes.metrics.mape < 25, `Multiplicative decomposition fit MAPE is good (<25%, got: ${multDecompRes.metrics.mape.toFixed(1)}%)`);
+assert(multDecompRes.fitResult.seasonalIndices.length === 7, 'Computed 7-day seasonal indices');
+
+const addDecompRes = ErlanglyForecast.executeForecast(sampleHistory, 'decomp_add', { seasonLength: 7 }, { horizon: 7 });
+assert(addDecompRes.forecast.length === 7, 'Additive decomposition produces 7 horizon periods');
+assert(addDecompRes.fitResult.seasonalOffsets.length === 7, 'Computed 7-day seasonal offsets');
+const sumOffsets = addDecompRes.fitResult.seasonalOffsets.reduce((a, b) => a + b, 0);
+assertClose(sumOffsets, 0, 0.01, 'Additive seasonal offsets sum to 0');
+
+// 11d. Exponential Smoothing: SES and Holt's Double
+const sesRes = ErlanglyForecast.executeForecast(sampleHistory, 'ses', { alpha: 0.25, autoOptimize: false }, { horizon: 5 });
+assert(sesRes.forecast.length === 5, 'SES produces 5 horizon periods');
+assert(sesRes.forecast[0].volume === sesRes.forecast[4].volume, 'SES produces flat future projection');
+
+const sesAuto = ErlanglyForecast.executeForecast(sampleHistory, 'ses', { autoOptimize: true }, { horizon: 5 });
+assert(sesAuto.fitResult.alpha > 0 && sesAuto.fitResult.alpha < 1, `SES auto-optimized alpha to valid range (${sesAuto.fitResult.alpha})`);
+
+const holtRes = ErlanglyForecast.executeForecast(sampleHistory, 'holt', { alpha: 0.3, beta: 0.1, autoOptimize: false }, { horizon: 5 });
+assert(holtRes.forecast.length === 5, "Holt's smoothing produces 5 horizon periods");
+assert(holtRes.fitResult.level > 0, "Holt's calculated positive level");
+
+const holtAuto = ErlanglyForecast.executeForecast(sampleHistory, 'holt', { autoOptimize: true }, { horizon: 5 });
+assert(holtAuto.fitResult.alpha > 0 && holtAuto.fitResult.beta >= 0, `Holt's auto-optimized (alpha=${holtAuto.fitResult.alpha}, beta=${holtAuto.fitResult.beta})`);
+
+// 11e. Multi-Variable Regression (with Day-of-Week Dummies)
+const regRes = ErlanglyForecast.executeForecast(sampleHistory, 'regression', { includeDummies: true }, { horizon: 7 });
+assert(regRes.forecast.length === 7, 'Regression produces 7 horizon predictions');
+assert(regRes.fitResult.coeffs.length === 8, 'Regression estimated 8 coefficients (intercept, slope, 6 day dummies)');
+assert(regRes.metrics.mape < 25, `Regression with day dummies achieves low MAPE (${regRes.metrics.mape.toFixed(1)}%)`);
+
+// 11f. Holiday & Event Flag System
+const holidayOptions = {
+  horizon: 7,
+  holidays: [
+    { date: '2026-05-29', name: 'Product Launch Spike', impactPct: 50, action: 'scale' },
+    { date: '2026-05-04', name: 'Past Outage', impactPct: 0, action: 'exclude' }
+  ]
+};
+
+const holidayRes = ErlanglyForecast.executeForecast(sampleHistory, 'trend', {}, holidayOptions);
+const futureLaunchDay = holidayRes.forecast.find(f => f.period === '2026-05-29');
+assert(futureLaunchDay && futureLaunchDay.holidayFactor === 1.50, 'Future holiday applies 1.5x multiplicative scaling (+50%)');
+assert(futureLaunchDay.holidayName === 'Product Launch Spike', 'Future holiday tags event name');
+
+// 11g. Edge Cases & Robustness
+const emptyRes = ErlanglyForecast.executeForecast([], 'holt', {}, { horizon: 5 });
+assert(emptyRes.forecast.length === 0 && emptyRes.metrics.mae === 0, 'Empty history handled gracefully with 0 forecasts');
+
+const singleRowRes = ErlanglyForecast.executeForecast([{ period: '2026-06-01', volume: 500 }], 'wma', {}, { horizon: 3 });
+assert(singleRowRes.forecast.length === 3, 'Single row history produces valid forecasts without throwing');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -200,5 +335,6 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 
 
