@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Erlangly Forecasting — Advanced time series demand forecasting with pluggable algorithms (Seasonal Decomposition, Holt's Smoothing, SES, Regression), holiday/event flags, model comparison, and large-CSV Web Worker support for contact centers.">
+  <meta name="description" content="Erlangly Forecasting — Advanced time series demand forecasting with pluggable algorithms (YoY Seasonal Trend, Ensemble Blending, Seasonal Decomposition, Holt's Smoothing, SES, Regression), walk-forward backtesting, forecast accuracy tracking (WAPE, MAPE, Bias), holiday flags, and large-CSV Web Worker support for contact centers.">
   <meta name="theme-color" content="#080c14">
   <title>Forecasting — Erlangly</title>
   <link rel="stylesheet" href="css/styles.css">
@@ -45,10 +45,10 @@
     <div class="tool-header">
       <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: var(--space-4);">
         <div>
-          <span class="tool-badge">Time Series Modeling • Phase 8</span>
+          <span class="tool-badge">Time Series Modeling &amp; Accuracy • Phase 8 &amp; Phase 12</span>
           <h1 class="tool-title">Contact Center Demand Forecasting</h1>
           <p class="tool-description">
-            Pluggable time series forecasting suite: Seasonal Decomposition, Holt's Double Exponential Smoothing, SES, Multi-variable Regression, and Moving Averages. Includes holiday/event flag modeling and multi-model fit comparison (MAE, MAPE, RMSE).
+            Pluggable time series forecasting suite: Year-over-Year (YoY) Seasonal Trend, Ensemble Blended Modeling, Seasonal Decomposition, Holt's Double Exponential Smoothing, SES, and Multi-Variable Regression. Includes walk-forward out-of-sample backtesting, forecast accuracy tracking (WAPE, MAPE, Signed Bias %), and multi-year data support.
           </p>
         </div>
 
@@ -63,22 +63,24 @@
             <button id="tab-history-sample" class="btn btn-sm btn-primary">Historical Series</button>
             <button id="tab-history-csv" class="btn btn-sm btn-ghost">Upload CSV (Worker)</button>
             <button id="tab-holidays" class="btn btn-sm btn-ghost">Events &amp; Holidays (<span id="lbl-holidays-count">2</span>)</button>
+            <button id="tab-accuracy" class="btn btn-sm btn-ghost">Accuracy Tracking (<span id="lbl-accuracy-count">14</span>)</button>
           </div>
         </div>
       </div>
     </div>
 
     <!-- Main 2-Column Grid -->
-    <div class="tool-body" style="grid-template-columns: 410px 1fr;">
+    <div class="tool-body" style="grid-template-columns: 420px 1fr;">
       <!-- Left Column: Input & Model Config Panels -->
       <div style="display: flex; flex-direction: column; gap: var(--space-6);">
         
         <!-- Data Input Panel -->
         <div class="panel">
           <div class="panel-header">
-            <div class="panel-title">Historical Data Source</div>
-            <div style="display: flex; gap: var(--space-2);">
-              <button id="btn-load-sample-forecast" class="btn btn-secondary btn-sm">Sample Data</button>
+            <div class="panel-title">Data Source &amp; Series Input</div>
+            <div style="display: flex; gap: var(--space-1); flex-wrap: wrap;">
+              <button id="btn-load-sample-forecast" class="btn btn-secondary btn-sm" title="Load 28-day sample dataset">1-Mo Sample</button>
+              <button id="btn-load-2yr-sample" class="btn btn-secondary btn-sm" title="Load 730-day (2-year) multi-year sample dataset">2-Yr Sample</button>
               <button id="btn-clear-history" class="btn btn-ghost btn-sm">Clear</button>
             </div>
           </div>
@@ -164,6 +166,36 @@
                 Events scale projections or exclude anomalous historical dates from training.
               </span>
             </div>
+
+            <!-- Mode 4: Accuracy Tracking Inputs (Phase 12) -->
+            <div id="section-accuracy" style="display: none;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-2);">
+                <span class="form-hint">Forecast vs. Actual Pairs:</span>
+                <div style="display: flex; gap: var(--space-1);">
+                  <button id="btn-pull-forecast-actuals" class="btn btn-secondary btn-sm" style="font-size: 11px;">From Forecast</button>
+                  <button id="btn-load-sample-accuracy" class="btn btn-secondary btn-sm" style="font-size: 11px;">Sample</button>
+                  <button id="btn-add-accuracy-row" class="btn btn-ghost btn-sm">+ Add</button>
+                  <button id="btn-clear-accuracy" class="btn btn-ghost btn-sm" style="color: var(--danger);">Clear</button>
+                </div>
+              </div>
+
+              <div class="table-container" style="max-height: 220px; overflow-y: auto;">
+                <table class="data-table" id="table-accuracy-inputs">
+                  <thead>
+                    <tr>
+                      <th>Period</th>
+                      <th>Forecast</th>
+                      <th>Actual</th>
+                      <th style="width: 36px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-accuracy-inputs"></tbody>
+                </table>
+              </div>
+              <span class="form-hint" style="margin-top: var(--space-2); display: block;">
+                Track post-shift actuals against projected plan to measure WAPE, MAPE &amp; signed bias.
+              </span>
+            </div>
           </div>
         </div>
 
@@ -171,7 +203,7 @@
         <div class="panel">
           <div class="panel-header">
             <div class="panel-title">Pluggable Model Architecture</div>
-            <button id="btn-toggle-comparison" class="btn btn-ghost btn-sm">Compare 2–4 Models</button>
+            <button id="btn-toggle-comparison" class="btn btn-ghost btn-sm">Model Comparison &amp; Backtest</button>
           </div>
 
           <div class="panel-body">
@@ -271,14 +303,19 @@
           </div>
         </div>
 
-        <!-- Model Comparison Panel (Toggled) -->
+        <!-- Model Comparison & Walk-Forward Backtesting Panel (Toggled) -->
         <div class="panel" id="panel-model-comparison" style="display: none; border-color: var(--accent);">
-          <div class="panel-header" style="background: rgba(0, 210, 211, 0.05);">
+          <div class="panel-header" style="background: rgba(0, 210, 211, 0.05); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2);">
             <div class="panel-title">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
-              <span>Model Comparison &amp; Fit Metrics (MAE, MAPE, RMSE)</span>
+              <span>Model Comparison &amp; Walk-Forward Backtesting</span>
             </div>
-            <span class="badge badge-success">Multi-Model Audit</span>
+            
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <label for="num-backtest-holdout" style="font-size: var(--text-xs); color: var(--text-secondary); margin: 0;">Holdout:</label>
+              <input type="number" id="num-backtest-holdout" class="form-control mono" style="width: 60px; height: 26px; font-size: 11px;" min="1" max="30" value="7">
+              <button id="btn-run-backtest" class="btn btn-secondary btn-sm" style="font-size: 11px; height: 26px;">Run Backtest</button>
+            </div>
           </div>
 
           <div class="panel-body" style="padding: 0;">
@@ -288,15 +325,111 @@
                   <tr>
                     <th>Model Algorithm</th>
                     <th>In-Sample MAPE</th>
-                    <th>MAE (calls)</th>
-                    <th>RMSE (calls)</th>
-                    <th>R² Fit %</th>
+                    <th style="color: var(--info);">Holdout OOS MAPE</th>
+                    <th>OOS WAPE</th>
+                    <th>OOS RMSE</th>
+                    <th>Overfit Gap</th>
                     <th>Projected Total</th>
                     <th style="width: 80px;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-model-comparison"></tbody>
               </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Accuracy Tracking Dashboard Panel (Active when Accuracy Tab selected) -->
+        <div class="panel" id="panel-accuracy-tracking" style="display: none; border-color: var(--accent);">
+          <div class="panel-header" style="background: rgba(0, 210, 211, 0.05); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2);">
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              <span>Forecast Accuracy Tracking &amp; Plan Verification (WAPE, MAPE, Signed Bias)</span>
+            </div>
+            <div style="display: flex; gap: var(--space-2);">
+              <button id="btn-save-accuracy-run" class="btn btn-secondary btn-sm">Log Current Accuracy Run</button>
+              <button id="btn-export-accuracy-csv" class="btn btn-primary btn-sm">Export Accuracy CSV</button>
+            </div>
+          </div>
+
+          <div class="panel-body">
+            <!-- Accuracy KPI Grid -->
+            <div class="stat-grid" style="margin-bottom: var(--space-4);">
+              <div class="metric-card highlight">
+                <div class="metric-label">Volume-Weighted MAPE (WAPE)</div>
+                <div class="metric-value text-accent" id="stat-acc-wape">--%</div>
+                <div class="metric-subtext">Weighted error / Total calls</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Standard MAPE</div>
+                <div class="metric-value" id="stat-acc-mape">--%</div>
+                <div class="metric-subtext">Simple unweighted average</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Signed Forecast Bias %</div>
+                <div class="metric-value" id="stat-acc-bias">--%</div>
+                <div class="metric-subtext">+ = Over-plan, - = Under-plan</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Mean Absolute Error (MAE)</div>
+                <div class="metric-value" id="stat-acc-mae">--</div>
+                <div class="metric-subtext">Avg calls variance per period</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Root Mean Sq Error (RMSE)</div>
+                <div class="metric-value" id="stat-acc-rmse">--</div>
+                <div class="metric-subtext">Penalty on large variances</div>
+              </div>
+
+              <div class="metric-card">
+                <div class="metric-label">Total Volume Variance</div>
+                <div class="metric-value" id="stat-acc-total-var">--</div>
+                <div class="metric-subtext">Forecast - Actual calls</div>
+              </div>
+            </div>
+
+            <!-- Variance Breakdown Table -->
+            <div class="table-container" style="max-height: 260px; overflow-y: auto; margin-bottom: var(--space-4);">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Period</th>
+                    <th>Forecast Volume</th>
+                    <th>Actual Volume</th>
+                    <th>Variance (Calls)</th>
+                    <th>Abs Error</th>
+                    <th>Error %</th>
+                    <th>Signed Bias %</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-accuracy-variance"></tbody>
+              </table>
+            </div>
+
+            <!-- Historical Accuracy Run History Log -->
+            <div style="border-top: 1px solid var(--border-subtle); padding-top: var(--space-3);">
+              <span class="form-label" style="font-size: var(--text-xs); margin-bottom: var(--space-2); display: block;">Accuracy Tracking Evaluation History:</span>
+              <div class="table-container" style="max-height: 160px; overflow-y: auto;">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Timestamp</th>
+                      <th>Evaluation Label</th>
+                      <th>Periods Evaluated</th>
+                      <th>WAPE %</th>
+                      <th>MAPE %</th>
+                      <th>Signed Bias %</th>
+                      <th>MAE (Calls)</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-accuracy-history"></tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -362,7 +495,7 @@
   <footer class="site-footer">
     <div class="footer-container">
       <div class="footer-text">
-        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Advanced pluggable time series forecasting.
+        <strong>Erlangly</strong> — Static Workforce Management Engineering Toolkit. Advanced pluggable time series forecasting &amp; accuracy tracking.
       </div>
       <ul class="footer-links">
         <li><a href="index.html" class="footer-link">Overview</a></li>

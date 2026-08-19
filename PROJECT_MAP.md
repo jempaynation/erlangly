@@ -29,10 +29,12 @@ a working portfolio piece as much as a usable tool.
 Scheduling, Real-Time/Intraday, Simulator), accounts & persistence (Supabase), shareable
 links, multi-skill pooling proof-of-concept, and portfolio polish are built and signed off.
 
-**v2 is planned (Phases 8–11):** Advanced Forecasting Models, Scheduling Labor Rules,
-Enhanced Simulation & Real-Time (Monte Carlo, mobile view, live data feed), and
-Collaboration & Multi-Skill Routing. Check `ROADMAP.md` for the authoritative phase
-status — this paragraph will go stale as work progresses, `ROADMAP.md` will not.
+**v2 Phase 8 (Advanced Forecasting Models) is complete.** Phases 9–12 are planned:
+Scheduling Labor Rules, Enhanced Simulation & Real-Time (Monte Carlo, mobile view, live
+data feed), Collaboration & Multi-Skill Routing, and Forecasting Enhancements II
+(year-over-year trend projection, out-of-sample backtesting, and a forecast accuracy
+tracking tool). Check `ROADMAP.md` for the authoritative phase status — this paragraph
+will go stale as work progresses, `ROADMAP.md` will not.
 
 ## How the docs relate to each other
 

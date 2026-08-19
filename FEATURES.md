@@ -327,3 +327,60 @@ into a usable multi-queue modeling system.
   and tested in `test/run-tests.js`. Tool pages call them the same way they call
   `Erlangly.agentsRequired` — no duplicated formulas.
 
+### 12. Forecasting Enhancements II (Phase 12)
+Phase 8 gave the forecasting tool a pluggable model architecture and *in-sample* fit
+comparison (how well each model explains the history it was trained on). This phase
+adds the piece that's still missing: how a forecast performs against what actually
+happened afterward, plus a model that explicitly uses prior-year data to project
+forward. Both build directly on the Phase 8 model interface (`fit`/`predict`/`getMetrics`)
+— no architecture changes needed.
+
+- **Year-over-Year Seasonal Trend Projection (new model)**: for each future period,
+  finds the matching calendar period one year prior, computes a YoY growth rate from
+  the trailing overlap window, and projects forward as
+  `forecast = last_year_same_period × (1 + YoY_growth_rate)`, then applies the existing
+  day-of-week seasonal indices for intra-period shape.
+  - Requires at least 12 months of history to compute a matched period at all; the tool
+    should recommend 24+ months so the YoY growth rate itself isn't a single noisy
+    data point.
+  - Graceful degradation: if less than 12 months of history is available, the model is
+    disabled in the selector with an inline explanation, rather than silently producing
+    a bad number.
+  - Registers in the Phase 8 model registry like any other model, so it appears
+    automatically in the model comparison view.
+- **Out-of-sample backtesting (walk-forward validation)**: Phase 8's model comparison
+  only reports in-sample fit (MAE/MAPE/RMSE/R² against the training data itself), which
+  can make an overfit model look artificially good. Backtesting instead:
+  - Holds out the last N periods of history (user-configurable, default = forecast
+    horizon length)
+  - Trains each candidate model on everything before the holdout, forecasts forward
+    across it, and compares the forecast to the actual held-out values
+  - Reports the same metric set (MAE, MAPE, RMSE) but computed out-of-sample, alongside
+    the existing in-sample numbers, so the comparison table shows both and the
+    discrepancy between them is visible at a glance
+  - Runs entirely client-side against the same history already loaded — no separate
+    upload
+- **Forecast Accuracy Tracking Tool**: closes the loop after a forecast plan has been
+  in use for a while.
+  - User uploads (or manually enters) actual volumes for the periods a saved forecast
+    already covered, either against a saved plan or a fresh forecast/actual CSV pairing
+  - Computes MAPE, WAPE (volume-weighted, more representative when period sizes vary),
+    and bias % (systematic over- or under-forecasting, signed)
+  - Accuracy history view: since forecasts are regenerated periodically, this tracks
+    accuracy across multiple forecast runs over time (not just one run), so a forecaster
+    can see whether accuracy is improving, degrading, or has a recurring seasonal blind
+    spot
+  - Accuracy results can be saved alongside the originating plan (`tool: "forecasting"`,
+    same persistence layer as everything else) so accuracy history survives across
+    sessions
+- **Ensemble / blended forecast (optional)**: combine 2+ selected models into a single
+  forecast via weighted average.
+  - Weights are either set manually by the user or derived automatically from each
+    model's backtested (out-of-sample) accuracy — better-performing models get more
+    weight
+  - The blended output is itself selectable as "the" forecast for the "Send to Capacity
+    Planning" handoff, same as any single model
+- **CSV export**: accuracy metrics and backtest results export alongside the existing
+  forecast CSV export, so an analyst can paste accuracy figures into a reporting deck
+  without re-deriving them.
+

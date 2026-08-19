@@ -262,7 +262,7 @@ assert(registeredModels.includes('decomp_add'), 'Additive Decomposition model re
 assert(registeredModels.includes('ses'), 'Simple Exponential Smoothing model registered');
 assert(registeredModels.includes('holt'), "Holt's Double Exponential Smoothing model registered");
 assert(registeredModels.includes('regression'), 'Multi-variable Regression model registered');
-assert(registeredModels.length === 8, `All 8 forecasting models registered (found: ${registeredModels.length})`);
+assert(registeredModels.length >= 8, `At least 8 forecasting models registered (found: ${registeredModels.length})`);
 
 // 11b. Test Fit Metrics Calculation
 const actuals = [100, 150, 200, 250];
@@ -421,6 +421,97 @@ assert(volumesDiffer, 'Pipeline: billing_cycle profile produces different volume
 assert(withProfileRes.forecast[0].trendProfileFactor !== undefined, 'Pipeline: trendProfileFactor is present in forecast results');
 assert(withProfileRes.forecast[0].trendProfileFactor !== 1.0, 'Pipeline: trendProfileFactor is not 1.0 when profile is active');
 
+// ============================================================
+// [13] Phase 12 — Forecasting Enhancements II
+// ============================================================
+console.log('\n[13] Phase 12 — Forecasting Enhancements II (YoY, Backtesting, Accuracy Tracking, Ensemble)');
+
+// 13a. Model Registry Verification (10 Models Total)
+const all10Models = Object.keys(ErlanglyForecast.models);
+assert(all10Models.includes('yoy_trend'), 'YoY Seasonal Trend model registered');
+assert(all10Models.includes('ensemble'), 'Ensemble / Blended Forecast model registered');
+assert(all10Models.length === 10, `All 10 forecasting models registered (found: ${all10Models.length})`);
+
+// 13b. Forecast Accuracy Tracking Calculations (WAPE, MAPE, Signed Bias, MAE, RMSE, Tracking Signal)
+const sampleActuals = [1000, 1200, 800, 1500, 2000];
+const sampleForecasts = [1100, 1150, 850, 1600, 1900]; // Errors: +100, -50, +50, +100, -100 (Sum Abs = 400, Sum Signed = +100)
+// Total Actual = 6500. Total Forecast = 6600.
+// WAPE = 400 / 6500 * 100 = 6.1538%
+// Bias % = +100 / 6500 * 100 = +1.5385%
+// MAE = 400 / 5 = 80
+const accMetrics = ErlanglyForecast.calculateAccuracyMetrics(sampleActuals, sampleForecasts);
+assert(accMetrics.count === 5, 'Accuracy evaluation count is 5');
+assert(accMetrics.mae === 80, `MAE is 80 (got: ${accMetrics.mae})`);
+assertClose(accMetrics.wape, (400 / 6500) * 100, 0.01, 'WAPE ~ 6.15%');
+assertClose(accMetrics.biasPct, (100 / 6500) * 100, 0.01, 'Signed Bias ~ +1.54% (over-forecast)');
+assert(accMetrics.varianceTotal === 100, 'Total volume variance is +100 calls');
+assert(accMetrics.details.length === 5, 'Detailed per-interval breakdown generated');
+
+// 13c. Year-over-Year (YoY) Seasonal Trend Projection Model
+// 1. Guard check on short history (< 12 months)
+const shortHistory = ErlanglyForecast.SAMPLE_HISTORY; // 28 days
+const yoyShortCheck = ErlanglyForecast.checkHistorySufficiency(shortHistory, 52);
+assert(!yoyShortCheck.sufficient, 'History sufficiency check detects < 12 months for 28-day dataset');
+const yoyShortRes = ErlanglyForecast.executeForecast(shortHistory, 'yoy_trend', {}, { horizon: 7 });
+assert(yoyShortRes.fitResult.insufficientHistory === true, 'YoY model flags insufficient history on short dataset');
+assert(yoyShortRes.forecast.length === 7, 'YoY model gracefully degrades to trend fallback on short dataset');
+
+// 2. Full 2-Year Multi-Year History (730 days)
+const multiYearHistory = ErlanglyForecast.SAMPLE_MULTI_YEAR_HISTORY;
+assert(multiYearHistory.length === 730, `2-Year synthetic dataset generated with 730 periods (found: ${multiYearHistory.length})`);
+const yoyLongCheck = ErlanglyForecast.checkHistorySufficiency(multiYearHistory, 52);
+assert(yoyLongCheck.sufficient, 'History sufficiency check passes for 730-day dataset (≥ 12 months)');
+
+const yoyFullRes = ErlanglyForecast.executeForecast(multiYearHistory, 'yoy_trend', { lookbackWeeks: 8 }, { horizon: 14 });
+assert(yoyFullRes.forecast.length === 14, 'YoY model generates 14 future period projections on 2-year dataset');
+assert(yoyFullRes.fitResult.insufficientHistory === false, 'YoY model successfully fits full seasonal trend without fallback');
+assert(yoyFullRes.fitResult.yoyGrowthRate !== undefined, `YoY trailing growth rate computed (${(yoyFullRes.fitResult.yoyGrowthRate * 100).toFixed(1)}%)`);
+assert(yoyFullRes.metrics.mape < 25, `YoY model achieves high fit quality on multi-year dataset (MAPE: ${yoyFullRes.metrics.mape.toFixed(1)}%)`);
+
+// 13d. Walk-Forward Out-of-Sample Backtesting
+const backtestHoldout = 7;
+const holtBacktest = ErlanglyForecast.backtestModel(multiYearHistory, 'holt', {}, backtestHoldout, {});
+assert(holtBacktest.holdoutCount === 7, 'Backtest held out exactly 7 periods');
+assert(holtBacktest.trainCount === 730 - 7, `Backtest trained on remaining ${730 - 7} periods`);
+assert(holtBacktest.outOfSampleMetrics.count === 7, 'Out-of-sample metrics evaluated across 7 holdout periods');
+assert(holtBacktest.outOfSampleMetrics.mae > 0, `Out-of-sample MAE computed (${holtBacktest.outOfSampleMetrics.mae.toFixed(1)})`);
+assert(holtBacktest.outOfSampleMetrics.wape > 0, `Out-of-sample WAPE computed (${holtBacktest.outOfSampleMetrics.wape.toFixed(1)}%)`);
+assert(holtBacktest.outOfSampleMetrics.rmse > 0, `Out-of-sample RMSE computed (${holtBacktest.outOfSampleMetrics.rmse.toFixed(1)})`);
+assert(typeof holtBacktest.overfitGap === 'number', `Overfit gap calculated (${holtBacktest.overfitGap.toFixed(1)}%)`);
+
+const allBacktests = ErlanglyForecast.runBacktestAll(multiYearHistory, ['holt', 'decomp_mult', 'trend', 'yoy_trend'], {}, 7, {});
+assert(allBacktests.length === 4, 'Ran walk-forward backtest across all 4 candidate models');
+assert(allBacktests[0].outOfSampleMetrics.mape <= allBacktests[allBacktests.length - 1].outOfSampleMetrics.mape, 'Candidate models ranked by Out-of-Sample MAPE (ascending)');
+
+// 13e. Ensemble / Blended Forecast Model
+// 1. Auto-weighting strategy
+const ensembleAutoRes = ErlanglyForecast.executeForecast(multiYearHistory, 'ensemble', {
+  weightMode: 'auto',
+  selectedModels: ['holt', 'decomp_mult', 'trend']
+}, { horizon: 8 });
+
+assert(ensembleAutoRes.forecast.length === 8, 'Ensemble model produces 8 projected periods');
+assert(ensembleAutoRes.fitResult.weights !== undefined, 'Ensemble weights computed');
+const autoWeightsSum = Object.values(ensembleAutoRes.fitResult.weights).reduce((a, b) => a + b, 0);
+assertClose(autoWeightsSum, 1.0, 0.001, 'Auto ensemble weights sum to 1.0 (100%)');
+assert(ensembleAutoRes.metrics.mape < 25, `Ensemble blended model achieves good in-sample MAPE (${ensembleAutoRes.metrics.mape.toFixed(1)}%)`);
+
+// 2. Manual weighting strategy
+const manualWeights = { holt: 50, decomp_mult: 30, trend: 20 };
+const ensembleManualRes = ErlanglyForecast.executeForecast(multiYearHistory, 'ensemble', {
+  weightMode: 'manual',
+  selectedModels: ['holt', 'decomp_mult', 'trend'],
+  manualWeights: manualWeights
+}, { horizon: 8 });
+
+assertClose(ensembleManualRes.fitResult.weights.holt, 0.50, 0.001, 'Manual weight for Holt normalized to 0.50');
+assertClose(ensembleManualRes.fitResult.weights.decomp_mult, 0.30, 0.001, 'Manual weight for Decomp normalized to 0.30');
+assertClose(ensembleManualRes.fitResult.weights.trend, 0.20, 0.001, 'Manual weight for Trend normalized to 0.20');
+
+// 13f. Accuracy Tracking Edge Cases
+const emptyAccuracy = ErlanglyForecast.calculateAccuracyMetrics([], []);
+assert(emptyAccuracy.count === 0 && emptyAccuracy.wape === 0 && emptyAccuracy.biasPct === 0, 'Empty accuracy pairs handled gracefully with 0 metrics');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -428,6 +519,7 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 
 
 

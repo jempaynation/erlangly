@@ -164,6 +164,7 @@ v1 (Phases 0–7) is complete. Four new phases are planned — see [`ROADMAP.md`
 | **9** | Scheduling Labor Rules | Max hours/rest constraints, agent availability & preferences, part-time shift patterns, constraint-aware allocator with violation highlighting |
 | **10** | Enhanced Simulation & Real-Time | Monte Carlo confidence intervals (P10–P90 bands), mobile-optimized real-time view with swipeable cards, optional live data feed polling |
 | **11** | Collaboration & Multi-Skill Routing | Shared plans with invite/permissions, plan versioning with diff view, overflow & skill-based queue routing math |
+| **12** | Forecasting Enhancements II | Year-over-year seasonal trend projection, out-of-sample backtesting, forecast accuracy tracking tool (MAPE/WAPE/bias), optional model ensembling |
 
 ---
 

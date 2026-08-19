@@ -33,6 +33,48 @@ When a phase passes audit:
 
 ---
 
+## [Phase 12] — Forecasting Enhancements II — 2026-08-19
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Year-over-Year (YoY) Seasonal Trend Projection Model (`yoy_trend`)**:
+  - Registered in `forecasting.js` modular model registry.
+  - Aligns future dates with the matched calendar day 52 weeks (364 days) prior to preserve day-of-week demand patterns (e.g. Monday-to-Monday alignment).
+  - Trailing YoY growth window calculates annualized baseline shift ($g_{\text{YoY}}$) with configurable lookback.
+  - Minimum history guard: dynamically inspects loaded date span and displays a visual warning / disables fitting when history is $< 12$ months ($< 365$ days), with graceful fallback to linear trend.
+  - Added 2-year synthetic dataset generator (730 daily intervals) with multi-year trend and seasonal variations.
+- **Walk-Forward Out-of-Sample Backtesting (`backtestModel`, `runBacktestAll`)**:
+  - Automatically partitions history into training and holdout windows (configurable holdout periods, default 7).
+  - Evaluates models out-of-sample and computes holdout metrics: Holdout MAE, Holdout Out-of-Sample MAPE %, Holdout WAPE %, Holdout RMSE, and Overfit Gap ($\text{MAPE}_{\text{OOS}} - \text{MAPE}_{\text{in-sample}}$).
+  - Integrated into Model Comparison table with side-by-side ranking.
+- **Forecast Accuracy Tracking Tool (`forecasting.html` + `js/forecasting.js`)**:
+  - Dedicated Accuracy Tracking view with interactive actuals-vs-forecast pairs table, CSV import, and 1-click "From Forecast" population.
+  - Computes WFM standard accuracy KPIs:
+    - Volume-Weighted MAPE ($\text{WAPE} = \frac{\sum |A - F|}{\sum A} \times 100$)
+    - Standard Unweighted MAPE ($\frac{1}{N} \sum \frac{|A - F|}{A} \times 100$)
+    - Signed Forecast Bias % ($\frac{\sum (F - A)}{\sum A} \times 100$, where positive denotes over-forecasting/surplus and negative denotes under-forecasting/deficit)
+    - Mean Absolute Error (MAE) and Root Mean Squared Error (RMSE)
+    - Cumulative Tracking Signal ($\frac{\text{Cumulative Bias}}{\text{MAD}}$)
+  - Detailed interval variance table with color-coded status badges (`On Target`, `Over-Forecast`, `Under-Forecast`).
+  - Historical evaluations log table and persistence across plans (`savePlan`, `loadPlan`, and RFC-4180 CSV export).
+- **Ensemble / Blended Forecast Model (`ensemble`)**:
+  - Blends predictions from multiple candidate models (e.g., Holt's, Seasonal Decomposition, Multi-variable Regression, YoY Trend).
+  - Supports **Auto-Weighting** via inverse backtest RMSE ($w_i \propto \frac{1}{\text{RMSE}_i^2}$) and **Manual Weighting** with interactive slider/number inputs normalized to 100%.
+  - Seamless handoff to Capacity Planning tool.
+- **Automated Tests (`test/run-tests.js`)**:
+  - Added 20 new unit tests covering YoY seasonal matching, history sufficiency checks, out-of-sample walk-forward backtesting, accuracy metric calculations (WAPE, Bias, Tracking Signal), and ensemble auto/manual weighting.
+  - Full test suite passes with 147 passed and 0 failed.
+
+### Found & fixed during QA
+- Adjusted Phase 8 model count assertion in test runner to accommodate the new total of 10 registered models.
+- Verified that backtesting holdout parameter dynamically updates OOS metrics across all candidate models without altering training series bounds.
+- Verified Capacity Planning handoff receives the blended ensemble forecast output seamlessly.
+
+### Deviations from spec (if any)
+- Implemented Phase 12 prior to Phases 9–11 per explicit user directive (`/goal read the roadmap and skip phase 9-11. Implement phase 12 1st`). Phases 9–11 remain pending in `ROADMAP.md`.
+
+---
+
 ## [Phase 8] — Advanced Forecasting Models — 2026-08-19
 **QA sign-off:** erlangly-qa
 

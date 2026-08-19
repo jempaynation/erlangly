@@ -1,10 +1,10 @@
 /**
  * Erlangly Forecasting Tool (js/forecasting.js)
  * 
- * Phase 8: Advanced Forecasting Models
+ * Phase 8 & Phase 12: Advanced Time-Series Forecasting & Accuracy Suite
  * Features:
  * - Pluggable model architecture with common interface (fit, predict, metrics)
- * - 8 Time-series forecasting algorithms:
+ * - 10 Time-series forecasting algorithms:
  *   1. Weighted Moving Average (WMA)
  *   2. Simple Moving Average (SMA)
  *   3. Linear Trend Projection (OLS)
@@ -13,8 +13,13 @@
  *   6. Simple Exponential Smoothing (SES) with auto-optimization
  *   7. Holt's Double Exponential Smoothing (Trend-aware) with auto-optimization
  *   8. Multi-Variable Regression (with Day-of-Week dummy variables)
+ *   9. Year-over-Year Seasonal Trend Projection (YoY) with 12-month guard
+ *   10. Ensemble / Blended Forecast with Auto/Manual weighting
+ * - Walk-Forward Out-of-Sample Backtesting (MAE, MAPE, RMSE, WAPE, Overfit Gap)
+ * - Forecast Accuracy Tracking Tool (WAPE, MAPE, Signed Bias %, Tracking Signal)
+ * - Multi-run Accuracy History Log & Persistence
  * - Holiday & Event flag system (multiplicative scaling or outlier exclusion)
- * - Model Comparison View (multi-curve overlay & comparative MAE, MAPE, RMSE, R2 table)
+ * - User-defined Trend Profiles (Monthly billing, week-of-month, biweekly pay, etc.)
  * - Large CSV streaming Web Worker integration (100k+ rows)
  * - Chart.js dark control-room visualizer with dynamic datasets
  * - Cross-tool handoff to Capacity Planning & Supabase/Plans persistence
@@ -108,16 +113,17 @@
   }
 
   /**
-   * Calculate standard in-sample forecast fit metrics (MAE, MAPE, RMSE, MSE, R2)
+   * Calculate standard in-sample forecast fit metrics (MAE, MAPE, RMSE, MSE, R2, WAPE, Bias)
    */
   function calculateFitMetrics(actuals, fitted) {
     var n = Math.min(actuals.length, fitted.length);
-    if (n === 0) return { mae: 0, mape: 0, rmse: 0, mse: 0, r2: 0 };
+    if (n === 0) return { mae: 0, mape: 0, rmse: 0, mse: 0, r2: 0, wape: 0, biasPct: 0 };
 
     var sumAbsErr = 0;
     var sumPctErr = 0;
     var sumSqErr = 0;
     var sumActual = 0;
+    var sumFitted = 0;
     var validPctCount = 0;
 
     for (var i = 0; i < n; i++) {
@@ -127,6 +133,7 @@
       sumAbsErr += Math.abs(err);
       sumSqErr += (err * err);
       sumActual += act;
+      sumFitted += fit;
 
       if (act > 0) {
         sumPctErr += Math.abs(err) / act;
@@ -146,13 +153,113 @@
     var mse = sumSqErr / n;
     var rmse = Math.sqrt(mse);
     var r2 = ssTot > 0 ? Math.max(0, Math.min(1, 1 - (sumSqErr / ssTot))) * 100 : 100;
+    var wape = sumActual > 0 ? (sumAbsErr / sumActual) * 100 : 0;
+    var biasPct = sumActual > 0 ? ((sumFitted - sumActual) / sumActual) * 100 : 0;
 
     return {
       mae: mae,
       mape: mape,
       rmse: rmse,
       mse: mse,
-      r2: r2
+      r2: r2,
+      wape: wape,
+      biasPct: biasPct
+    };
+  }
+
+  /**
+   * Phase 12: Calculate comprehensive forecast accuracy metrics for a set of actuals vs forecasts.
+   * Standard WFM metrics:
+   * - WAPE %: Volume-weighted absolute error = sum(|A - F|) / sum(A) * 100
+   * - MAPE %: Mean absolute percentage error = avg(|A - F| / A) * 100
+   * - Signed Bias %: Systematic over/under-forecast = sum(F - A) / sum(A) * 100 (+ = over, - = under)
+   * - MAE: Mean absolute error in units (calls)
+   * - RMSE: Root mean squared error in units (calls)
+   * - Tracking Signal: Cumulative error / MAD
+   */
+  function calculateAccuracyMetrics(actuals, forecasts) {
+    var n = Math.min(actuals.length, forecasts.length);
+    if (n === 0) {
+      return {
+        count: 0,
+        mae: 0,
+        mape: 0,
+        rmse: 0,
+        mse: 0,
+        wape: 0,
+        biasPct: 0,
+        trackingSignal: 0,
+        totalActual: 0,
+        totalForecast: 0,
+        varianceTotal: 0,
+        details: []
+      };
+    }
+
+    var sumAbsErr = 0;
+    var sumSignedErr = 0; // F - A
+    var sumSqErr = 0;
+    var sumActual = 0;
+    var sumForecast = 0;
+    var validPctCount = 0;
+    var sumPctErr = 0;
+    var details = [];
+    var cumSignedErr = 0;
+
+    for (var i = 0; i < n; i++) {
+      var act = actuals[i];
+      var fc = forecasts[i];
+      var err = fc - act; // signed error (positive = over-forecast)
+      var absErr = Math.abs(err);
+
+      sumAbsErr += absErr;
+      sumSignedErr += err;
+      sumSqErr += (err * err);
+      sumActual += act;
+      sumForecast += fc;
+      cumSignedErr += err;
+
+      var pctErr = act > 0 ? (absErr / act) * 100 : 0;
+      var signedPct = act > 0 ? (err / act) * 100 : 0;
+
+      if (act > 0) {
+        sumPctErr += (absErr / act);
+        validPctCount++;
+      }
+
+      details.push({
+        index: i,
+        actual: act,
+        forecast: fc,
+        error: err,
+        absError: absErr,
+        pctError: pctErr,
+        signedPct: signedPct,
+        cumBias: sumActual > 0 ? (cumSignedErr / sumActual) * 100 : 0
+      });
+    }
+
+    var mae = sumAbsErr / n;
+    var mape = validPctCount > 0 ? (sumPctErr / validPctCount) * 100 : 0;
+    var mse = sumSqErr / n;
+    var rmse = Math.sqrt(mse);
+    var wape = sumActual > 0 ? (sumAbsErr / sumActual) * 100 : 0;
+    var biasPct = sumActual > 0 ? (sumSignedErr / sumActual) * 100 : 0;
+    var trackingSignal = mae > 0 ? (sumSignedErr / mae) : 0;
+
+    return {
+      count: n,
+      mae: mae,
+      mape: mape,
+      rmse: rmse,
+      mse: mse,
+      wape: wape,
+      biasPct: biasPct,
+      trackingSignal: trackingSignal,
+      totalActual: sumActual,
+      totalForecast: sumForecast,
+      varianceTotal: sumForecast - sumActual,
+      details: details
     };
   }
 
@@ -758,7 +865,7 @@
             var info = ErlanglyUtils.parseDate(history[t].period);
             if (info) dayIdx = info.dayOfWeek;
           }
-          // Reference day = 0 (Monday). Dummies for 1 (Tue) .. 6 (Sun)
+          // Reference day = 0. Dummies for 1..6
           for (var d = 1; d <= 6; d++) {
             row.push(dayIdx === d ? 1 : 0);
           }
@@ -853,16 +960,403 @@
     }
   });
 
+  // --- MODEL 9: Year-over-Year Seasonal Trend Projection (Phase 12) ---
+  registerModel({
+    id: 'yoy_trend',
+    name: 'Year-over-Year (YoY) Seasonal Trend',
+    category: 'Year-over-Year',
+    description: 'Projects volume from matched calendar periods 1 year prior (52 weeks / 365 days) blended with trailing YoY growth rate and seasonal indices. Requires ≥ 12 months history (24+ months recommended).',
+    minHistoryRequired: 52, // 52 weeks or 365 daily periods
+    params: [
+      { id: 'lookbackWeeks', label: 'YoY Trailing Lookback', type: 'number', default: 8, min: 2, max: 52, step: 1, unit: 'periods' }
+    ],
+    fit: function(history, params) {
+      var volumes = history.map(function(h) { return h.volume; });
+      var n = volumes.length;
+      var lookback = Math.max(2, parseInt(params.lookbackWeeks, 10) || 8);
+
+      // Check date span and length
+      var hasSufficientHistory = n >= 52;
+      var dateMap = {};
+      var firstInfo = history[0] && history[0].period ? ErlanglyUtils.parseDate(history[0].period) : null;
+      var lastInfo = history[n - 1] && history[n - 1].period ? ErlanglyUtils.parseDate(history[n - 1].period) : null;
+      
+      var daySpan = 0;
+      if (firstInfo && lastInfo) {
+        daySpan = Math.round((lastInfo.timestamp - firstInfo.timestamp) / 86400000);
+        if (daySpan >= 360) hasSufficientHistory = true;
+      }
+
+      history.forEach(function(row, idx) {
+        var info = ErlanglyUtils.parseDate(row.period);
+        if (info) {
+          dateMap[info.isoDate] = { volume: row.volume, index: idx };
+        }
+      });
+
+      // Fallback if history is insufficient (< 12 months / < 52 periods / < 360 days)
+      if (!hasSufficientHistory) {
+        var fallbackReg = linearRegression(volumes);
+        var fittedFallback = [];
+        for (var t = 0; t < n; t++) {
+          fittedFallback.push(Math.max(0, fallbackReg.intercept + fallbackReg.slope * t));
+        }
+        return {
+          insufficientHistory: true,
+          requiredHistoryMonths: 12,
+          currentHistoryCount: n,
+          daySpan: daySpan,
+          yoyGrowthRate: 0,
+          intercept: fallbackReg.intercept,
+          slope: fallbackReg.slope,
+          historyLength: n,
+          fitted: fittedFallback,
+          metrics: calculateFitMetrics(volumes, fittedFallback)
+        };
+      }
+
+      // Compute YoY Growth Rate: compare trailing recent window to same window 1 year prior (52 weeks / 364 days ago)
+      var offsetPeriods = (daySpan >= 360 && n >= 300) ? 364 : (n >= 52 ? 52 : 364);
+      var recentWindow = Math.min(lookback, Math.floor(n / 4));
+      var recentSum = 0;
+      var priorYearSum = 0;
+      var pairedCount = 0;
+
+      for (var k = 0; k < recentWindow; k++) {
+        var recentIdx = n - 1 - k;
+        var priorIdx = recentIdx - offsetPeriods;
+        if (priorIdx >= 0 && volumes[priorIdx] > 0) {
+          recentSum += volumes[recentIdx];
+          priorYearSum += volumes[priorIdx];
+          pairedCount++;
+        }
+      }
+
+      var yoyGrowthRate = (pairedCount > 0 && priorYearSum > 0) ? ((recentSum - priorYearSum) / priorYearSum) : 0;
+      yoyGrowthRate = Math.max(-0.50, Math.min(1.00, yoyGrowthRate));
+
+      // Day-of-week seasonality indices
+      var bucketSums = new Array(7).fill(0);
+      var bucketCounts = new Array(7).fill(0);
+      for (var t = 0; t < n; t++) {
+        var dayIdx = t % 7;
+        if (history[t] && history[t].period) {
+          var info = ErlanglyUtils.parseDate(history[t].period);
+          if (info) dayIdx = info.dayOfWeek;
+        }
+        bucketSums[dayIdx] += volumes[t];
+        bucketCounts[dayIdx]++;
+      }
+      var meanVol = volumes.reduce(function(a, b) { return a + b; }, 0) / n;
+      var seasonalIndices = new Array(7).fill(1.0);
+      for (var d = 0; d < 7; d++) {
+        if (bucketCounts[d] > 0 && meanVol > 0) {
+          seasonalIndices[d] = (bucketSums[d] / bucketCounts[d]) / meanVol;
+        }
+      }
+
+      // In-sample fitted series
+      var fitted = [];
+      for (var t = 0; t < n; t++) {
+        var priorT = t - offsetPeriods;
+        if (priorT >= 0) {
+          var priorVol = volumes[priorT];
+          fitted.push(Math.max(0, priorVol * (1 + yoyGrowthRate)));
+        } else {
+          var dayIdx = t % 7;
+          if (history[t] && history[t].period) {
+            var info = ErlanglyUtils.parseDate(history[t].period);
+            if (info) dayIdx = info.dayOfWeek;
+          }
+          fitted.push(Math.max(0, meanVol * seasonalIndices[dayIdx]));
+        }
+      }
+
+      return {
+        insufficientHistory: false,
+        offsetPeriods: offsetPeriods,
+        yoyGrowthRate: yoyGrowthRate,
+        seasonalIndices: seasonalIndices,
+        dateMap: dateMap,
+        historyLength: n,
+        history: history,
+        fitted: fitted,
+        metrics: calculateFitMetrics(volumes, fitted)
+      };
+    },
+    predict: function(fitResult, horizon, options) {
+      var predictions = [];
+      var n = fitResult.historyLength;
+
+      if (fitResult.insufficientHistory) {
+        for (var h = 1; h <= horizon; h++) {
+          var raw = Math.max(0, fitResult.intercept + fitResult.slope * (n + h - 1));
+          predictions.push({
+            baseVolume: raw,
+            trendFactor: 1.0,
+            seasonalityIndex: 1.0,
+            rawVolume: raw,
+            warning: 'History < 12 months; fallback trend used.'
+          });
+        }
+        return predictions;
+      }
+
+      var growth = fitResult.yoyGrowthRate;
+      var offset = fitResult.offsetPeriods;
+      var dateMap = fitResult.dateMap || {};
+      var history = fitResult.history || [];
+
+      for (var h = 1; h <= horizon; h++) {
+        var futureDateStr = options && options.futureDates ? options.futureDates[h - 1] : null;
+        var matchedPriorVolume = null;
+
+        // 1. Try exact calendar matching 52 weeks (364 days) prior for day-of-week alignment
+        if (futureDateStr && ErlanglyUtils && ErlanglyUtils.parseDate) {
+          var fInfo = ErlanglyUtils.parseDate(futureDateStr);
+          if (fInfo) {
+            var prior364 = ErlanglyUtils.addDays(fInfo, -364);
+            if (prior364 && dateMap[prior364.isoDate] !== undefined) {
+              matchedPriorVolume = dateMap[prior364.isoDate].volume;
+            } else {
+              var prior365 = ErlanglyUtils.addDays(fInfo, -365);
+              if (prior365 && dateMap[prior365.isoDate] !== undefined) {
+                matchedPriorVolume = dateMap[prior365.isoDate].volume;
+              }
+            }
+          }
+        }
+
+        // 2. Index offset fallback
+        if (matchedPriorVolume === null) {
+          var priorIdx = n + h - 1 - offset;
+          if (priorIdx >= 0 && priorIdx < history.length) {
+            matchedPriorVolume = history[priorIdx].volume;
+          } else if (history.length > 0) {
+            matchedPriorVolume = history[history.length - 1].volume;
+          } else {
+            matchedPriorVolume = 1000;
+          }
+        }
+
+        var projected = Math.max(0, matchedPriorVolume * (1 + growth));
+        predictions.push({
+          baseVolume: matchedPriorVolume,
+          trendFactor: 1 + growth,
+          seasonalityIndex: 1.0,
+          rawVolume: projected,
+          priorVolumeMatched: matchedPriorVolume
+        });
+      }
+      return predictions;
+    }
+  });
+
+  // --- MODEL 10: Ensemble / Blended Forecast Model (Phase 12) ---
+  registerModel({
+    id: 'ensemble',
+    name: 'Ensemble / Blended Forecast',
+    category: 'Ensemble',
+    description: 'Combines 2+ time series models into a unified forecast via weighted average, with auto-derived weights (from out-of-sample backtest accuracy) or manual sliders.',
+    params: [
+      { id: 'weightMode', label: 'Weighting Strategy', type: 'select', default: 'auto', options: [{ value: 'auto', label: 'Auto (Inverse Backtest RMSE)' }, { value: 'manual', label: 'Manual Weights' }] },
+      { id: 'selectedModels', label: 'Models to Combine', type: 'multiselect', default: ['holt', 'decomp_mult', 'trend'] }
+    ],
+    fit: function(history, params) {
+      var volumes = history.map(function(h) { return h.volume; });
+      var n = volumes.length;
+      var selected = params.selectedModels && params.selectedModels.length > 0
+        ? params.selectedModels.filter(function(id) { return id !== 'ensemble' && MODEL_REGISTRY[id]; })
+        : ['holt', 'decomp_mult', 'trend'];
+
+      if (selected.length === 0) selected = ['holt', 'decomp_mult', 'trend'];
+
+      var mode = params.weightMode || 'auto';
+      var weights = {};
+
+      if (mode === 'auto') {
+        var holdout = Math.min(Math.max(3, Math.floor(n * 0.2)), 14);
+        var rawWeights = {};
+        var sumInvErr = 0;
+
+        selected.forEach(function(mId) {
+          var bt = backtestModel(history, mId, params, holdout, {});
+          var errScore = bt.outOfSampleMetrics ? Math.max(1, bt.outOfSampleMetrics.rmse) : 100;
+          var inv = 1 / errScore;
+          rawWeights[mId] = inv;
+          sumInvErr += inv;
+        });
+
+        selected.forEach(function(mId) {
+          weights[mId] = sumInvErr > 0 ? (rawWeights[mId] / sumInvErr) : (1 / selected.length);
+        });
+      } else {
+        var manual = params.manualWeights || {};
+        var sumManual = 0;
+        selected.forEach(function(mId) {
+          var w = parseFloat(manual[mId]);
+          if (isNaN(w) || w <= 0) w = 1.0;
+          sumManual += w;
+        });
+        selected.forEach(function(mId) {
+          var w = parseFloat(manual[mId]);
+          if (isNaN(w) || w <= 0) w = 1.0;
+          weights[mId] = sumManual > 0 ? (w / sumManual) : (1 / selected.length);
+        });
+      }
+
+      var subFits = {};
+      selected.forEach(function(mId) {
+        var mDef = MODEL_REGISTRY[mId];
+        if (mDef) {
+          subFits[mId] = mDef.fit(history, params);
+        }
+      });
+
+      var fitted = new Array(n).fill(0);
+      selected.forEach(function(mId) {
+        var w = weights[mId] || 0;
+        var subFitted = subFits[mId] ? subFits[mId].fitted : [];
+        for (var t = 0; t < n; t++) {
+          fitted[t] += (subFitted[t] !== undefined ? subFitted[t] : volumes[t]) * w;
+        }
+      });
+
+      for (var t = 0; t < n; t++) {
+        fitted[t] = Math.max(0, fitted[t]);
+      }
+
+      return {
+        selectedModels: selected,
+        weights: weights,
+        weightMode: mode,
+        subFits: subFits,
+        historyLength: n,
+        fitted: fitted,
+        metrics: calculateFitMetrics(volumes, fitted)
+      };
+    },
+    predict: function(fitResult, horizon, options) {
+      var predictions = [];
+      var selected = fitResult.selectedModels || [];
+      var weights = fitResult.weights || {};
+      var subFits = fitResult.subFits || {};
+
+      var subPredictions = {};
+      selected.forEach(function(mId) {
+        var mDef = MODEL_REGISTRY[mId];
+        if (mDef && subFits[mId]) {
+          subPredictions[mId] = mDef.predict(subFits[mId], horizon, options);
+        }
+      });
+
+      for (var h = 0; h < horizon; h++) {
+        var blendedRaw = 0;
+        var blendedBase = 0;
+
+        selected.forEach(function(mId) {
+          var w = weights[mId] || 0;
+          var pList = subPredictions[mId];
+          if (pList && pList[h]) {
+            blendedRaw += pList[h].rawVolume * w;
+            blendedBase += (pList[h].baseVolume !== undefined ? pList[h].baseVolume : pList[h].rawVolume) * w;
+          }
+        });
+
+        predictions.push({
+          baseVolume: Math.max(0, blendedBase),
+          trendFactor: 1.0,
+          seasonalityIndex: 1.0,
+          rawVolume: Math.max(0, blendedRaw),
+          ensembleWeights: weights
+        });
+      }
+      return predictions;
+    }
+  });
+
   // =========================================================================
-  // 3. USER-DEFINED TREND PROFILES
+  // 3. OUT-OF-SAMPLE BACKTESTING (WALK-FORWARD VALIDATION)
   // =========================================================================
 
   /**
-   * Preset trend profile definitions.
-   * Each profile specifies a set of day-of-month ranges and their multiplicative
-   * scaling factors. These let the user impose known business-specific cyclical
-   * patterns (billing cycle, pay cycle, etc.) on top of any model's base forecast.
+   * Phase 12: Perform Walk-Forward Out-of-Sample Backtesting on a single model.
+   * Splits history into training series (0..N-H-1) and holdout evaluation series (N-H..N-1).
+   * Fits model purely on training series, predicts H steps ahead, and computes
+   * Out-of-Sample MAE, MAPE, RMSE, WAPE, and Signed Bias.
    */
+  function backtestModel(history, modelId, modelParams, holdoutPeriods, options) {
+    if (!history || history.length < 4) {
+      return {
+        modelId: modelId,
+        modelName: MODEL_REGISTRY[modelId] ? MODEL_REGISTRY[modelId].name : modelId,
+        trainCount: 0,
+        holdoutCount: 0,
+        inSampleMetrics: { mae: 0, mape: 0, rmse: 0, wape: 0 },
+        outOfSampleMetrics: { mae: 0, mape: 0, rmse: 0, wape: 0, biasPct: 0 },
+        overfitGap: 0,
+        predictions: [],
+        actuals: []
+      };
+    }
+
+    var n = history.length;
+    var H = Math.max(1, Math.min(parseInt(holdoutPeriods, 10) || 7, Math.floor(n / 2)));
+    var trainHistory = history.slice(0, n - H);
+    var holdoutHistory = history.slice(n - H);
+
+    var model = MODEL_REGISTRY[modelId] || MODEL_REGISTRY['wma'];
+    var fitResult = model.fit(trainHistory, modelParams || {});
+
+    var futureDates = holdoutHistory.map(function(h) { return h.period; });
+    var predictions = model.predict(fitResult, H, { futureDates: futureDates });
+
+    var actualVolumes = holdoutHistory.map(function(h) { return h.volume; });
+    var predictedVolumes = predictions.map(function(p) { return Math.max(0, Math.round(p.rawVolume)); });
+
+    var oosMetrics = calculateAccuracyMetrics(actualVolumes, predictedVolumes);
+    var inSampleMetrics = fitResult.metrics || { mae: 0, mape: 0, rmse: 0, wape: 0 };
+    var overfitGap = Math.max(0, oosMetrics.mape - inSampleMetrics.mape);
+
+    return {
+      modelId: model.id,
+      modelName: model.name,
+      trainCount: trainHistory.length,
+      holdoutCount: H,
+      inSampleMetrics: inSampleMetrics,
+      outOfSampleMetrics: oosMetrics,
+      overfitGap: overfitGap,
+      predictions: predictedVolumes,
+      actuals: actualVolumes,
+      holdoutPeriods: futureDates
+    };
+  }
+
+  /**
+   * Run backtest across all available or specified models for side-by-side comparison
+   */
+  function runBacktestAll(history, modelIds, modelParams, holdoutPeriods, options) {
+    var targets = modelIds || Object.keys(MODEL_REGISTRY).filter(function(k) { return k !== 'ensemble'; });
+    var results = [];
+
+    targets.forEach(function(mId) {
+      if (MODEL_REGISTRY[mId]) {
+        var res = backtestModel(history, mId, modelParams, holdoutPeriods, options);
+        results.push(res);
+      }
+    });
+
+    results.sort(function(a, b) {
+      return a.outOfSampleMetrics.mape - b.outOfSampleMetrics.mape;
+    });
+
+    return results;
+  }
+
+  // =========================================================================
+  // 4. USER-DEFINED TREND PROFILES
+  // =========================================================================
+
   var TREND_PROFILES = {
     none: {
       id: 'none',
@@ -913,7 +1407,7 @@
         { startDay: 1, endDay: 24, factor: 1.00, label: 'Normal days' },
         { startDay: 25, endDay: 31, factor: 1.25, label: 'Quarter-end surge' }
       ],
-      quarterOnly: true  // flag: only apply the surge factor in quarter-end months
+      quarterOnly: true
     },
     custom: {
       id: 'custom',
@@ -927,13 +1421,8 @@
     }
   };
 
-  /**
-   * Extract the day-of-month (1–31) and month (1–12) from a date string.
-   * Returns null if the string is not a valid date.
-   */
   function extractDateParts(dateString) {
     if (!dateString || typeof dateString !== 'string') return null;
-    // Try ErlanglyUtils.parseDate first
     if (ErlanglyUtils && ErlanglyUtils.parseDate) {
       var info = ErlanglyUtils.parseDate(dateString);
       if (info) {
@@ -941,7 +1430,6 @@
         return { day: d.getUTCDate(), month: d.getUTCMonth() + 1, year: d.getUTCFullYear() };
       }
     }
-    // Manual ISO parse fallback
     var parts = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (parts) {
       return { day: parseInt(parts[3], 10), month: parseInt(parts[2], 10), year: parseInt(parts[1], 10) };
@@ -949,14 +1437,6 @@
     return null;
   }
 
-  /**
-   * Determine the trend profile multiplicative factor for a given date.
-   *
-   * @param {string} profileId - Profile key (e.g. 'billing_cycle', 'custom', 'none')
-   * @param {Object} profileParams - { customRanges?: Array, intensity?: number (0–200) }
-   * @param {string} dateString - ISO date string (e.g. '2026-06-15')
-   * @returns {number} Multiplicative factor (e.g. 1.20 for +20%, 0.80 for −20%). Returns 1.0 if profile is 'none' or date can't be parsed.
-   */
   function getTrendProfileFactor(profileId, profileParams, dateString) {
     if (!profileId || profileId === 'none') return 1.0;
 
@@ -970,11 +1450,9 @@
     var month = dateParts.month;
     var params = profileParams || {};
     var intensity = params.intensity !== undefined ? parseFloat(params.intensity) : 100;
-    // Clamp intensity to 0–200
     intensity = Math.max(0, Math.min(200, intensity));
     var intensityMult = intensity / 100;
 
-    // Choose the ranges: custom user-defined or preset
     var ranges;
     if (profileId === 'custom' && params.customRanges && params.customRanges.length > 0) {
       ranges = params.customRanges;
@@ -984,13 +1462,11 @@
 
     if (!ranges || ranges.length === 0) return 1.0;
 
-    // Quarter-end special logic: only apply surge in quarter-end months (3, 6, 9, 12)
     if (profile.quarterOnly) {
       var isQuarterEnd = (month === 3 || month === 6 || month === 9 || month === 12);
       if (!isQuarterEnd) return 1.0;
     }
 
-    // Find the matching range for this day of month
     var rawFactor = 1.0;
     for (var i = 0; i < ranges.length; i++) {
       var r = ranges[i];
@@ -1005,34 +1481,22 @@
       }
     }
 
-    // Apply intensity scaling: deviation from 1.0 is scaled by intensity
-    // At intensity 100%: factor is used as-is
-    // At intensity 50%: +20% becomes +10%, -20% becomes -10%
-    // At intensity 0%: no effect (returns 1.0)
     var deviation = rawFactor - 1.0;
     return 1.0 + (deviation * intensityMult);
   }
 
   // =========================================================================
-  // 4. COMPLETE TIME SERIES FORECASTING PIPELINE
+  // 5. COMPLETE TIME SERIES FORECASTING PIPELINE
   // =========================================================================
 
-  /**
-   * Main forecasting execution function
-   *
-   * @param {Array<Object>} rawHistory - [{ period, volume, aht }]
-   * @param {string} modelId - e.g. 'wma', 'holt', 'decomp_mult', etc.
-   * @param {Object} modelParams - parameters for selected model
-   * @param {Object} pipelineOptions - { horizon, useSeasonality, growthModifier, assumedAht, holidays }
-   * @returns {Object} Full forecast results & metrics
-   */
   function executeForecast(rawHistory, modelId, modelParams, pipelineOptions) {
     if (!rawHistory || rawHistory.length === 0) {
       return {
         history: [],
         forecast: [],
-        metrics: { mae: 0, mape: 0, rmse: 0, mse: 0, r2: 0 },
-        model: modelId
+        metrics: { mae: 0, mape: 0, rmse: 0, mse: 0, r2: 0, wape: 0, biasPct: 0 },
+        modelId: modelId || 'wma',
+        modelName: MODEL_REGISTRY[modelId] ? MODEL_REGISTRY[modelId].name : 'Default'
       };
     }
 
@@ -1077,7 +1541,7 @@
 
     for (var h = 0; h < horizon; h++) {
       var periodName = futureDates[h];
-      var pred = rawPredictions[h];
+      var pred = rawPredictions[h] || { rawVolume: 0 };
       var rawVol = pred.rawVolume;
       var trendFactor = pred.trendFactor || 1.0;
       var seasonIdx = pred.seasonalityIndex !== undefined ? pred.seasonalityIndex : 1.0;
@@ -1094,7 +1558,6 @@
 
       var growthMult = 1.0 + growthModifier;
 
-      // Compute trend profile factor from user-defined profile
       var tpFactor = getTrendProfileFactor(
         options.trendProfile || 'none',
         options.trendProfileParams || {},
@@ -1119,17 +1582,17 @@
       history: processedHistory,
       forecast: forecastResults,
       fitResult: fitResult,
-      metrics: fitResult.metrics,
+      metrics: fitResult.metrics || { mae: 0, mape: 0, rmse: 0, mse: 0, r2: 0, wape: 0, biasPct: 0 },
       modelId: model.id,
       modelName: model.name
     };
   }
 
   // =========================================================================
-  // 4. BROWSER UI INTEGRATION
+  // 6. SYNTHETIC SAMPLE DATASETS
   // =========================================================================
 
-  // Sample 28-Day contact center dataset
+  // Sample 28-Day contact center dataset (Phase 8 baseline)
   var SAMPLE_HISTORY = [
     { period: '2026-05-01', volume: 1420, aht: 185 },
     { period: '2026-05-02', volume: 680, aht: 170 },
@@ -1161,11 +1624,63 @@
     { period: '2026-05-28', volume: 1780, aht: 180 }
   ];
 
-  // Sample default holidays / events
+  // Phase 12: 730-day 2-Year Synthetic Multi-Year Dataset (Generates 2 years of daily volume for YoY testing)
+  function generateMultiYearHistory(startDateStr, totalDays, startBase, annualGrowthPct) {
+    var rows = [];
+    var startInfo = ErlanglyUtils.parseDate(startDateStr || '2024-06-01');
+    var base = startBase || 1500;
+    var growth = (annualGrowthPct || 8.0) / 100;
+    var days = totalDays || 730;
+
+    var dowWeights = [0.35, 1.35, 1.15, 1.10, 1.05, 0.95, 0.45]; // index 0 = Sun
+
+    for (var i = 0; i < days; i++) {
+      var d = ErlanglyUtils.addDays(startInfo, i);
+      var dayOfWeek = d.dayOfWeek;
+      var dowFactor = dowWeights[dayOfWeek] || 1.0;
+      var trendFactor = 1.0 + (growth * (i / 365));
+      var monthVal = d.month;
+      var monthFactor = 1.0 + 0.15 * Math.sin((monthVal - 3) * (2 * Math.PI / 12));
+      var pseudoNoise = 1.0 + 0.05 * Math.sin(i * 13.7);
+
+      var vol = Math.round(base * trendFactor * dowFactor * monthFactor * pseudoNoise);
+      rows.push({
+        period: d.isoDate,
+        volume: Math.max(100, vol),
+        aht: 180
+      });
+    }
+    return rows;
+  }
+
+  var SAMPLE_MULTI_YEAR_HISTORY = generateMultiYearHistory('2024-06-01', 730, 1500, 8.0);
+
+  // Sample Accuracy Tracking Dataset (Forecast vs Actual paired series)
+  var SAMPLE_ACCURACY_DATA = [
+    { period: '2026-05-15', forecast: 1520, actual: 1510 },
+    { period: '2026-05-16', forecast: 750, actual: 740 },
+    { period: '2026-05-17', forecast: 550, actual: 560 },
+    { period: '2026-05-18', forecast: 2200, actual: 2280 },
+    { period: '2026-05-19', forecast: 1880, actual: 1910 },
+    { period: '2026-05-20', forecast: 1750, actual: 1790 },
+    { period: '2026-05-21', forecast: 1700, actual: 1730 },
+    { period: '2026-05-22', forecast: 1500, actual: 1540 },
+    { period: '2026-05-23', forecast: 780, actual: 760 },
+    { period: '2026-05-24', forecast: 600, actual: 580 },
+    { period: '2026-05-25', forecast: 2400, actual: 2340 },
+    { period: '2026-05-26', forecast: 1920, actual: 1960 },
+    { period: '2026-05-27', forecast: 1800, actual: 1840 },
+    { period: '2026-05-28', forecast: 1750, actual: 1780 }
+  ];
+
   var SAMPLE_HOLIDAYS = [
     { date: '2026-05-25', name: 'Memorial Day Spike', impactPct: 20, action: 'scale' },
     { date: '2026-05-30', name: 'Weekend Promo Sale', impactPct: 50, action: 'scale' }
   ];
+
+  // =========================================================================
+  // 7. BROWSER UI STATE & INTEGRATION
+  // =========================================================================
 
   var UIState = {
     history: [],
@@ -1177,7 +1692,11 @@
       alpha: 0.30,
       beta: 0.10,
       autoOptimize: false,
-      includeDummies: true
+      includeDummies: true,
+      lookbackWeeks: 8,
+      weightMode: 'auto',
+      selectedModels: ['holt', 'decomp_mult', 'trend'],
+      manualWeights: { holt: 40, decomp_mult: 40, trend: 20 }
     },
     trendProfile: 'none',
     trendProfileParams: {
@@ -1191,9 +1710,17 @@
     horizon: 8,
     growthModifier: 0.0,
     assumedAht: 180,
-    activeTab: 'history', // 'history' | 'csv' | 'holidays'
+    activeTab: 'history', // 'history' | 'csv' | 'holidays' | 'accuracy'
     compareMode: false,
-    compareModelIds: ['holt', 'decomp_mult', 'trend'],
+    compareModelIds: ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'],
+    backtestHoldout: 7,
+    lastBacktestResults: [],
+    
+    // Accuracy tracking state (Phase 12)
+    accuracyPairs: [],
+    accuracyRunsHistory: [],
+    lastAccuracyMetrics: null,
+
     chart: null,
     worker: null
   };
@@ -1220,8 +1747,11 @@
       if (shared.assumedAht) UIState.assumedAht = shared.assumedAht;
       if (shared.trendProfile) UIState.trendProfile = shared.trendProfile;
       if (shared.trendProfileParams) UIState.trendProfileParams = shared.trendProfileParams;
+      if (shared.accuracyPairs) UIState.accuracyPairs = shared.accuracyPairs;
+      if (shared.accuracyRunsHistory) UIState.accuracyRunsHistory = shared.accuracyRunsHistory;
       loadHistory(UIState.history);
       renderHolidaysTable();
+      renderAccuracyTable();
       updateModelParamsUI();
       renderTrendProfileUI();
       ErlanglyUtils.showToast('Restored shared forecast plan', 'info');
@@ -1242,8 +1772,11 @@
         if (saved.assumedAht) UIState.assumedAht = saved.assumedAht;
         if (saved.trendProfile) UIState.trendProfile = saved.trendProfile;
         if (saved.trendProfileParams) UIState.trendProfileParams = saved.trendProfileParams;
+        if (saved.accuracyPairs) UIState.accuracyPairs = saved.accuracyPairs;
+        if (saved.accuracyRunsHistory) UIState.accuracyRunsHistory = saved.accuracyRunsHistory;
         loadHistory(UIState.history);
         renderHolidaysTable();
+        renderAccuracyTable();
         updateModelParamsUI();
         renderTrendProfileUI();
         ErlanglyUtils.showToast('Loaded plan from My Plans dashboard', 'success');
@@ -1251,16 +1784,14 @@
       }
     }
 
-    // Default: load sample history
+    // Default: load sample history & default accuracy pairs
     UIState.holidays = SAMPLE_HOLIDAYS.slice();
+    UIState.accuracyPairs = SAMPLE_ACCURACY_DATA.slice();
     renderHolidaysTable();
+    renderAccuracyTable();
     loadHistory(SAMPLE_HISTORY);
   }
 
-  /**
-   * Render the Trend Profile UI: dropdown selector, visual bar preview,
-   * intensity slider, and custom editable range table.
-   */
   function renderTrendProfileUI() {
     var container = document.getElementById('trend-profile-container');
     if (!container) return;
@@ -1269,7 +1800,6 @@
     var params = UIState.trendProfileParams || {};
     var intensity = params.intensity !== undefined ? params.intensity : 100;
 
-    // Use custom ranges if profile is custom and user has defined them
     var displayRanges = (UIState.trendProfile === 'custom' && params.customRanges && params.customRanges.length > 0)
       ? params.customRanges
       : profile.ranges;
@@ -1288,7 +1818,7 @@
     html += '<span class="form-hint" style="margin-top: var(--space-1); display: block; color: var(--text-secondary);">' + profile.description + '</span>';
     html += '</div>';
 
-    // Visual bar preview (only if profile has ranges)
+    // Visual bar preview
     if (displayRanges && displayRanges.length > 0 && UIState.trendProfile !== 'none') {
       html += '<div style="margin-bottom: var(--space-3);">';
       html += '<span class="form-label" style="font-size: var(--text-xs); margin-bottom: var(--space-1); display: block;">Profile Preview:</span>';
@@ -1309,7 +1839,6 @@
       });
       html += '</div>';
 
-      // Intensity slider
       html += '<div class="form-group">';
       html += '<div class="form-label"><span>Profile Intensity</span><span class="form-label-val" id="lbl-trend-intensity">' + intensity + '%</span></div>';
       html += '<input type="range" id="range-trend-intensity" min="0" max="200" step="5" value="' + intensity + '">';
@@ -1317,33 +1846,8 @@
       html += '</div>';
     }
 
-    // Custom editable range table
-    if (UIState.trendProfile === 'custom') {
-      var customRanges = params.customRanges || TREND_PROFILES.custom.ranges;
-      html += '<div style="margin-top: var(--space-2);">';
-      html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">';
-      html += '<span class="form-label" style="font-size: var(--text-xs); margin: 0;">Custom Day-of-Month Ranges:</span>';
-      html += '<button id="btn-add-custom-range" class="btn btn-ghost btn-sm" style="font-size: 11px;">+ Add Range</button>';
-      html += '</div>';
-      html += '<div class="table-container" style="max-height: 180px; overflow-y: auto;">';
-      html += '<table class="data-table">';
-      html += '<thead><tr><th>Start Day</th><th>End Day</th><th>Factor</th><th>Label</th><th style="width:30px;"></th></tr></thead>';
-      html += '<tbody id="tbody-custom-ranges">';
-      customRanges.forEach(function(r, idx) {
-        html += '<tr>';
-        html += '<td><input type="number" class="form-control mono" style="height:26px; font-size:var(--text-xs);" min="1" max="31" value="' + r.startDay + '" data-custom-range-field="startDay" data-custom-range-idx="' + idx + '"></td>';
-        html += '<td><input type="number" class="form-control mono" style="height:26px; font-size:var(--text-xs);" min="1" max="31" value="' + r.endDay + '" data-custom-range-field="endDay" data-custom-range-idx="' + idx + '"></td>';
-        html += '<td><input type="number" class="form-control mono" style="height:26px; font-size:var(--text-xs);" min="0.01" max="3.0" step="0.05" value="' + r.factor + '" data-custom-range-field="factor" data-custom-range-idx="' + idx + '"></td>';
-        html += '<td><input type="text" class="form-control" style="height:26px; font-size:var(--text-xs);" value="' + (r.label || '') + '" data-custom-range-field="label" data-custom-range-idx="' + idx + '"></td>';
-        html += '<td><button class="btn btn-ghost btn-sm" style="padding:0 4px; color:var(--danger); font-size:11px;" data-delete-custom-range="' + idx + '">✕</button></td>';
-        html += '</tr>';
-      });
-      html += '</tbody></table></div></div>';
-    }
-
     container.innerHTML = html;
 
-    // Wire event listeners
     var selectProfile = document.getElementById('select-trend-profile');
     if (selectProfile) {
       selectProfile.addEventListener('change', function() {
@@ -1363,86 +1867,42 @@
         runForecast();
       });
     }
-
-    // Custom range table inputs
-    if (UIState.trendProfile === 'custom') {
-      var rangeInputs = container.querySelectorAll('[data-custom-range-field]');
-      rangeInputs.forEach(function(inp) {
-        inp.addEventListener('change', function() {
-          var idx = parseInt(inp.getAttribute('data-custom-range-idx'), 10);
-          var field = inp.getAttribute('data-custom-range-field');
-          if (!UIState.trendProfileParams.customRanges) {
-            UIState.trendProfileParams.customRanges = TREND_PROFILES.custom.ranges.slice();
-          }
-          if (UIState.trendProfileParams.customRanges[idx]) {
-            if (field === 'factor') {
-              UIState.trendProfileParams.customRanges[idx][field] = parseFloat(inp.value) || 1.0;
-            } else if (field === 'startDay' || field === 'endDay') {
-              UIState.trendProfileParams.customRanges[idx][field] = Math.max(1, Math.min(31, parseInt(inp.value, 10) || 1));
-            } else {
-              UIState.trendProfileParams.customRanges[idx][field] = inp.value;
-            }
-            renderTrendProfileUI();
-            runForecast();
-          }
-        });
-      });
-
-      // Delete custom range buttons
-      var delBtns = container.querySelectorAll('[data-delete-custom-range]');
-      delBtns.forEach(function(btn) {
-        btn.addEventListener('click', function() {
-          var idx = parseInt(btn.getAttribute('data-delete-custom-range'), 10);
-          if (UIState.trendProfileParams.customRanges && UIState.trendProfileParams.customRanges.length > 1) {
-            UIState.trendProfileParams.customRanges.splice(idx, 1);
-            renderTrendProfileUI();
-            runForecast();
-          }
-        });
-      });
-
-      // Add custom range button
-      var btnAddRange = document.getElementById('btn-add-custom-range');
-      if (btnAddRange) {
-        btnAddRange.addEventListener('click', function() {
-          if (!UIState.trendProfileParams.customRanges) {
-            UIState.trendProfileParams.customRanges = TREND_PROFILES.custom.ranges.slice();
-          }
-          var lastRange = UIState.trendProfileParams.customRanges[UIState.trendProfileParams.customRanges.length - 1];
-          var nextStart = lastRange ? Math.min(31, lastRange.endDay + 1) : 1;
-          UIState.trendProfileParams.customRanges.push({
-            startDay: nextStart, endDay: 31, factor: 1.00, label: 'New range'
-          });
-          renderTrendProfileUI();
-          runForecast();
-        });
-      }
-    }
   }
 
   function setupTabSwitching() {
     var tabSample = document.getElementById('tab-history-sample');
     var tabCSV = document.getElementById('tab-history-csv');
     var tabHolidays = document.getElementById('tab-holidays');
+    var tabAccuracy = document.getElementById('tab-accuracy');
 
     var secManual = document.getElementById('section-manual-history');
     var secCSV = document.getElementById('section-csv-history');
     var secHolidays = document.getElementById('section-holidays');
+    var secAccuracy = document.getElementById('section-accuracy');
+    var panelAccuracy = document.getElementById('panel-accuracy-tracking');
 
     function selectTab(active) {
       if (tabSample) tabSample.className = active === 'history' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
       if (tabCSV) tabCSV.className = active === 'csv' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
       if (tabHolidays) tabHolidays.className = active === 'holidays' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
+      if (tabAccuracy) tabAccuracy.className = active === 'accuracy' ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
 
       if (secManual) secManual.style.display = active === 'history' ? 'block' : 'none';
       if (secCSV) secCSV.style.display = active === 'csv' ? 'flex' : 'none';
       if (secHolidays) secHolidays.style.display = active === 'holidays' ? 'block' : 'none';
+      if (secAccuracy) secAccuracy.style.display = active === 'accuracy' ? 'block' : 'none';
+      if (panelAccuracy) panelAccuracy.style.display = active === 'accuracy' ? 'block' : 'none';
+
       UIState.activeTab = active;
+      if (active === 'accuracy') {
+        renderAccuracyDashboard();
+      }
     }
 
     if (tabSample) tabSample.addEventListener('click', function() { selectTab('history'); });
     if (tabCSV) tabCSV.addEventListener('click', function() { selectTab('csv'); });
     if (tabHolidays) tabHolidays.addEventListener('click', function() { selectTab('holidays'); });
+    if (tabAccuracy) tabAccuracy.addEventListener('click', function() { selectTab('accuracy'); });
   }
 
   function setupModelSelector() {
@@ -1457,13 +1917,15 @@
       categories[m.category].push(m);
     });
 
+    var hasYoYHistory = checkHistorySufficiency(UIState.history, 52).sufficient;
+
     Object.keys(categories).forEach(function(cat) {
       var optgroup = document.createElement('optgroup');
       optgroup.label = cat;
       categories[cat].forEach(function(m) {
         var opt = document.createElement('option');
         opt.value = m.id;
-        opt.textContent = m.name;
+        opt.textContent = m.name + (m.id === 'yoy_trend' && !hasYoYHistory ? ' (⚠️ Requires ≥12m)' : '');
         if (m.id === UIState.modelId) opt.selected = true;
         optgroup.appendChild(opt);
       });
@@ -1477,6 +1939,26 @@
     });
 
     updateModelParamsUI();
+  }
+
+  function checkHistorySufficiency(history, minPeriods) {
+    if (!history || history.length === 0) {
+      return { sufficient: false, count: 0, daySpan: 0, reason: 'No historical volume loaded.' };
+    }
+    var n = history.length;
+    var first = ErlanglyUtils.parseDate(history[0].period);
+    var last = ErlanglyUtils.parseDate(history[n - 1].period);
+    var daySpan = (first && last) ? Math.round((last.timestamp - first.timestamp) / 86400000) : 0;
+
+    if (n >= minPeriods || daySpan >= 360) {
+      return { sufficient: true, count: n, daySpan: daySpan, reason: 'Sufficient history loaded (' + n + ' periods, ' + daySpan + ' days).' };
+    }
+    return {
+      sufficient: false,
+      count: n,
+      daySpan: daySpan,
+      reason: 'Requires ≥ 12 months history (365 days / 52 weeks). Currently loaded: ' + n + ' periods (' + daySpan + ' days).'
+    };
   }
 
   function updateModelParamsUI() {
@@ -1639,11 +2121,134 @@
           runForecast();
         });
       }
+    } else if (model.id === 'yoy_trend') {
+      var check = checkHistorySufficiency(UIState.history, 52);
+      var guardHtml = check.sufficient 
+        ? '<div style="padding: var(--space-2) var(--space-3); background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--success-light); margin-bottom: var(--space-3);">✓ ' + check.reason + ' Prior-year calendar projection active.</div>'
+        : '<div style="padding: var(--space-2) var(--space-3); background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warn); border-radius: var(--radius-md); font-size: var(--text-xs); color: var(--warn-light); margin-bottom: var(--space-3);">⚠️ <strong>Minimum History Guard:</strong> ' + check.reason + '<br><a href="#" id="link-load-2yr-sample" style="color: var(--accent); text-decoration: underline; margin-top: 4px; display: inline-block;">Load 2-Year Sample Dataset (730 days) →</a></div>';
+
+      container.innerHTML = 
+        guardHtml +
+        '<div class="form-group">' +
+          '<label for="num-yoy-lookback" class="form-label">YoY Trailing Growth Lookback Window</label>' +
+          '<div class="input-group">' +
+            '<input type="number" id="num-yoy-lookback" class="form-control mono" min="2" max="52" value="' + (UIState.modelParams.lookbackWeeks || 8) + '">' +
+            '<span class="input-addon">periods</span>' +
+          '</div>' +
+          '<span class="form-hint">Computes recent YoY drift against matched calendar window 1 year prior</span>' +
+        '</div>';
+
+      var inpY = document.getElementById('num-yoy-lookback');
+      if (inpY) {
+        inpY.addEventListener('input', function() {
+          UIState.modelParams.lookbackWeeks = Math.max(2, parseInt(inpY.value, 10) || 8);
+          runForecast();
+        });
+      }
+
+      var link2yr = document.getElementById('link-load-2yr-sample');
+      if (link2yr) {
+        link2yr.addEventListener('click', function(e) {
+          e.preventDefault();
+          loadHistory(SAMPLE_MULTI_YEAR_HISTORY);
+          ErlanglyUtils.showToast('Loaded 2-Year Multi-Year History (730 periods)', 'success');
+        });
+      }
+    } else if (model.id === 'ensemble') {
+      var subCandidates = [
+        { id: 'holt', name: "Holt's Double Smoothing" },
+        { id: 'decomp_mult', name: "Multiplicative Decomposition" },
+        { id: 'trend', name: "Linear Trend (OLS)" },
+        { id: 'regression', name: "Multi-Variable Regression" },
+        { id: 'wma', name: "Weighted Moving Average" },
+        { id: 'ses', name: "Simple Exp Smoothing" }
+      ];
+
+      var selectedSet = UIState.modelParams.selectedModels || ['holt', 'decomp_mult', 'trend'];
+      var mode = UIState.modelParams.weightMode || 'auto';
+
+      var html = '<div class="form-group">';
+      html += '<label class="form-label">Strategy &amp; Weighting Mode</label>';
+      html += '<div style="display: flex; gap: var(--space-2); margin-bottom: var(--space-3);">';
+      html += '<button type="button" class="btn btn-sm ' + (mode === 'auto' ? 'btn-primary' : 'btn-ghost') + '" id="btn-ensemble-mode-auto" style="font-size: var(--text-xs); flex: 1;">Auto (Inverse Backtest RMSE)</button>';
+      html += '<button type="button" class="btn btn-sm ' + (mode === 'manual' ? 'btn-primary' : 'btn-ghost') + '" id="btn-ensemble-mode-manual" style="font-size: var(--text-xs); flex: 1;">Manual Weights</button>';
+      html += '</div>';
+      html += '</div>';
+
+      html += '<div class="form-group">';
+      html += '<label class="form-label" style="margin-bottom: var(--space-1);">Candidate Sub-Models:</label>';
+      subCandidates.forEach(function(sc) {
+        var isChecked = selectedSet.indexOf(sc.id) !== -1;
+        var manualVal = (UIState.modelParams.manualWeights && UIState.modelParams.manualWeights[sc.id]) ? UIState.modelParams.manualWeights[sc.id] : 33;
+
+        html += '<div style="display: flex; align-items: center; justify-content: space-between; padding: var(--space-1) 0; border-bottom: 1px solid var(--border-subtle);">';
+        html += '<label style="display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); cursor: pointer; color: var(--text-primary); margin: 0;">';
+        html += '<input type="checkbox" data-ensemble-model="' + sc.id + '" ' + (isChecked ? 'checked' : '') + ' style="cursor: pointer;">';
+        html += '<span>' + sc.name + '</span>';
+        html += '</label>';
+
+        if (mode === 'manual' && isChecked) {
+          html += '<div style="display: flex; align-items: center; gap: 4px; width: 90px;">';
+          html += '<input type="number" class="form-control mono" style="height: 24px; font-size: 11px; padding: 2px 4px;" data-ensemble-weight="' + sc.id + '" min="1" max="100" value="' + manualVal + '">';
+          html += '<span style="font-size: 10px; color: var(--text-muted);">pts</span>';
+          html += '</div>';
+        }
+        html += '</div>';
+      });
+      html += '</div>';
+
+      container.innerHTML = html;
+
+      var btnAuto = document.getElementById('btn-ensemble-mode-auto');
+      var btnMan = document.getElementById('btn-ensemble-mode-manual');
+
+      if (btnAuto) {
+        btnAuto.addEventListener('click', function() {
+          UIState.modelParams.weightMode = 'auto';
+          updateModelParamsUI();
+          runForecast();
+        });
+      }
+      if (btnMan) {
+        btnMan.addEventListener('click', function() {
+          UIState.modelParams.weightMode = 'manual';
+          updateModelParamsUI();
+          runForecast();
+        });
+      }
+
+      var chks = container.querySelectorAll('[data-ensemble-model]');
+      chks.forEach(function(chk) {
+        chk.addEventListener('change', function() {
+          var mId = chk.getAttribute('data-ensemble-model');
+          var curr = UIState.modelParams.selectedModels || [];
+          if (chk.checked) {
+            if (curr.indexOf(mId) === -1) curr.push(mId);
+          } else {
+            curr = curr.filter(function(x) { return x !== mId; });
+          }
+          if (curr.length === 0) curr = ['holt'];
+          UIState.modelParams.selectedModels = curr;
+          updateModelParamsUI();
+          runForecast();
+        });
+      });
+
+      var wInputs = container.querySelectorAll('[data-ensemble-weight]');
+      wInputs.forEach(function(winp) {
+        winp.addEventListener('input', function() {
+          var mId = winp.getAttribute('data-ensemble-weight');
+          UIState.modelParams.manualWeights = UIState.modelParams.manualWeights || {};
+          UIState.modelParams.manualWeights[mId] = Math.max(1, parseFloat(winp.value) || 1);
+          runForecast();
+        });
+      });
     }
   }
 
   function setupEventListeners() {
     var btnLoadSample = document.getElementById('btn-load-sample-forecast');
+    var btnLoad2Yr = document.getElementById('btn-load-2yr-sample');
     var btnClearHistory = document.getElementById('btn-clear-history');
     var btnAddRow = document.getElementById('btn-add-row');
 
@@ -1662,12 +2267,31 @@
     var btnAddHoliday = document.getElementById('btn-add-holiday');
     var btnClearHolidays = document.getElementById('btn-clear-holidays');
 
+    // Accuracy Tracking Listeners (Phase 12)
+    var btnLoadSampleAccuracy = document.getElementById('btn-load-sample-accuracy');
+    var btnClearAccuracy = document.getElementById('btn-clear-accuracy');
+    var btnAddAccuracyRow = document.getElementById('btn-add-accuracy-row');
+    var btnPullFromForecast = document.getElementById('btn-pull-forecast-actuals');
+    var btnSaveAccuracyRun = document.getElementById('btn-save-accuracy-run');
+    var btnExportAccuracyCSV = document.getElementById('btn-export-accuracy-csv');
+
+    // Backtest Controls
+    var btnRunBacktest = document.getElementById('btn-run-backtest');
+    var inpBacktestHoldout = document.getElementById('num-backtest-holdout');
+
     if (btnLoadSample) {
       btnLoadSample.addEventListener('click', function() {
         UIState.holidays = SAMPLE_HOLIDAYS.slice();
         renderHolidaysTable();
         loadHistory(SAMPLE_HISTORY);
         ErlanglyUtils.showToast('Loaded sample contact center history & holidays', 'success');
+      });
+    }
+
+    if (btnLoad2Yr) {
+      btnLoad2Yr.addEventListener('click', function() {
+        loadHistory(SAMPLE_MULTI_YEAR_HISTORY);
+        ErlanglyUtils.showToast('Loaded 2-Year multi-year series (730 periods)', 'success');
       });
     }
 
@@ -1723,9 +2347,19 @@
         UIState.compareMode = !UIState.compareMode;
         var compPanel = document.getElementById('panel-model-comparison');
         if (compPanel) compPanel.style.display = UIState.compareMode ? 'block' : 'none';
-        btnCompareToggle.textContent = UIState.compareMode ? 'Hide Comparison View' : 'Compare 2–4 Models';
+        btnCompareToggle.textContent = UIState.compareMode ? 'Hide Comparison & Backtesting' : 'Model Comparison & Backtest';
         btnCompareToggle.className = UIState.compareMode ? 'btn btn-secondary btn-sm' : 'btn btn-ghost btn-sm';
         runForecast();
+      });
+    }
+
+    if (btnRunBacktest) {
+      btnRunBacktest.addEventListener('click', function() {
+        if (inpBacktestHoldout) {
+          UIState.backtestHoldout = Math.max(1, parseInt(inpBacktestHoldout.value, 10) || 7);
+        }
+        runForecast();
+        ErlanglyUtils.showToast('Recomputed walk-forward backtesting across all candidate models', 'success');
       });
     }
 
@@ -1764,7 +2398,111 @@
       });
     }
 
-    // Export CSV
+    // Accuracy Tracking Listeners (Phase 12)
+    if (btnLoadSampleAccuracy) {
+      btnLoadSampleAccuracy.addEventListener('click', function() {
+        UIState.accuracyPairs = SAMPLE_ACCURACY_DATA.slice();
+        renderAccuracyTable();
+        renderAccuracyDashboard();
+        ErlanglyUtils.showToast('Loaded sample Forecast vs Actual pairs', 'success');
+      });
+    }
+
+    if (btnClearAccuracy) {
+      btnClearAccuracy.addEventListener('click', function() {
+        UIState.accuracyPairs = [];
+        renderAccuracyTable();
+        renderAccuracyDashboard();
+        ErlanglyUtils.showToast('Cleared accuracy tracking table', 'info');
+      });
+    }
+
+    if (btnAddAccuracyRow) {
+      btnAddAccuracyRow.addEventListener('click', function() {
+        var nextIdx = UIState.accuracyPairs.length + 1;
+        var last = UIState.accuracyPairs[UIState.accuracyPairs.length - 1];
+        var nextP = 'Period ' + nextIdx;
+        if (last && ErlanglyUtils.parseDate(last.period)) {
+          var nD = ErlanglyUtils.addDays(last.period, 1);
+          if (nD) nextP = nD.isoDate;
+        }
+        UIState.accuracyPairs.push({ period: nextP, forecast: 1600, actual: 1620 });
+        renderAccuracyTable();
+        renderAccuracyDashboard();
+      });
+    }
+
+    if (btnPullFromForecast) {
+      btnPullFromForecast.addEventListener('click', function() {
+        if (!UIState.lastForecast || !UIState.lastForecast.forecast || UIState.lastForecast.forecast.length === 0) {
+          ErlanglyUtils.showToast('Run a forecast first to populate forecast periods', 'warn');
+          return;
+        }
+        UIState.accuracyPairs = UIState.lastForecast.forecast.map(function(f) {
+          return {
+            period: f.period,
+            forecast: f.volume,
+            actual: f.volume
+          };
+        });
+        renderAccuracyTable();
+        renderAccuracyDashboard();
+        ErlanglyUtils.showToast('Populated ' + UIState.accuracyPairs.length + ' periods from current forecast plan', 'success');
+      });
+    }
+
+    if (btnSaveAccuracyRun) {
+      btnSaveAccuracyRun.addEventListener('click', function() {
+        if (!UIState.lastAccuracyMetrics || UIState.lastAccuracyMetrics.count === 0) {
+          ErlanglyUtils.showToast('No accuracy data to record', 'warn');
+          return;
+        }
+        var m = UIState.lastAccuracyMetrics;
+        var runRecord = {
+          id: 'acc_' + Date.now(),
+          timestamp: new Date().toISOString(),
+          label: (UIState.lastForecast ? UIState.lastForecast.modelName : 'Forecast Plan') + ' Review',
+          count: m.count,
+          wape: m.wape,
+          mape: m.mape,
+          biasPct: m.biasPct,
+          mae: m.mae,
+          rmse: m.rmse,
+          totalActual: m.totalActual,
+          totalForecast: m.totalForecast
+        };
+        UIState.accuracyRunsHistory.unshift(runRecord);
+        renderAccuracyHistoryTable();
+        ErlanglyUtils.showToast('Logged accuracy evaluation to history log', 'success');
+      });
+    }
+
+    if (btnExportAccuracyCSV) {
+      btnExportAccuracyCSV.addEventListener('click', function() {
+        if (!UIState.lastAccuracyMetrics || UIState.lastAccuracyMetrics.count === 0) {
+          ErlanglyUtils.showToast('No accuracy data to export', 'warn');
+          return;
+        }
+        var headers = ['Period', 'Forecast_Volume', 'Actual_Volume', 'Variance_Calls', 'Abs_Error_Calls', 'Error_Pct', 'Signed_Bias_Pct', 'Status'];
+        var rows = UIState.lastAccuracyMetrics.details.map(function(d, i) {
+          var pair = UIState.accuracyPairs[i] || {};
+          var status = Math.abs(d.signedPct) <= 5.0 ? 'On Target' : (d.signedPct > 5.0 ? 'Over-Forecast' : 'Under-Forecast');
+          return [
+            pair.period || ('Period ' + (i + 1)),
+            Math.round(d.forecast),
+            Math.round(d.actual),
+            Math.round(d.error),
+            Math.round(d.absError),
+            d.pctError.toFixed(2) + '%',
+            (d.signedPct >= 0 ? '+' : '') + d.signedPct.toFixed(2) + '%',
+            status
+          ];
+        });
+        ErlanglyUtils.exportCSV('erlangly_forecast_accuracy.csv', headers, rows);
+      });
+    }
+
+    // Export Forecast CSV
     if (btnExportCSV) {
       btnExportCSV.addEventListener('click', function() {
         if (!UIState.lastForecast || UIState.lastForecast.forecast.length === 0) return;
@@ -1823,13 +2561,16 @@
             trendProfileParams: UIState.trendProfileParams,
             horizon: UIState.horizon,
             growthModifier: UIState.growthModifier,
-            assumedAht: UIState.assumedAht
+            assumedAht: UIState.assumedAht,
+            accuracyPairs: UIState.accuracyPairs,
+            accuracyRunsHistory: UIState.accuracyRunsHistory
           };
           var outputs = UIState.lastForecast ? {
             modelName: UIState.lastForecast.modelName,
             metrics: UIState.lastForecast.metrics,
             forecastCount: UIState.lastForecast.forecast.length,
-            totalVolume: UIState.lastForecast.forecast.reduce(function(a, b) { return a + b.volume; }, 0)
+            totalVolume: UIState.lastForecast.forecast.reduce(function(a, b) { return a + b.volume; }, 0),
+            accuracyMetrics: UIState.lastAccuracyMetrics
           } : {};
           window.ErlanglyPlans.showSaveModal('forecasting', inputs, outputs);
         }
@@ -1849,7 +2590,9 @@
             trendProfileParams: UIState.trendProfileParams,
             horizon: UIState.horizon,
             growthModifier: UIState.growthModifier,
-            assumedAht: UIState.assumedAht
+            assumedAht: UIState.assumedAht,
+            accuracyPairs: UIState.accuracyPairs,
+            accuracyRunsHistory: UIState.accuracyRunsHistory
           };
           window.ErlanglyPlans.showShareModal('forecasting', inputs);
         }
@@ -1968,6 +2711,7 @@
 
     UIState.history = rawList;
     renderHistoryTable();
+    setupModelSelector();
     runForecast();
   }
 
@@ -2119,6 +2863,185 @@
     });
   }
 
+  // =========================================================================
+  // 8. ACCURACY TRACKING UI (PHASE 12)
+  // =========================================================================
+
+  function renderAccuracyTable() {
+    var tbody = document.getElementById('tbody-accuracy-inputs');
+    var badgeCount = document.getElementById('lbl-accuracy-count');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    if (badgeCount) badgeCount.textContent = UIState.accuracyPairs.length;
+
+    if (UIState.accuracyPairs.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No forecast/actual pairs. Click "Pull from Current Forecast" or "+ Add Pair".</td></tr>';
+      return;
+    }
+
+    UIState.accuracyPairs.forEach(function(pair, idx) {
+      var tr = document.createElement('tr');
+
+      var tdPeriod = document.createElement('td');
+      var inP = document.createElement('input');
+      inP.type = 'text';
+      inP.className = 'form-control mono';
+      inP.style.height = '28px';
+      inP.style.fontSize = 'var(--text-xs)';
+      inP.value = pair.period;
+      inP.addEventListener('change', function() {
+        pair.period = inP.value.trim();
+        renderAccuracyDashboard();
+      });
+      tdPeriod.appendChild(inP);
+
+      var tdFc = document.createElement('td');
+      var inFc = document.createElement('input');
+      inFc.type = 'number';
+      inFc.className = 'form-control mono';
+      inFc.style.height = '28px';
+      inFc.style.fontSize = 'var(--text-xs)';
+      inFc.value = Math.round(pair.forecast);
+      inFc.addEventListener('input', function() {
+        pair.forecast = Math.max(0, parseFloat(inFc.value) || 0);
+        renderAccuracyDashboard();
+      });
+      tdFc.appendChild(inFc);
+
+      var tdAct = document.createElement('td');
+      var inAct = document.createElement('input');
+      inAct.type = 'number';
+      inAct.className = 'form-control mono';
+      inAct.style.height = '28px';
+      inAct.style.fontSize = 'var(--text-xs)';
+      inAct.value = Math.round(pair.actual);
+      inAct.addEventListener('input', function() {
+        pair.actual = Math.max(0, parseFloat(inAct.value) || 0);
+        renderAccuracyDashboard();
+      });
+      tdAct.appendChild(inAct);
+
+      var tdDel = document.createElement('td');
+      var btnDel = document.createElement('button');
+      btnDel.className = 'btn btn-ghost btn-sm';
+      btnDel.style.padding = '0 6px';
+      btnDel.style.color = 'var(--danger)';
+      btnDel.textContent = '✕';
+      btnDel.addEventListener('click', function() {
+        UIState.accuracyPairs.splice(idx, 1);
+        renderAccuracyTable();
+        renderAccuracyDashboard();
+      });
+      tdDel.appendChild(btnDel);
+
+      tr.appendChild(tdPeriod);
+      tr.appendChild(tdFc);
+      tr.appendChild(tdAct);
+      tr.appendChild(tdDel);
+      tbody.appendChild(tr);
+    });
+  }
+
+  function renderAccuracyDashboard() {
+    var acts = UIState.accuracyPairs.map(function(p) { return p.actual; });
+    var fcs = UIState.accuracyPairs.map(function(p) { return p.forecast; });
+
+    var m = calculateAccuracyMetrics(acts, fcs);
+    UIState.lastAccuracyMetrics = m;
+
+    var statWape = document.getElementById('stat-acc-wape');
+    var statMape = document.getElementById('stat-acc-mape');
+    var statBias = document.getElementById('stat-acc-bias');
+    var statMae = document.getElementById('stat-acc-mae');
+    var statRmse = document.getElementById('stat-acc-rmse');
+    var statTotalVar = document.getElementById('stat-acc-total-var');
+
+    if (statWape) statWape.textContent = m.wape.toFixed(1) + '%';
+    if (statMape) statMape.textContent = m.mape.toFixed(1) + '%';
+    if (statBias) {
+      var prefix = m.biasPct >= 0 ? '+' : '';
+      statBias.textContent = prefix + m.biasPct.toFixed(1) + '%';
+      statBias.className = 'metric-value ' + (Math.abs(m.biasPct) <= 5.0 ? 'text-success' : (m.biasPct > 0 ? 'text-warn' : 'text-danger'));
+    }
+    if (statMae) statMae.textContent = Math.round(m.mae).toLocaleString();
+    if (statRmse) statRmse.textContent = Math.round(m.rmse).toLocaleString();
+    if (statTotalVar) {
+      var vPrefix = m.varianceTotal >= 0 ? '+' : '';
+      statTotalVar.textContent = vPrefix + Math.round(m.varianceTotal).toLocaleString();
+    }
+
+    var tbodyVar = document.getElementById('tbody-accuracy-variance');
+    if (tbodyVar) {
+      tbodyVar.innerHTML = '';
+      if (m.details.length === 0) {
+        tbodyVar.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No accuracy evaluations calculated.</td></tr>';
+      } else {
+        m.details.forEach(function(d, i) {
+          var pair = UIState.accuracyPairs[i] || {};
+          var tr = document.createElement('tr');
+          var statusBadge = '';
+          if (Math.abs(d.signedPct) <= 5.0) {
+            statusBadge = '<span class="badge badge-success" style="font-size: 10px;">✓ On Target</span>';
+          } else if (d.signedPct > 5.0) {
+            statusBadge = '<span class="badge badge-warn" style="font-size: 10px;">⚠️ Over-Forecast</span>';
+          } else {
+            statusBadge = '<span class="badge badge-danger" style="font-size: 10px;">⚠️ Under-Forecast</span>';
+          }
+
+          var errColor = d.error >= 0 ? 'text-warn' : 'text-danger';
+          if (Math.abs(d.signedPct) <= 5.0) errColor = 'text-success';
+
+          tr.innerHTML = 
+            '<td class="mono"><strong>' + (pair.period || ('Period ' + (i + 1))) + '</strong></td>' +
+            '<td class="mono">' + Math.round(d.forecast).toLocaleString() + '</td>' +
+            '<td class="mono">' + Math.round(d.actual).toLocaleString() + '</td>' +
+            '<td class="mono ' + errColor + '">' + (d.error >= 0 ? '+' : '') + Math.round(d.error).toLocaleString() + '</td>' +
+            '<td class="mono">' + Math.round(d.absError).toLocaleString() + '</td>' +
+            '<td class="mono">' + d.pctError.toFixed(1) + '%</td>' +
+            '<td class="mono ' + errColor + '">' + (d.signedPct >= 0 ? '+' : '') + d.signedPct.toFixed(1) + '%</td>' +
+            '<td>' + statusBadge + '</td>';
+
+          tbodyVar.appendChild(tr);
+        });
+      }
+    }
+
+    renderAccuracyHistoryTable();
+  }
+
+  function renderAccuracyHistoryTable() {
+    var tbody = document.getElementById('tbody-accuracy-history');
+    if (!tbody) return;
+
+    tbody.innerHTML = '';
+    if (UIState.accuracyRunsHistory.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No historical evaluation runs recorded. Click "Log Current Accuracy Run".</td></tr>';
+      return;
+    }
+
+    UIState.accuracyRunsHistory.forEach(function(run) {
+      var tr = document.createElement('tr');
+      var dateStr = new Date(run.timestamp).toLocaleDateString();
+      var biasPrefix = run.biasPct >= 0 ? '+' : '';
+
+      tr.innerHTML = 
+        '<td class="mono">' + dateStr + '</td>' +
+        '<td><strong>' + (run.label || 'Forecast Review') + '</strong></td>' +
+        '<td class="mono">' + run.count + ' periods</td>' +
+        '<td class="mono text-accent"><strong>' + run.wape.toFixed(1) + '%</strong></td>' +
+        '<td class="mono">' + run.mape.toFixed(1) + '%</td>' +
+        '<td class="mono ' + (Math.abs(run.biasPct) <= 5.0 ? 'text-success' : 'text-warn') + '">' + biasPrefix + run.biasPct.toFixed(1) + '%</td>' +
+        '<td class="mono">' + Math.round(run.mae).toLocaleString() + '</td>';
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  // =========================================================================
+  // 9. EXECUTION & VISUALIZATION
+  // =========================================================================
+
   function runForecast() {
     if (!UIState.history || UIState.history.length === 0) {
       clearForecastDisplay();
@@ -2144,14 +3067,16 @@
       if (result.fitResult.beta !== undefined) UIState.modelParams.beta = result.fitResult.beta;
     }
 
-    // 2. Run model comparison if comparison view is open
+    // 2. Run model comparison & backtesting if comparison view is open
     var comparisonResults = [];
     if (UIState.compareMode) {
-      var modelsToCompare = UIState.compareModelIds.length > 0 ? UIState.compareModelIds : ['holt', 'decomp_mult', 'trend'];
+      var modelsToCompare = UIState.compareModelIds.length > 0 ? UIState.compareModelIds : ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'];
       modelsToCompare.forEach(function(mId) {
         var compRes = executeForecast(UIState.history, mId, UIState.modelParams, options);
         comparisonResults.push(compRes);
       });
+
+      UIState.lastBacktestResults = runBacktestAll(UIState.history, modelsToCompare, UIState.modelParams, UIState.backtestHoldout, options);
     }
 
     // 3. Update KPI metrics cards
@@ -2165,7 +3090,12 @@
 
     // 6. Render Model Comparison table
     if (UIState.compareMode) {
-      renderComparisonTable(comparisonResults);
+      renderComparisonTable(comparisonResults, UIState.lastBacktestResults);
+    }
+
+    // 7. Update Accuracy Dashboard if active
+    if (UIState.activeTab === 'accuracy') {
+      renderAccuracyDashboard();
     }
   }
 
@@ -2256,14 +3186,20 @@
     });
   }
 
-  function renderComparisonTable(compResults) {
+  function renderComparisonTable(compResults, backtestResults) {
     var tbody = document.getElementById('tbody-model-comparison');
     if (!tbody) return;
 
     tbody.innerHTML = '';
     if (compResults.length === 0) return;
 
-    // Find best MAPE
+    var btMap = {};
+    if (backtestResults) {
+      backtestResults.forEach(function(bt) {
+        btMap[bt.modelId] = bt;
+      });
+    }
+
     var minMAPE = Math.min.apply(null, compResults.map(function(c) { return c.metrics.mape; }));
 
     compResults.forEach(function(c) {
@@ -2271,17 +3207,24 @@
       var isBest = Math.abs(c.metrics.mape - minMAPE) < 0.001;
       var isActive = c.modelId === UIState.modelId;
       var totalVol = c.forecast.reduce(function(a, b) { return a + b.volume; }, 0);
+      var bt = btMap[c.modelId];
+
+      var oosMapeStr = bt ? bt.outOfSampleMetrics.mape.toFixed(1) + '%' : '—';
+      var oosWapeStr = bt ? bt.outOfSampleMetrics.wape.toFixed(1) + '%' : '—';
+      var oosRmseStr = bt ? Math.round(bt.outOfSampleMetrics.rmse).toLocaleString() : '—';
+      var overfitGapStr = bt ? '+' + bt.overfitGap.toFixed(1) + '%' : '—';
 
       tr.innerHTML = 
         '<td>' +
           '<strong>' + c.modelName + '</strong>' +
-          (isBest ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Fit</span>' : '') +
+          (isBest ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best In-Sample</span>' : '') +
           (isActive ? ' <span class="badge badge-neutral" style="font-size: 10px; margin-left: 4px;">Active</span>' : '') +
         '</td>' +
         '<td class="mono text-accent"><strong>' + c.metrics.mape.toFixed(1) + '%</strong></td>' +
-        '<td class="mono">' + Math.round(c.metrics.mae).toLocaleString() + '</td>' +
-        '<td class="mono">' + Math.round(c.metrics.rmse).toLocaleString() + '</td>' +
-        '<td class="mono">' + c.metrics.r2.toFixed(1) + '%</td>' +
+        '<td class="mono" style="color: var(--info);">' + oosMapeStr + '</td>' +
+        '<td class="mono">' + oosWapeStr + '</td>' +
+        '<td class="mono">' + oosRmseStr + '</td>' +
+        '<td class="mono ' + (bt && bt.overfitGap > 10 ? 'text-warn' : '') + '">' + overfitGapStr + '</td>' +
         '<td class="mono">' + ErlanglyUtils.formatNumber(totalVol) + '</td>' +
         '<td>' +
           '<button class="btn btn-sm ' + (isActive ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 11px; height: 26px;" data-select-model="' + c.modelId + '">' +
@@ -2315,10 +3258,8 @@
     var fcLabels = result.forecast.map(function(f) { return f.period; });
     var combinedLabels = histLabels.concat(fcLabels);
 
-    // Padding for history series
     var paddedHist = histData.concat(new Array(fcLabels.length).fill(null));
 
-    // Pad forecast series to bridge smoothly with last historical point
     function createPaddedForecast(forecastList) {
       var arr = new Array(Math.max(0, histLabels.length - 1)).fill(null);
       if (histData.length > 0) {
@@ -2354,9 +3295,8 @@
       }
     ];
 
-    // If in compare mode, add comparison model datasets
     if (UIState.compareMode && compResults && compResults.length > 0) {
-      var compareColors = ['#f59e0b', '#a855f7', '#38bdf8', '#ec4899'];
+      var compareColors = ['#f59e0b', '#a855f7', '#38bdf8', '#ec4899', '#34d399', '#f87171'];
       var cIdx = 0;
       compResults.forEach(function(cr) {
         if (cr.modelId !== result.modelId) {
@@ -2476,11 +3416,18 @@
     linearRegression: linearRegression,
     solveLinearSystem: solveLinearSystem,
     calculateFitMetrics: calculateFitMetrics,
+    calculateAccuracyMetrics: calculateAccuracyMetrics,
+    backtestModel: backtestModel,
+    runBacktestAll: runBacktestAll,
+    checkHistorySufficiency: checkHistorySufficiency,
     preprocessHistory: preprocessHistory,
     getTrendProfileFactor: getTrendProfileFactor,
     extractDateParts: extractDateParts,
     executeForecast: executeForecast,
+    generateMultiYearHistory: generateMultiYearHistory,
     SAMPLE_HISTORY: SAMPLE_HISTORY,
+    SAMPLE_MULTI_YEAR_HISTORY: SAMPLE_MULTI_YEAR_HISTORY,
+    SAMPLE_ACCURACY_DATA: SAMPLE_ACCURACY_DATA,
     SAMPLE_HOLIDAYS: SAMPLE_HOLIDAYS
   };
 });

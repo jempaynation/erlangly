@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. v2 Phases 8–11 planned and queued for implementation.**
+**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models) complete. v2 Phases 9–12 planned and queued for implementation.**
 
 This file is the single source of truth for project progress. Any agentic coding tool
 (Claude Code, Cursor, or otherwise) picking up this project must read it before writing
@@ -187,6 +187,31 @@ it's promoted into a numbered phase.
   - [ ] Multi-queue UI mode: capacity planning and simulator pages get a "multi-queue mode" toggle to define 2+ queues with routing rules and see combined staffing requirements
 - [ ] `erlangly-qa` sign-off
 
+## Phase 12 — Forecasting Enhancements II
+**Status:** Done (2026-08-19) — *Note: Implemented first per explicit user directive; Phases 9–11 remain pending.*
+- [x] Year-over-Year Seasonal Trend Projection model: registers in the Phase 8 model
+      registry; computes YoY growth off the matched calendar period one year prior,
+      blended with existing day-of-week seasonal indices
+  - [x] Minimum-history guard: disabled in the model selector (with inline explanation)
+        when less than 12 months of history is loaded; 24+ months recommended
+- [x] Out-of-sample backtesting (walk-forward validation): hold out the last N periods,
+      train on the rest, forecast across the holdout, and report MAE/MAPE/RMSE
+      out-of-sample alongside the existing in-sample metrics from Phase 8
+- [x] Forecast Accuracy Tracking Tool:
+  - [x] Upload/enter actuals against a saved forecast plan (or a fresh forecast/actual
+        CSV pairing)
+  - [x] Compute MAPE, WAPE (volume-weighted), and signed bias %
+  - [x] Accuracy history view across multiple forecast runs over time, not just the
+        latest run
+  - [x] Save accuracy results alongside the originating plan via the existing
+        persistence layer
+- [x] Ensemble/blended forecast (optional): weighted combination of 2+ models, weights
+      manual or auto-derived from backtested accuracy; selectable as the forecast for
+      the Capacity Planning handoff
+- [x] Updated CSV export: accuracy metrics and backtest results included alongside the
+      existing forecast export
+- [x] `erlangly-qa` sign-off
+
 ---
 
 ## Post-v2 Backlog (not yet scheduled)
@@ -209,7 +234,13 @@ ideas and stretch goals go here until they're scoped and promoted into a numbere
   being stable. Monte Carlo simulation benefits from any forecasting improvements in
   Phase 8, but doesn't strictly require them. The mobile real-time view and live data
   feed are fully independent.
-- **Phase 11** (Collaboration & Multi-Skill Routing) should come last. Shared plans
-  require schema changes and new RLS complexity. Multi-skill routing extends the math
-  engine significantly. Both are best tackled after the simpler enhancements are stable.
+- **Phase 11** (Collaboration & Multi-Skill Routing) should come last among the original
+  four. Shared plans require schema changes and new RLS complexity. Multi-skill routing
+  extends the math engine significantly. Both are best tackled after the simpler
+  enhancements are stable.
+- **Phase 12** (Forecasting Enhancements II) has no dependency on Phases 9–11 — it only
+  extends `forecasting.js` against the Phase 8 model interface, no schema changes and no
+  new pages. It can be built immediately after Phase 8, in parallel with Phase 9, or
+  slotted in whenever forecasting work is next picked up. Ordering here is a preference,
+  not a requirement.
 

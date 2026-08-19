@@ -9,7 +9,7 @@ Read this before writing or editing any file in this repo.
    **`FEATURES.md`** (what's being built), **`ROADMAP.md`** (what phase we're in, task
    status), this file, **`AGENTS.md`** (how to build it correctly), then
    **`CHANGELOG.md`** (what's already been completed and signed off).
-2. Install the three project skills below — they encode role-specific knowledge
+2. Install the four project skills below — they encode role-specific knowledge
    (developer conventions, WFM domain correctness, QA checklist) that this doc
    summarizes but the skills apply automatically during the relevant work.
 3. Check `ROADMAP.md` for the current phase and pick up the next unchecked task. See
@@ -20,13 +20,16 @@ Read this before writing or editing any file in this repo.
 
 ## Skills for this project
 
-Three skills capture the different perspectives this project needs. Install all three —
-they're complementary, not overlapping: the developer skill enforces *how* code is
-written, the WFM analyst skill checks *whether it's operationally realistic*, and the QA
-skill catches *what's broken* before a task is marked done in `ROADMAP.md`.
+Four skills capture the different perspectives this project needs. Install all four —
++ they're complementary, not overlapping: the planner skill decides *what's actually being
++ built and whether everyone agrees on it* before a line of code exists, the developer
++ skill enforces *how* code is written, the WFM analyst skill checks *whether it's
++ operationally realistic*, and the QA skill catches *what's broken* before a task is
++ marked done in `ROADMAP.md`.
 
 | Skill | Role | Use it for |
 |---|---|---|
+| `erlangly-planner` | Planner (pre-implementation) | Gating a phase before any code is written — re-syncing against `ROADMAP.md`/`CHANGELOG.md`, mapping requirements into a visual plan artifact, and "grilling" the user to confirm ambiguities before handing off |
 | `erlangly-developer` | Developer | Writing/editing any code — enforces the no-build-step architecture, the shared `erlang.js` math engine, the design token system, and the Supabase security rules |
 | `erlangly-wfm-analyst` | WFM Manager / Analyst | Scoping or reviewing any feature for domain realism — sane defaults (shrinkage, occupancy, service level targets), catching gaps like ignoring seasonality or hire-ramp lag |
 | `erlangly-qa` | QA (testing & fixing) | Verifying correctness before a phase is called done — Erlang C sanity/monotonicity checks, edge cases, cross-tool handoff and save/load regressions — and, on a pass, checking off the phase in `ROADMAP.md` and writing the `CHANGELOG.md` entry |
@@ -52,27 +55,39 @@ Erlangly should follow this loop:
 1. **Read `ROADMAP.md`.** Find the first phase that is not fully checked off. That's the
    current phase. If the phases immediately before it aren't fully checked, stop and flag
    it — don't build ahead of an incomplete earlier phase unless the user explicitly says to.
-2. **Build the phase** using `erlangly-developer` conventions, against the spec in
+2. **Plan the phase with `erlangly-planner`** before any file is touched. It re-reads
+  `ROADMAP.md`/`CHANGELOG.md`/`PROJECT_MAP.md` fresh, explores the phase's requirements
+    against `FEATURES.md` and `AGENTS.md`, produces a visual plan artifact (file touch
+    map, task breakdown, dependencies, open questions), and grills the user on any
+    ambiguity until the plan is explicitly confirmed. Do not proceed to step 3 without
+    that confirmation — this is a hard gate, not an optional nicety.
+3. **Build the phase** using `erlangly-developer` conventions, against the now-confirmed
+    plan and the spec in
    `FEATURES.md`. Consult `erlangly-wfm-analyst` for any judgment call about realistic
    defaults, formulas, or workflow (shrinkage %, occupancy ceilings, seasonality,
    hire-ramp lag, etc.) rather than guessing.
-3. **Hand off to `erlangly-qa`** once the phase's tasks appear complete. QA audits against
+4. **Hand off to `erlangly-qa`** once the phase's tasks appear complete. QA audits against
    `FEATURES.md` (does it do what was specified) and `AGENTS.md` (does it follow
    architecture/security rules), and runs the edge-case and math-correctness checks in
    its own skill file.
-4. **On a QA pass:** `erlangly-qa` checks off every task under that phase in
+5. **On a QA pass:** `erlangly-qa` checks off every task under that phase in
    `ROADMAP.md`, updates the phase's status line to done, and adds an entry to
    `CHANGELOG.md` (format and instructions are in that file). Only after the changelog
    entry is written does work begin on the next phase.
-5. **On a QA fail:** the phase stays unchecked. `erlangly-qa` notes the specific failure
+6. **On a QA fail:** the phase stays unchecked. `erlangly-qa` notes the specific failure
    inline in `ROADMAP.md` under the phase (as a `- ⚠️` line). Work loops back to step 2
    for that phase — do not proceed to the next phase with a known failure outstanding.
-6. **Repeat** until every phase in `ROADMAP.md` is checked off. At that point the project
+   (A QA failure means a build problem, not a planning problem — resume at step 3, not
+   step 2, unless the failure reveals the plan itself was wrong.)
+7. **Repeat** until every phase in `ROADMAP.md` is checked off. At that point the project
    matches the full scope in `FEATURES.md`; anything further comes from the "Future
    Developments" backlog at the bottom of `ROADMAP.md`, promoted into a new phase first.
 
 **When to stop and ask the user instead of continuing autonomously:**
 - Requirements in `FEATURES.md` are ambiguous or contradictory for the phase at hand
+- `erlangly-planner`'s grill step doesn't reach a clear confirmation after reasonable
+  back-and-forth — that means the plan itself is contested, not just a detail, and needs
+  the user's direct input rather than a default guess
 - A task can't be completed within the rules in `AGENTS.md` without breaking one of them
   (e.g. would require a second backend, would require the Supabase service role key)
 - `erlangly-qa` has failed the same phase twice in a row without a clear fix
