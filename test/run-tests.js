@@ -328,6 +328,99 @@ assert(emptyRes.forecast.length === 0 && emptyRes.metrics.mae === 0, 'Empty hist
 const singleRowRes = ErlanglyForecast.executeForecast([{ period: '2026-06-01', volume: 500 }], 'wma', {}, { horizon: 3 });
 assert(singleRowRes.forecast.length === 3, 'Single row history produces valid forecasts without throwing');
 
+// ============================================================
+// [12] Phase 8b — User-Defined Trend Profiles
+// ============================================================
+console.log('\n[12] Phase 8b — User-Defined Trend Profiles');
+
+// Trend profile registry exists
+assert(ErlanglyForecast.trendProfiles !== undefined, 'Trend profiles registry is exported');
+assert(Object.keys(ErlanglyForecast.trendProfiles).length >= 6, 'At least 6 trend profiles registered (found: ' + Object.keys(ErlanglyForecast.trendProfiles).length + ')');
+
+// getTrendProfileFactor function exists
+assert(typeof ErlanglyForecast.getTrendProfileFactor === 'function', 'getTrendProfileFactor is a function');
+
+// Profile 'none' always returns 1.0
+const noneF = ErlanglyForecast.getTrendProfileFactor('none', {}, '2026-06-05');
+assert(noneF === 1.0, 'Profile "none" returns 1.0 (got: ' + noneF + ')');
+
+// Billing cycle: day 5 (early month) should be > 1.0
+const billingEarly = ErlanglyForecast.getTrendProfileFactor('billing_cycle', {}, '2026-06-05');
+assert(billingEarly > 1.0, 'Billing cycle: day 5 factor > 1.0 (got: ' + billingEarly.toFixed(3) + ')');
+
+// Billing cycle: day 25 (late month) should be < 1.0
+const billingLate = ErlanglyForecast.getTrendProfileFactor('billing_cycle', {}, '2026-06-25');
+assert(billingLate < 1.0, 'Billing cycle: day 25 factor < 1.0 (got: ' + billingLate.toFixed(3) + ')');
+
+// Billing cycle: exact factor for days 1-7 at 100% intensity = 1.20
+assert(Math.abs(billingEarly - 1.20) < 0.001, 'Billing cycle: day 5 = 1.20 at 100% intensity (got: ' + billingEarly.toFixed(3) + ')');
+
+// Billing cycle: exact factor for days 24-31 at 100% intensity = 0.80
+assert(Math.abs(billingLate - 0.80) < 0.001, 'Billing cycle: day 25 = 0.80 at 100% intensity (got: ' + billingLate.toFixed(3) + ')');
+
+// Week-of-month: week 1 vs week 4
+const wom1 = ErlanglyForecast.getTrendProfileFactor('week_of_month', {}, '2026-06-03');
+const wom4 = ErlanglyForecast.getTrendProfileFactor('week_of_month', {}, '2026-06-28');
+assert(wom1 > wom4, 'Week-of-month: Week 1 factor (' + wom1.toFixed(2) + ') > Week 4 factor (' + wom4.toFixed(2) + ')');
+
+// Intensity at 0% should return 1.0 (no effect)
+const zeroIntensity = ErlanglyForecast.getTrendProfileFactor('billing_cycle', { intensity: 0 }, '2026-06-05');
+assert(zeroIntensity === 1.0, 'Intensity 0% returns exactly 1.0 (got: ' + zeroIntensity + ')');
+
+// Intensity at 50% should halve the deviation
+const halfIntensity = ErlanglyForecast.getTrendProfileFactor('billing_cycle', { intensity: 50 }, '2026-06-05');
+const expectedHalf = 1.0 + (0.20 * 0.5); // 1.10
+assert(Math.abs(halfIntensity - expectedHalf) < 0.001, 'Intensity 50%: +20% becomes +10% (expected ' + expectedHalf + ', got: ' + halfIntensity.toFixed(3) + ')');
+
+// Intensity at 200% should double the deviation
+const doubleIntensity = ErlanglyForecast.getTrendProfileFactor('billing_cycle', { intensity: 200 }, '2026-06-05');
+const expectedDouble = 1.0 + (0.20 * 2.0); // 1.40
+assert(Math.abs(doubleIntensity - expectedDouble) < 0.001, 'Intensity 200%: +20% becomes +40% (expected ' + expectedDouble + ', got: ' + doubleIntensity.toFixed(3) + ')');
+
+// Custom profile with user-defined ranges
+const customRanges = [
+  { startDay: 1, endDay: 15, factor: 1.30, label: 'High' },
+  { startDay: 16, endDay: 31, factor: 0.70, label: 'Low' }
+];
+const customHigh = ErlanglyForecast.getTrendProfileFactor('custom', { customRanges: customRanges }, '2026-06-10');
+assert(Math.abs(customHigh - 1.30) < 0.001, 'Custom profile: day 10 maps to factor 1.30 (got: ' + customHigh.toFixed(3) + ')');
+const customLow = ErlanglyForecast.getTrendProfileFactor('custom', { customRanges: customRanges }, '2026-06-20');
+assert(Math.abs(customLow - 0.70) < 0.001, 'Custom profile: day 20 maps to factor 0.70 (got: ' + customLow.toFixed(3) + ')');
+
+// Quarter-end: only applies in quarter-end months (3, 6, 9, 12)
+const qeJune = ErlanglyForecast.getTrendProfileFactor('quarter_end', {}, '2026-06-28');
+assert(qeJune > 1.0, 'Quarter-end: June 28 (quarter-end month) factor > 1.0 (got: ' + qeJune.toFixed(3) + ')');
+const qeJuly = ErlanglyForecast.getTrendProfileFactor('quarter_end', {}, '2026-07-28');
+assert(qeJuly === 1.0, 'Quarter-end: July 28 (non quarter-end month) factor = 1.0 (got: ' + qeJuly + ')');
+
+// Non-date string returns 1.0
+const nonDate = ErlanglyForecast.getTrendProfileFactor('billing_cycle', {}, 'Future 5');
+assert(nonDate === 1.0, 'Non-date string returns 1.0 (got: ' + nonDate + ')');
+
+// Pipeline integration: forecast with billing_cycle profile should differ from 'none'
+const histForTP = [
+  { period: '2026-05-25', volume: 2000 },
+  { period: '2026-05-26', volume: 1800 },
+  { period: '2026-05-27', volume: 1900 },
+  { period: '2026-05-28', volume: 1850 }
+];
+const noProfileRes = ErlanglyForecast.executeForecast(histForTP, 'sma', { windowSize: 4 }, { horizon: 8, trendProfile: 'none' });
+const withProfileRes = ErlanglyForecast.executeForecast(histForTP, 'sma', { windowSize: 4 }, { horizon: 8, trendProfile: 'billing_cycle' });
+
+// The forecast with profile should have different volumes
+let volumesDiffer = false;
+for (let i = 0; i < noProfileRes.forecast.length; i++) {
+  if (noProfileRes.forecast[i].volume !== withProfileRes.forecast[i].volume) {
+    volumesDiffer = true;
+    break;
+  }
+}
+assert(volumesDiffer, 'Pipeline: billing_cycle profile produces different volumes than no profile');
+
+// trendProfileFactor should be present in result
+assert(withProfileRes.forecast[0].trendProfileFactor !== undefined, 'Pipeline: trendProfileFactor is present in forecast results');
+assert(withProfileRes.forecast[0].trendProfileFactor !== 1.0, 'Pipeline: trendProfileFactor is not 1.0 when profile is active');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');

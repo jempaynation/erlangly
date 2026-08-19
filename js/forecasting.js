@@ -854,7 +854,167 @@
   });
 
   // =========================================================================
-  // 3. COMPLETE TIME SERIES FORECASTING PIPELINE
+  // 3. USER-DEFINED TREND PROFILES
+  // =========================================================================
+
+  /**
+   * Preset trend profile definitions.
+   * Each profile specifies a set of day-of-month ranges and their multiplicative
+   * scaling factors. These let the user impose known business-specific cyclical
+   * patterns (billing cycle, pay cycle, etc.) on top of any model's base forecast.
+   */
+  var TREND_PROFILES = {
+    none: {
+      id: 'none',
+      name: 'No Trend Profile',
+      description: 'No additional cyclical adjustment — forecast uses model output only.',
+      ranges: []
+    },
+    billing_cycle: {
+      id: 'billing_cycle',
+      name: 'Monthly Billing Cycle',
+      description: 'High volume in the first two weeks (bills arrive), tapering in the second half.',
+      ranges: [
+        { startDay: 1, endDay: 7, factor: 1.20, label: 'Days 1–7' },
+        { startDay: 8, endDay: 15, factor: 1.10, label: 'Days 8–15' },
+        { startDay: 16, endDay: 23, factor: 0.90, label: 'Days 16–23' },
+        { startDay: 24, endDay: 31, factor: 0.80, label: 'Days 24–31' }
+      ]
+    },
+    week_of_month: {
+      id: 'week_of_month',
+      name: 'Week-of-Month Pattern',
+      description: 'Gradual decline through each month — Week 1 highest, Week 4 lowest.',
+      ranges: [
+        { startDay: 1, endDay: 7, factor: 1.15, label: 'Week 1' },
+        { startDay: 8, endDay: 14, factor: 1.05, label: 'Week 2' },
+        { startDay: 15, endDay: 21, factor: 0.95, label: 'Week 3' },
+        { startDay: 22, endDay: 31, factor: 0.85, label: 'Week 4+' }
+      ]
+    },
+    biweekly_pay: {
+      id: 'biweekly_pay',
+      name: 'Biweekly Payroll Cycle',
+      description: 'Spikes around the 1st and 15th of each month (common payroll dates).',
+      ranges: [
+        { startDay: 1, endDay: 3, factor: 1.25, label: 'Payday 1st' },
+        { startDay: 4, endDay: 7, factor: 1.05, label: 'Post-pay 1st' },
+        { startDay: 8, endDay: 12, factor: 0.90, label: 'Mid-cycle low' },
+        { startDay: 13, endDay: 17, factor: 1.25, label: 'Payday 15th' },
+        { startDay: 18, endDay: 21, factor: 1.05, label: 'Post-pay 15th' },
+        { startDay: 22, endDay: 31, factor: 0.85, label: 'End-of-month low' }
+      ]
+    },
+    quarter_end: {
+      id: 'quarter_end',
+      name: 'Quarter-End Surge',
+      description: 'Volume surges in the last week of each quarter (Mar, Jun, Sep, Dec).',
+      ranges: [
+        { startDay: 1, endDay: 24, factor: 1.00, label: 'Normal days' },
+        { startDay: 25, endDay: 31, factor: 1.25, label: 'Quarter-end surge' }
+      ],
+      quarterOnly: true  // flag: only apply the surge factor in quarter-end months
+    },
+    custom: {
+      id: 'custom',
+      name: 'Custom Period Scaling',
+      description: 'Define your own day-of-month ranges and scaling factors.',
+      ranges: [
+        { startDay: 1, endDay: 10, factor: 1.15, label: 'Early month' },
+        { startDay: 11, endDay: 20, factor: 1.00, label: 'Mid month' },
+        { startDay: 21, endDay: 31, factor: 0.85, label: 'Late month' }
+      ]
+    }
+  };
+
+  /**
+   * Extract the day-of-month (1–31) and month (1–12) from a date string.
+   * Returns null if the string is not a valid date.
+   */
+  function extractDateParts(dateString) {
+    if (!dateString || typeof dateString !== 'string') return null;
+    // Try ErlanglyUtils.parseDate first
+    if (ErlanglyUtils && ErlanglyUtils.parseDate) {
+      var info = ErlanglyUtils.parseDate(dateString);
+      if (info) {
+        var d = new Date(info.timestamp);
+        return { day: d.getUTCDate(), month: d.getUTCMonth() + 1, year: d.getUTCFullYear() };
+      }
+    }
+    // Manual ISO parse fallback
+    var parts = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (parts) {
+      return { day: parseInt(parts[3], 10), month: parseInt(parts[2], 10), year: parseInt(parts[1], 10) };
+    }
+    return null;
+  }
+
+  /**
+   * Determine the trend profile multiplicative factor for a given date.
+   *
+   * @param {string} profileId - Profile key (e.g. 'billing_cycle', 'custom', 'none')
+   * @param {Object} profileParams - { customRanges?: Array, intensity?: number (0–200) }
+   * @param {string} dateString - ISO date string (e.g. '2026-06-15')
+   * @returns {number} Multiplicative factor (e.g. 1.20 for +20%, 0.80 for −20%). Returns 1.0 if profile is 'none' or date can't be parsed.
+   */
+  function getTrendProfileFactor(profileId, profileParams, dateString) {
+    if (!profileId || profileId === 'none') return 1.0;
+
+    var profile = TREND_PROFILES[profileId];
+    if (!profile) return 1.0;
+
+    var dateParts = extractDateParts(dateString);
+    if (!dateParts) return 1.0;
+
+    var dayOfMonth = dateParts.day;
+    var month = dateParts.month;
+    var params = profileParams || {};
+    var intensity = params.intensity !== undefined ? parseFloat(params.intensity) : 100;
+    // Clamp intensity to 0–200
+    intensity = Math.max(0, Math.min(200, intensity));
+    var intensityMult = intensity / 100;
+
+    // Choose the ranges: custom user-defined or preset
+    var ranges;
+    if (profileId === 'custom' && params.customRanges && params.customRanges.length > 0) {
+      ranges = params.customRanges;
+    } else {
+      ranges = profile.ranges;
+    }
+
+    if (!ranges || ranges.length === 0) return 1.0;
+
+    // Quarter-end special logic: only apply surge in quarter-end months (3, 6, 9, 12)
+    if (profile.quarterOnly) {
+      var isQuarterEnd = (month === 3 || month === 6 || month === 9 || month === 12);
+      if (!isQuarterEnd) return 1.0;
+    }
+
+    // Find the matching range for this day of month
+    var rawFactor = 1.0;
+    for (var i = 0; i < ranges.length; i++) {
+      var r = ranges[i];
+      var start = parseInt(r.startDay, 10) || 1;
+      var end = parseInt(r.endDay, 10) || 31;
+      var factor = parseFloat(r.factor);
+      if (isNaN(factor)) factor = 1.0;
+
+      if (dayOfMonth >= start && dayOfMonth <= end) {
+        rawFactor = factor;
+        break;
+      }
+    }
+
+    // Apply intensity scaling: deviation from 1.0 is scaled by intensity
+    // At intensity 100%: factor is used as-is
+    // At intensity 50%: +20% becomes +10%, -20% becomes -10%
+    // At intensity 0%: no effect (returns 1.0)
+    var deviation = rawFactor - 1.0;
+    return 1.0 + (deviation * intensityMult);
+  }
+
+  // =========================================================================
+  // 4. COMPLETE TIME SERIES FORECASTING PIPELINE
   // =========================================================================
 
   /**
@@ -933,13 +1093,22 @@
       }
 
       var growthMult = 1.0 + growthModifier;
-      var finalVolume = Math.max(0, Math.round(rawVol * growthMult * holidayFactor));
+
+      // Compute trend profile factor from user-defined profile
+      var tpFactor = getTrendProfileFactor(
+        options.trendProfile || 'none',
+        options.trendProfileParams || {},
+        periodName
+      );
+
+      var finalVolume = Math.max(0, Math.round(rawVol * tpFactor * growthMult * holidayFactor));
 
       forecastResults.push({
         period: periodName,
         baseVolume: pred.baseVolume !== undefined ? pred.baseVolume : rawVol,
         trendFactor: trendFactor,
         seasonalityIndex: seasonIdx,
+        trendProfileFactor: tpFactor,
         holidayFactor: holidayFactor,
         holidayName: holidayName,
         volume: finalVolume
@@ -1010,6 +1179,15 @@
       autoOptimize: false,
       includeDummies: true
     },
+    trendProfile: 'none',
+    trendProfileParams: {
+      intensity: 100,
+      customRanges: [
+        { startDay: 1, endDay: 10, factor: 1.15, label: 'Early month' },
+        { startDay: 11, endDay: 20, factor: 1.00, label: 'Mid month' },
+        { startDay: 21, endDay: 31, factor: 0.85, label: 'Late month' }
+      ]
+    },
     horizon: 8,
     growthModifier: 0.0,
     assumedAht: 180,
@@ -1024,6 +1202,7 @@
     setupTabSwitching();
     setupModelSelector();
     setupEventListeners();
+    renderTrendProfileUI();
     initWebWorker();
     handleIncomingHandoff();
   }
@@ -1039,9 +1218,12 @@
       if (shared.horizon) UIState.horizon = shared.horizon;
       if (shared.growthModifier !== undefined) UIState.growthModifier = shared.growthModifier;
       if (shared.assumedAht) UIState.assumedAht = shared.assumedAht;
+      if (shared.trendProfile) UIState.trendProfile = shared.trendProfile;
+      if (shared.trendProfileParams) UIState.trendProfileParams = shared.trendProfileParams;
       loadHistory(UIState.history);
       renderHolidaysTable();
       updateModelParamsUI();
+      renderTrendProfileUI();
       ErlanglyUtils.showToast('Restored shared forecast plan', 'info');
       return;
     }
@@ -1058,9 +1240,12 @@
         if (saved.horizon) UIState.horizon = saved.horizon;
         if (saved.growthModifier !== undefined) UIState.growthModifier = saved.growthModifier;
         if (saved.assumedAht) UIState.assumedAht = saved.assumedAht;
+        if (saved.trendProfile) UIState.trendProfile = saved.trendProfile;
+        if (saved.trendProfileParams) UIState.trendProfileParams = saved.trendProfileParams;
         loadHistory(UIState.history);
         renderHolidaysTable();
         updateModelParamsUI();
+        renderTrendProfileUI();
         ErlanglyUtils.showToast('Loaded plan from My Plans dashboard', 'success');
         return;
       }
@@ -1070,6 +1255,169 @@
     UIState.holidays = SAMPLE_HOLIDAYS.slice();
     renderHolidaysTable();
     loadHistory(SAMPLE_HISTORY);
+  }
+
+  /**
+   * Render the Trend Profile UI: dropdown selector, visual bar preview,
+   * intensity slider, and custom editable range table.
+   */
+  function renderTrendProfileUI() {
+    var container = document.getElementById('trend-profile-container');
+    if (!container) return;
+
+    var profile = TREND_PROFILES[UIState.trendProfile] || TREND_PROFILES['none'];
+    var params = UIState.trendProfileParams || {};
+    var intensity = params.intensity !== undefined ? params.intensity : 100;
+
+    // Use custom ranges if profile is custom and user has defined them
+    var displayRanges = (UIState.trendProfile === 'custom' && params.customRanges && params.customRanges.length > 0)
+      ? params.customRanges
+      : profile.ranges;
+
+    var html = '';
+
+    // Profile selector dropdown
+    html += '<div class="form-group">';
+    html += '<label for="select-trend-profile" class="form-label">Trend Profile</label>';
+    html += '<select id="select-trend-profile" class="form-control mono">';
+    Object.keys(TREND_PROFILES).forEach(function(key) {
+      var p = TREND_PROFILES[key];
+      html += '<option value="' + key + '"' + (key === UIState.trendProfile ? ' selected' : '') + '>' + p.name + '</option>';
+    });
+    html += '</select>';
+    html += '<span class="form-hint" style="margin-top: var(--space-1); display: block; color: var(--text-secondary);">' + profile.description + '</span>';
+    html += '</div>';
+
+    // Visual bar preview (only if profile has ranges)
+    if (displayRanges && displayRanges.length > 0 && UIState.trendProfile !== 'none') {
+      html += '<div style="margin-bottom: var(--space-3);">';
+      html += '<span class="form-label" style="font-size: var(--text-xs); margin-bottom: var(--space-1); display: block;">Profile Preview:</span>';
+      displayRanges.forEach(function(r) {
+        var deviation = r.factor - 1.0;
+        var scaledDev = deviation * (intensity / 100);
+        var displayPct = (scaledDev >= 0 ? '+' : '') + (scaledDev * 100).toFixed(0) + '%';
+        var barWidth = Math.min(100, Math.max(10, 50 + scaledDev * 200));
+        var barColor = scaledDev > 0.05 ? 'var(--accent)' : (scaledDev < -0.05 ? 'var(--warn)' : 'var(--text-muted)');
+
+        html += '<div style="display: flex; align-items: center; gap: var(--space-2); margin-bottom: 3px; font-size: var(--text-xs); font-family: var(--mono);">';
+        html += '<span style="width: 90px; color: var(--text-secondary); flex-shrink: 0;">' + (r.label || ('Day ' + r.startDay + '–' + r.endDay)) + '</span>';
+        html += '<div style="flex: 1; height: 14px; background: var(--bg-input); border-radius: var(--radius-sm); overflow: hidden; position: relative;">';
+        html += '<div style="width: ' + barWidth + '%; height: 100%; background: ' + barColor + '; border-radius: var(--radius-sm); opacity: 0.7; transition: width 200ms;"></div>';
+        html += '</div>';
+        html += '<span style="width: 42px; text-align: right; color: ' + barColor + '; font-weight: 600;">' + displayPct + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+
+      // Intensity slider
+      html += '<div class="form-group">';
+      html += '<div class="form-label"><span>Profile Intensity</span><span class="form-label-val" id="lbl-trend-intensity">' + intensity + '%</span></div>';
+      html += '<input type="range" id="range-trend-intensity" min="0" max="200" step="5" value="' + intensity + '">';
+      html += '<span class="form-hint">0% = no effect, 100% = as defined, 200% = double effect</span>';
+      html += '</div>';
+    }
+
+    // Custom editable range table
+    if (UIState.trendProfile === 'custom') {
+      var customRanges = params.customRanges || TREND_PROFILES.custom.ranges;
+      html += '<div style="margin-top: var(--space-2);">';
+      html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-1);">';
+      html += '<span class="form-label" style="font-size: var(--text-xs); margin: 0;">Custom Day-of-Month Ranges:</span>';
+      html += '<button id="btn-add-custom-range" class="btn btn-ghost btn-sm" style="font-size: 11px;">+ Add Range</button>';
+      html += '</div>';
+      html += '<div class="table-container" style="max-height: 180px; overflow-y: auto;">';
+      html += '<table class="data-table">';
+      html += '<thead><tr><th>Start Day</th><th>End Day</th><th>Factor</th><th>Label</th><th style="width:30px;"></th></tr></thead>';
+      html += '<tbody id="tbody-custom-ranges">';
+      customRanges.forEach(function(r, idx) {
+        html += '<tr>';
+        html += '<td><input type="number" class="form-control mono" style="height:26px; font-size:var(--text-xs);" min="1" max="31" value="' + r.startDay + '" data-custom-range-field="startDay" data-custom-range-idx="' + idx + '"></td>';
+        html += '<td><input type="number" class="form-control mono" style="height:26px; font-size:var(--text-xs);" min="1" max="31" value="' + r.endDay + '" data-custom-range-field="endDay" data-custom-range-idx="' + idx + '"></td>';
+        html += '<td><input type="number" class="form-control mono" style="height:26px; font-size:var(--text-xs);" min="0.01" max="3.0" step="0.05" value="' + r.factor + '" data-custom-range-field="factor" data-custom-range-idx="' + idx + '"></td>';
+        html += '<td><input type="text" class="form-control" style="height:26px; font-size:var(--text-xs);" value="' + (r.label || '') + '" data-custom-range-field="label" data-custom-range-idx="' + idx + '"></td>';
+        html += '<td><button class="btn btn-ghost btn-sm" style="padding:0 4px; color:var(--danger); font-size:11px;" data-delete-custom-range="' + idx + '">✕</button></td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table></div></div>';
+    }
+
+    container.innerHTML = html;
+
+    // Wire event listeners
+    var selectProfile = document.getElementById('select-trend-profile');
+    if (selectProfile) {
+      selectProfile.addEventListener('change', function() {
+        UIState.trendProfile = selectProfile.value;
+        renderTrendProfileUI();
+        runForecast();
+      });
+    }
+
+    var rangeIntensity = document.getElementById('range-trend-intensity');
+    var lblIntensity = document.getElementById('lbl-trend-intensity');
+    if (rangeIntensity) {
+      rangeIntensity.addEventListener('input', function() {
+        UIState.trendProfileParams.intensity = parseInt(rangeIntensity.value, 10);
+        if (lblIntensity) lblIntensity.textContent = rangeIntensity.value + '%';
+        renderTrendProfileUI();
+        runForecast();
+      });
+    }
+
+    // Custom range table inputs
+    if (UIState.trendProfile === 'custom') {
+      var rangeInputs = container.querySelectorAll('[data-custom-range-field]');
+      rangeInputs.forEach(function(inp) {
+        inp.addEventListener('change', function() {
+          var idx = parseInt(inp.getAttribute('data-custom-range-idx'), 10);
+          var field = inp.getAttribute('data-custom-range-field');
+          if (!UIState.trendProfileParams.customRanges) {
+            UIState.trendProfileParams.customRanges = TREND_PROFILES.custom.ranges.slice();
+          }
+          if (UIState.trendProfileParams.customRanges[idx]) {
+            if (field === 'factor') {
+              UIState.trendProfileParams.customRanges[idx][field] = parseFloat(inp.value) || 1.0;
+            } else if (field === 'startDay' || field === 'endDay') {
+              UIState.trendProfileParams.customRanges[idx][field] = Math.max(1, Math.min(31, parseInt(inp.value, 10) || 1));
+            } else {
+              UIState.trendProfileParams.customRanges[idx][field] = inp.value;
+            }
+            renderTrendProfileUI();
+            runForecast();
+          }
+        });
+      });
+
+      // Delete custom range buttons
+      var delBtns = container.querySelectorAll('[data-delete-custom-range]');
+      delBtns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          var idx = parseInt(btn.getAttribute('data-delete-custom-range'), 10);
+          if (UIState.trendProfileParams.customRanges && UIState.trendProfileParams.customRanges.length > 1) {
+            UIState.trendProfileParams.customRanges.splice(idx, 1);
+            renderTrendProfileUI();
+            runForecast();
+          }
+        });
+      });
+
+      // Add custom range button
+      var btnAddRange = document.getElementById('btn-add-custom-range');
+      if (btnAddRange) {
+        btnAddRange.addEventListener('click', function() {
+          if (!UIState.trendProfileParams.customRanges) {
+            UIState.trendProfileParams.customRanges = TREND_PROFILES.custom.ranges.slice();
+          }
+          var lastRange = UIState.trendProfileParams.customRanges[UIState.trendProfileParams.customRanges.length - 1];
+          var nextStart = lastRange ? Math.min(31, lastRange.endDay + 1) : 1;
+          UIState.trendProfileParams.customRanges.push({
+            startDay: nextStart, endDay: 31, factor: 1.00, label: 'New range'
+          });
+          renderTrendProfileUI();
+          runForecast();
+        });
+      }
+    }
   }
 
   function setupTabSwitching() {
@@ -1420,7 +1768,7 @@
     if (btnExportCSV) {
       btnExportCSV.addEventListener('click', function() {
         if (!UIState.lastForecast || UIState.lastForecast.forecast.length === 0) return;
-        var headers = ['Future_Period', 'Algorithm', 'Base_Model_Volume', 'Trend_Factor', 'Seasonality_Index', 'Holiday_Factor', 'Holiday_Name', 'Projected_Volume', 'Assumed_AHT_Sec', 'Est_Erlangs'];
+        var headers = ['Future_Period', 'Algorithm', 'Base_Model_Volume', 'Trend_Factor', 'Seasonality_Index', 'Trend_Profile_Factor', 'Holiday_Factor', 'Holiday_Name', 'Projected_Volume', 'Assumed_AHT_Sec', 'Est_Erlangs'];
         var rows = UIState.lastForecast.forecast.map(function(r) {
           var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, UIState.assumedAht, 3600 * 8) : (r.volume * UIState.assumedAht / 28800);
           return [
@@ -1429,6 +1777,7 @@
             Math.round(r.baseVolume),
             r.trendFactor.toFixed(3),
             r.seasonalityIndex.toFixed(3),
+            (r.trendProfileFactor || 1.0).toFixed(3),
             r.holidayFactor.toFixed(2),
             r.holidayName || 'None',
             Math.round(r.volume),
@@ -1470,6 +1819,8 @@
             holidays: UIState.holidays,
             modelId: UIState.modelId,
             modelParams: UIState.modelParams,
+            trendProfile: UIState.trendProfile,
+            trendProfileParams: UIState.trendProfileParams,
             horizon: UIState.horizon,
             growthModifier: UIState.growthModifier,
             assumedAht: UIState.assumedAht
@@ -1494,6 +1845,8 @@
             holidays: UIState.holidays,
             modelId: UIState.modelId,
             modelParams: UIState.modelParams,
+            trendProfile: UIState.trendProfile,
+            trendProfileParams: UIState.trendProfileParams,
             horizon: UIState.horizon,
             growthModifier: UIState.growthModifier,
             assumedAht: UIState.assumedAht
@@ -1776,7 +2129,9 @@
       horizon: UIState.horizon,
       growthModifier: UIState.growthModifier,
       assumedAht: UIState.assumedAht,
-      holidays: UIState.holidays
+      holidays: UIState.holidays,
+      trendProfile: UIState.trendProfile,
+      trendProfileParams: UIState.trendProfileParams
     };
 
     // 1. Run main active forecast
@@ -1883,11 +2238,17 @@
         eventBadge = ' <span class="badge badge-warn" style="margin-left: 4px; font-size: 10px;">🎉 ' + r.holidayName + '</span>';
       }
 
+      var tpf = r.trendProfileFactor || 1.0;
+      var tpfPct = ((tpf - 1.0) * 100);
+      var tpfDisplay = (tpf === 1.0) ? '—' : ((tpfPct >= 0 ? '+' : '') + tpfPct.toFixed(0) + '%');
+      var tpfClass = tpf > 1.05 ? 'text-accent' : (tpf < 0.95 ? 'text-warn' : '');
+
       tr.innerHTML = 
         '<td class="mono"><strong>' + r.period + '</strong>' + eventBadge + '</td>' +
         '<td class="mono">' + Math.round(r.baseVolume).toLocaleString() + '</td>' +
         '<td class="mono">' + r.trendFactor.toFixed(2) + 'x</td>' +
         '<td class="mono ' + (r.seasonalityIndex > 1.1 ? 'text-accent' : (r.seasonalityIndex < 0.9 ? 'text-muted' : '')) + '">' + (r.seasonalityIndex * 100).toFixed(0) + '%</td>' +
+        '<td class="mono ' + tpfClass + '">' + tpfDisplay + '</td>' +
         '<td class="mono text-accent"><strong>' + Math.round(r.volume).toLocaleString() + '</strong></td>' +
         '<td class="mono">' + erlangs.toFixed(2) + '</td>';
 
@@ -2090,7 +2451,7 @@
       if (el) el.textContent = '--';
     });
     var tbody = document.getElementById('tbody-forecast-results');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No forecast calculated.</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No forecast calculated.</td></tr>';
     if (UIState.chart) {
       UIState.chart.data.labels = [];
       UIState.chart.data.datasets = [];
@@ -2110,11 +2471,14 @@
   // Export module for testing and programmatic execution
   return {
     models: MODEL_REGISTRY,
+    trendProfiles: TREND_PROFILES,
     registerModel: registerModel,
     linearRegression: linearRegression,
     solveLinearSystem: solveLinearSystem,
     calculateFitMetrics: calculateFitMetrics,
     preprocessHistory: preprocessHistory,
+    getTrendProfileFactor: getTrendProfileFactor,
+    extractDateParts: extractDateParts,
     executeForecast: executeForecast,
     SAMPLE_HISTORY: SAMPLE_HISTORY,
     SAMPLE_HOLIDAYS: SAMPLE_HOLIDAYS
