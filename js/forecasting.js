@@ -1716,20 +1716,48 @@
     backtestHoldout: 7,
     lastBacktestResults: [],
     
-    // Accuracy tracking state (Phase 12)
+    // Accuracy tracking state (Phase 12 / Enhancement)
     accuracyPairs: [],
     accuracyRunsHistory: [],
     lastAccuracyMetrics: null,
+    lockedForecast: null,
 
     chart: null,
     worker: null
   };
+
+  function renderLockedForecastUI() {
+    var btnLock = document.getElementById('btn-lock-forecast');
+    var statusDiv = document.getElementById('locked-forecast-status');
+    if (!statusDiv) return;
+
+    if (UIState.lockedForecast) {
+      if (btnLock) {
+        btnLock.textContent = '🔒 Re-lock';
+        btnLock.className = 'btn btn-primary btn-sm';
+      }
+      var dateStr = '';
+      try {
+        dateStr = new Date(UIState.lockedForecast.timestamp).toLocaleDateString();
+      } catch (e) {
+        dateStr = 'Saved';
+      }
+      statusDiv.innerHTML = '<span class="text-accent" style="font-weight: 600;">🔒 Pinned Baseline: ' + (UIState.lockedForecast.modelName || 'Forecast') + '</span> (' + (UIState.lockedForecast.periodCount || (UIState.lockedForecast.forecast ? UIState.lockedForecast.forecast.length : 0)) + ' periods, ' + dateStr + ')';
+    } else {
+      if (btnLock) {
+        btnLock.textContent = '📌 Lock Forecast';
+        btnLock.className = 'btn btn-secondary btn-sm';
+      }
+      statusDiv.innerHTML = '<span class="text-warn">● Active forecast mutable</span> — Lock to pin baseline for monthly actuals.';
+    }
+  }
 
   function initUI() {
     setupTabSwitching();
     setupModelSelector();
     setupEventListeners();
     renderTrendProfileUI();
+    renderLockedForecastUI();
     initWebWorker();
     handleIncomingHandoff();
   }
@@ -1749,9 +1777,11 @@
       if (shared.trendProfileParams) UIState.trendProfileParams = shared.trendProfileParams;
       if (shared.accuracyPairs) UIState.accuracyPairs = shared.accuracyPairs;
       if (shared.accuracyRunsHistory) UIState.accuracyRunsHistory = shared.accuracyRunsHistory;
+      if (shared.lockedForecast) UIState.lockedForecast = shared.lockedForecast;
       loadHistory(UIState.history);
       renderHolidaysTable();
       renderAccuracyTable();
+      renderLockedForecastUI();
       updateModelParamsUI();
       renderTrendProfileUI();
       ErlanglyUtils.showToast('Restored shared forecast plan', 'info');
@@ -1774,9 +1804,11 @@
         if (saved.trendProfileParams) UIState.trendProfileParams = saved.trendProfileParams;
         if (saved.accuracyPairs) UIState.accuracyPairs = saved.accuracyPairs;
         if (saved.accuracyRunsHistory) UIState.accuracyRunsHistory = saved.accuracyRunsHistory;
+        if (saved.lockedForecast) UIState.lockedForecast = saved.lockedForecast;
         loadHistory(UIState.history);
         renderHolidaysTable();
         renderAccuracyTable();
+        renderLockedForecastUI();
         updateModelParamsUI();
         renderTrendProfileUI();
         ErlanglyUtils.showToast('Loaded plan from My Plans dashboard', 'success');
@@ -1789,6 +1821,7 @@
     UIState.accuracyPairs = SAMPLE_ACCURACY_DATA.slice();
     renderHolidaysTable();
     renderAccuracyTable();
+    renderLockedForecastUI();
     loadHistory(SAMPLE_HISTORY);
   }
 
@@ -2267,7 +2300,11 @@
     var btnAddHoliday = document.getElementById('btn-add-holiday');
     var btnClearHolidays = document.getElementById('btn-clear-holidays');
 
-    // Accuracy Tracking Listeners (Phase 12)
+    // Accuracy Tracking Listeners (Phase 12 / Enhancement)
+    var btnLockForecast = document.getElementById('btn-lock-forecast');
+    var btnMergeActualsHistory = document.getElementById('btn-merge-actuals-history');
+    var accuracyDropzone = document.getElementById('accuracy-dropzone');
+    var accuracyFileInput = document.getElementById('accuracy-file-input');
     var btnLoadSampleAccuracy = document.getElementById('btn-load-sample-accuracy');
     var btnClearAccuracy = document.getElementById('btn-clear-accuracy');
     var btnAddAccuracyRow = document.getElementById('btn-add-accuracy-row');
@@ -2298,23 +2335,20 @@
     if (btnClearHistory) {
       btnClearHistory.addEventListener('click', function() {
         loadHistory([]);
-        ErlanglyUtils.showToast('Cleared historical volume series', 'info');
+        ErlanglyUtils.showToast('Cleared historical series', 'info');
       });
     }
 
     if (btnAddRow) {
       btnAddRow.addEventListener('click', function() {
         var nextIdx = UIState.history.length + 1;
-        var lastItem = UIState.history[UIState.history.length - 1];
+        var last = UIState.history[UIState.history.length - 1];
         var nextPeriod = 'Period ' + nextIdx;
-        if (lastItem && lastItem.period && ErlanglyUtils && ErlanglyUtils.parseDate) {
-          var lastInfo = ErlanglyUtils.parseDate(lastItem.period);
-          if (lastInfo) {
-            var nextDate = ErlanglyUtils.addDays(lastInfo, 1);
-            if (nextDate) nextPeriod = nextDate.isoDate;
-          }
+        if (last && ErlanglyUtils.parseDate(last.period)) {
+          var nextDate = ErlanglyUtils.addDays(last.period, 1);
+          if (nextDate) nextPeriod = nextDate.isoDate;
         }
-        UIState.history.push({ period: nextPeriod, volume: 1500, aht: 180 });
+        UIState.history.push({ period: nextPeriod, volume: 1500, aht: UIState.assumedAht });
         renderHistoryTable();
         runForecast();
       });
@@ -2373,15 +2407,19 @@
     // Holiday events management
     if (btnAddHoliday) {
       btnAddHoliday.addEventListener('click', function() {
-        var defaultDate = '2026-06-01';
+        var nextDate = new Date().toISOString().split('T')[0];
         if (UIState.history.length > 0) {
           var last = UIState.history[UIState.history.length - 1];
-          if (last.period) defaultDate = last.period;
+          if (ErlanglyUtils.parseDate(last.period)) {
+            var nd = ErlanglyUtils.addDays(last.period, 5);
+            if (nd) nextDate = nd.isoDate;
+          }
         }
         UIState.holidays.push({
-          date: defaultDate,
-          name: 'Special Event',
-          impactPct: 25,
+          id: 'ev_' + Date.now(),
+          date: nextDate,
+          label: 'Special Event',
+          factor: 1.5,
           action: 'scale'
         });
         renderHolidaysTable();
@@ -2395,6 +2433,116 @@
         renderHolidaysTable();
         runForecast();
         ErlanglyUtils.showToast('Cleared all holiday and event flags', 'info');
+      });
+    }
+
+    // Lock Baseline Forecast Snapshot
+    if (btnLockForecast) {
+      btnLockForecast.addEventListener('click', function() {
+        if (!UIState.lastForecast || !UIState.lastForecast.forecast || UIState.lastForecast.forecast.length === 0) {
+          ErlanglyUtils.showToast('Generate a forecast first to lock as baseline', 'warn');
+          return;
+        }
+        UIState.lockedForecast = {
+          timestamp: new Date().toISOString(),
+          modelName: UIState.lastForecast.modelName,
+          modelId: UIState.modelId,
+          periodCount: UIState.lastForecast.forecast.length,
+          forecast: JSON.parse(JSON.stringify(UIState.lastForecast.forecast))
+        };
+        renderLockedForecastUI();
+        ErlanglyUtils.showToast('Pinned ' + UIState.lockedForecast.periodCount + ' forecast periods as official baseline', 'success');
+      });
+    }
+
+    // Actuals CSV File Dropzone
+    if (accuracyDropzone && accuracyFileInput) {
+      ErlanglyUtils.wireFileDrop(accuracyDropzone, accuracyFileInput, function(text, file) {
+        var parsed = ErlanglyUtils.parseCSV(text);
+        if (!parsed.rows || parsed.rows.length === 0) {
+          ErlanglyUtils.showToast('No valid data rows found in CSV', 'warn');
+          return;
+        }
+
+        var baselineForecast = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : []);
+        var forecastMap = {};
+        baselineForecast.forEach(function(f) {
+          if (f.period) forecastMap[f.period.trim().toLowerCase()] = f.volume;
+        });
+
+        var pairs = [];
+        var matchedCount = 0;
+
+        parsed.rows.forEach(function(r, idx) {
+          var p = (r.period || r.date || r.interval || r.day || ('Period ' + (idx + 1))).trim();
+          var act = parseFloat(r.actual || r.actual_volume || r.actuals || r.volume || r.calls || 0) || 0;
+          var key = p.toLowerCase();
+          var fc = forecastMap[key] !== undefined ? forecastMap[key] : (r.forecast ? parseFloat(r.forecast) : 0);
+          if (forecastMap[key] !== undefined) matchedCount++;
+
+          pairs.push({
+            period: p,
+            forecast: fc,
+            actual: act
+          });
+        });
+
+        if (pairs.length > 0) {
+          UIState.accuracyPairs = pairs;
+          renderAccuracyTable();
+          renderAccuracyDashboard();
+          var matchMsg = matchedCount > 0 ? (' (' + matchedCount + ' auto-matched to forecast)') : '';
+          ErlanglyUtils.showToast('Uploaded ' + pairs.length + ' actuals from ' + (file ? file.name : 'CSV') + matchMsg, 'success');
+        }
+      });
+    }
+
+    // Merge Actuals into Historical Training Series
+    if (btnMergeActualsHistory) {
+      btnMergeActualsHistory.addEventListener('click', function() {
+        var validActuals = UIState.accuracyPairs.filter(function(p) { return p.actual > 0; });
+        if (validActuals.length === 0) {
+          ErlanglyUtils.showToast('No actual volume records to merge into history', 'warn');
+          return;
+        }
+
+        var historyMap = {};
+        UIState.history.forEach(function(h) {
+          historyMap[h.period.trim().toLowerCase()] = h;
+        });
+
+        var updatedCount = 0;
+        var appendedCount = 0;
+
+        validActuals.forEach(function(pair) {
+          var key = pair.period.trim().toLowerCase();
+          if (historyMap[key]) {
+            historyMap[key].volume = pair.actual;
+            updatedCount++;
+          } else {
+            var newEntry = {
+              period: pair.period.trim(),
+              volume: pair.actual,
+              aht: UIState.assumedAht
+            };
+            UIState.history.push(newEntry);
+            historyMap[key] = newEntry;
+            appendedCount++;
+          }
+        });
+
+        // Chronological sort if dates are valid
+        UIState.history.sort(function(a, b) {
+          var dA = ErlanglyUtils.parseDate(a.period);
+          var dB = ErlanglyUtils.parseDate(b.period);
+          var tA = dA ? (dA.timestamp || (typeof dA.getTime === 'function' ? dA.getTime() : 0)) : 0;
+          var tB = dB ? (dB.timestamp || (typeof dB.getTime === 'function' ? dB.getTime() : 0)) : 0;
+          if (tA && tB) return tA - tB;
+          return 0;
+        });
+
+        loadHistory(UIState.history);
+        ErlanglyUtils.showToast('Merged ' + validActuals.length + ' actuals (' + appendedCount + ' new, ' + updatedCount + ' updated) into history and re-forecasted!', 'success');
       });
     }
 
@@ -2434,11 +2582,12 @@
 
     if (btnPullFromForecast) {
       btnPullFromForecast.addEventListener('click', function() {
-        if (!UIState.lastForecast || !UIState.lastForecast.forecast || UIState.lastForecast.forecast.length === 0) {
-          ErlanglyUtils.showToast('Run a forecast first to populate forecast periods', 'warn');
+        var source = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : null);
+        if (!source || source.length === 0) {
+          ErlanglyUtils.showToast('Generate or lock a forecast first to populate periods', 'warn');
           return;
         }
-        UIState.accuracyPairs = UIState.lastForecast.forecast.map(function(f) {
+        UIState.accuracyPairs = source.map(function(f) {
           return {
             period: f.period,
             forecast: f.volume,
@@ -2447,7 +2596,8 @@
         });
         renderAccuracyTable();
         renderAccuracyDashboard();
-        ErlanglyUtils.showToast('Populated ' + UIState.accuracyPairs.length + ' periods from current forecast plan', 'success');
+        var label = UIState.lockedForecast ? 'locked baseline forecast' : 'active forecast plan';
+        ErlanglyUtils.showToast('Populated ' + UIState.accuracyPairs.length + ' periods from ' + label, 'success');
       });
     }
 
@@ -2461,7 +2611,7 @@
         var runRecord = {
           id: 'acc_' + Date.now(),
           timestamp: new Date().toISOString(),
-          label: (UIState.lastForecast ? UIState.lastForecast.modelName : 'Forecast Plan') + ' Review',
+          label: (UIState.lockedForecast ? UIState.lockedForecast.modelName : (UIState.lastForecast ? UIState.lastForecast.modelName : 'Forecast Plan')) + ' Review',
           count: m.count,
           wape: m.wape,
           mape: m.mape,
@@ -2563,14 +2713,16 @@
             growthModifier: UIState.growthModifier,
             assumedAht: UIState.assumedAht,
             accuracyPairs: UIState.accuracyPairs,
-            accuracyRunsHistory: UIState.accuracyRunsHistory
+            accuracyRunsHistory: UIState.accuracyRunsHistory,
+            lockedForecast: UIState.lockedForecast
           };
           var outputs = UIState.lastForecast ? {
             modelName: UIState.lastForecast.modelName,
             metrics: UIState.lastForecast.metrics,
             forecastCount: UIState.lastForecast.forecast.length,
             totalVolume: UIState.lastForecast.forecast.reduce(function(a, b) { return a + b.volume; }, 0),
-            accuracyMetrics: UIState.lastAccuracyMetrics
+            accuracyMetrics: UIState.lastAccuracyMetrics,
+            lockedForecast: UIState.lockedForecast
           } : {};
           window.ErlanglyPlans.showSaveModal('forecasting', inputs, outputs);
         }
@@ -2592,7 +2744,8 @@
             growthModifier: UIState.growthModifier,
             assumedAht: UIState.assumedAht,
             accuracyPairs: UIState.accuracyPairs,
-            accuracyRunsHistory: UIState.accuracyRunsHistory
+            accuracyRunsHistory: UIState.accuracyRunsHistory,
+            lockedForecast: UIState.lockedForecast
           };
           window.ErlanglyPlans.showShareModal('forecasting', inputs);
         }
@@ -2870,13 +3023,15 @@
   function renderAccuracyTable() {
     var tbody = document.getElementById('tbody-accuracy-inputs');
     var badgeCount = document.getElementById('lbl-accuracy-count');
+    var innerCount = document.getElementById('lbl-accuracy-count-inner');
     if (!tbody) return;
 
     tbody.innerHTML = '';
     if (badgeCount) badgeCount.textContent = UIState.accuracyPairs.length;
+    if (innerCount) innerCount.textContent = UIState.accuracyPairs.length;
 
     if (UIState.accuracyPairs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No forecast/actual pairs. Click "Pull from Current Forecast" or "+ Add Pair".</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No pairs loaded. Upload an Actuals CSV, click "From Forecast", or click "+ Add".</td></tr>';
       return;
     }
 

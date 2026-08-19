@@ -219,7 +219,11 @@ it's promoted into a numbered phase.
 All original Future Developments items have been promoted into Phases 8–11 above. New
 ideas and stretch goals go here until they're scoped and promoted into a numbered phase.
 
-- _(empty — add new backlog items here as they arise)_
+- [x] **Continuous Forecasting Loop (Forecast Baseline Pinning, Dedicated Actuals CSV Uploader & History Merge)** (Completed 2026-08-19):
+  - [x] Forecast Baseline Lock: pin active forecast plan snapshot as official tracking benchmark
+  - [x] Dedicated Actuals CSV drag & drop uploader with auto-matching against baseline forecast dates
+  - [x] Merge Actuals into History: deduplicate and append verified post-shift actuals into training history and trigger automated re-forecasting
+  - [x] Persistence of locked baseline forecast and accuracy runs in saved plans and shared links
 
 ## Suggested cadence
 

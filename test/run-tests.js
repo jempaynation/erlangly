@@ -512,6 +512,82 @@ assertClose(ensembleManualRes.fitResult.weights.trend, 0.20, 0.001, 'Manual weig
 const emptyAccuracy = ErlanglyForecast.calculateAccuracyMetrics([], []);
 assert(emptyAccuracy.count === 0 && emptyAccuracy.wape === 0 && emptyAccuracy.biasPct === 0, 'Empty accuracy pairs handled gracefully with 0 metrics');
 
+console.log('\n[14] Post-v2 Enhancement — Separate Forecast & Actuals Uploader & History Merge');
+
+// 14a. Matching uploaded actuals against a locked baseline forecast
+const sampleBaselineForecast = [
+  { period: '2026-06-01', volume: 1500 },
+  { period: '2026-06-02', volume: 1620 },
+  { period: '2026-06-03', volume: 1480 }
+];
+const uploadedActuals = [
+  { period: '2026-06-01', actual: 1520 },
+  { period: '2026-06-02', actual: 1600 },
+  { period: '2026-06-03', actual: 1510 }
+];
+
+const forecastMap = {};
+sampleBaselineForecast.forEach(f => { forecastMap[f.period.toLowerCase()] = f.volume; });
+
+const matchedPairs = uploadedActuals.map(act => ({
+  period: act.period,
+  forecast: forecastMap[act.period.toLowerCase()] || 0,
+  actual: act.actual
+}));
+
+assert(matchedPairs.length === 3, 'Matched all 3 actual rows to baseline forecast');
+assert(matchedPairs[0].forecast === 1500 && matchedPairs[0].actual === 1520, 'First matched pair correctly paired forecast (1500) and actual (1520)');
+assert(matchedPairs[1].forecast === 1620 && matchedPairs[1].actual === 1600, 'Second matched pair correctly paired forecast (1620) and actual (1600)');
+
+const matchAccuracy = ErlanglyForecast.calculateAccuracyMetrics(
+  matchedPairs.map(p => p.actual),
+  matchedPairs.map(p => p.forecast)
+);
+assert(matchAccuracy.count === 3, 'Evaluated accuracy across 3 matched periods');
+assert(matchAccuracy.wape > 0 && matchAccuracy.wape < 5, `WAPE is low on close actuals (${matchAccuracy.wape.toFixed(2)}%)`);
+
+// 14b. History Merging & Deduplication
+const initialTrainingHistory = [
+  { period: '2026-05-30', volume: 1400 },
+  { period: '2026-05-31', volume: 1450 }
+];
+const historyMap = {};
+initialTrainingHistory.forEach(h => { historyMap[h.period.toLowerCase()] = h; });
+
+let updatedCount = 0;
+let appendedCount = 0;
+
+matchedPairs.forEach(pair => {
+  const key = pair.period.toLowerCase();
+  if (historyMap[key]) {
+    historyMap[key].volume = pair.actual;
+    updatedCount++;
+  } else {
+    const entry = { period: pair.period, volume: pair.actual };
+    initialTrainingHistory.push(entry);
+    historyMap[key] = entry;
+    appendedCount++;
+  }
+});
+
+assert(appendedCount === 3, 'Appended 3 new periods to historical training series');
+assert(updatedCount === 0, 'No overlapping periods updated');
+assert(initialTrainingHistory.length === 5, 'Total training history expanded from 2 to 5 periods');
+assert(initialTrainingHistory[2].period === '2026-06-01' && initialTrainingHistory[2].volume === 1520, 'First merged period verified');
+assert(initialTrainingHistory[4].period === '2026-06-03' && initialTrainingHistory[4].volume === 1510, 'Last merged period verified');
+
+// Test overlapping update
+const overlappingActuals = [{ period: '2026-06-01', actual: 1530 }];
+overlappingActuals.forEach(pair => {
+  const key = pair.period.toLowerCase();
+  if (historyMap[key]) {
+    historyMap[key].volume = pair.actual;
+    updatedCount++;
+  }
+});
+assert(updatedCount === 1, 'Correctly updated existing period on overlapping merge');
+assert(historyMap['2026-06-01'].volume === 1530, 'Volume updated to 1530 without duplicating row');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -519,6 +595,7 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 
 
 
