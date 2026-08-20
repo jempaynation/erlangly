@@ -117,10 +117,11 @@ needs evolve over a multi-week or multi-month horizon, not just one interval or 
   could paste into a business case
 
 ## Explicitly out of scope (not planned)
-- Native mobile app — responsive web only (but see mobile-optimized real-time view below)
+- Native mobile app — responsive web only, though Phase 19 adds an installable PWA wrapper (see below)
 - Real-time collaborative editing with live cursors / presence indicators (see simpler collaborative plans below instead)
-- Server-side computation, ML model training, or external optimization solvers — all math stays client-side and pure
+- Server-side computation, ML model training, or external optimization solvers — all math stays client-side and pure. **Phase 15 (AI Forecasting & Insights) is a planned exception under review** — see the open question flagged on that phase in `ROADMAP.md`; it does not proceed until this rule's applicability to client-side-feasible ML models is explicitly confirmed
 - WebSocket / SSE live data infrastructure — the live data feed is client-side polling only
+- A custom backend beyond Supabase — **Phase 18 (Enterprise Readiness)** contains several items (API access, SSO, multi-tenancy) that may require revisiting this; each is flagged as a stop-and-ask case in `AGENTS.md`/`ROADMAP.md` rather than assumed approved
 
 ---
 
@@ -429,4 +430,100 @@ backtest, sharing the same model registry and accuracy metrics.
   `js/plans.js`), the same as any other saved forecast — reopenable later via My Plans.
 - **CSV export**: sandbox results (per algorithm, per target month: MAPE/WAPE/bias) can
   be exported the same way as the existing Phase 12 backtest/accuracy exports.
+
+---
+
+## v3–v6 Product Strategy (Phases 14–19 — see ROADMAP.md for build order, status, and
+sequencing/dependency notes)
+
+The items below come from a product-strategy review (recommended improvements, new
+specialist skills, and a v2→v6 roadmap) and extend the suite beyond the original
+five-tool + accounts scope. They are **planned, not yet built** — nothing in this section
+has any implementation as of this writing. Four new specialist skills support this work;
+see `AGENTS.md` for the full skill roster.
+
+### 14. Quick Wins & Polish (Phase 14)
+Small, independent improvements that don't require new skills or architecture decisions —
+see Phase 14 in `ROADMAP.md` for the exact task list (theme toggle, expanded inline help,
+forecast-chart confidence intervals, a further mobile-responsiveness pass, and a CSV
+import preview/validation step). No new spec beyond the roadmap task list; each item
+extends an existing tool rather than adding new scope.
+
+### 15. AI Forecasting & Insights (Phase 15 — v3)
+Extends forecasting beyond the statistical models built in Phases 8/12/13 with ML-based
+models and natural-language output.
+- ML-based forecasting models (e.g. Prophet-style decomposition, XGBoost, LSTM) added as
+  new entries in the Phase 8 model registry, alongside the existing statistical models —
+  users can compare an ML model against WMA/Holt/regression/etc. in the same comparison view
+- Auto model selection: instead of the user picking a model, the tool inspects the loaded
+  history (seasonality strength, trend presence, history length, noise level) and
+  recommends one, with the reasoning shown in plain language
+- Anomaly detection: flags statistically unusual points in historical or actuals data,
+  distinct from the manually-flagged holidays/events in Phase 8 — this is automatic
+  detection, not user-marked
+- Natural-language insights: a short, auto-generated summary alongside the forecast chart
+  (e.g. "Volume will peak 18% next Friday due to trend + seasonality") explaining the
+  forecast in plain terms, not just numbers
+- **Open architectural question**: whether the ML models here run as pure client-side
+  JavaScript (keeping the no-custom-backend rule intact) or require a new backend
+  component is unresolved and must be answered by the user before this phase is built —
+  see the flagged note on Phase 15 in `ROADMAP.md`
+
+### 16. Advanced Visualizations & Performance (Phase 16 — v3)
+Cross-tool platform work — pairs the "Advanced Visualizations" and "Performance &
+Reliability" improvement areas since both apply across the suite rather than to one tool.
+- Interactive dashboards with drill-down, likely on the landing page and/or as a
+  cross-tool summary view
+- Heatmap visualizations (volume, ASA, occupancy) as a new Chart.js chart type alongside
+  the existing line/area charts
+- Confidence-interval / uncertainty bands on charts beyond forecasting — extends the
+  Phase 14 forecast-chart version and lays groundwork consistent with the Phase 10 Monte
+  Carlo confidence bands
+- IndexedDB-backed local offline support for in-progress work — a browser-local cache,
+  separate from Supabase's cross-visit persistence
+- Smarter data caching so a large CSV already parsed/aggregated once isn't redundantly
+  reprocessed
+- Lightweight client-side performance monitoring (parse time, render time) for debugging
+  — local only, never transmitted to a server
+
+### 17. Team Collaboration (Phase 17 — v4)
+Builds a workspace layer on top of the plan-level sharing and versioning already scoped
+in Phase 11 (`plan_collaborators`, `plan_versions`). Phase 11 must ship first.
+- Team workspaces: a workspace groups users and their shared plans under one namespace,
+  distinct from Phase 11's per-plan sharing
+- Role management at the workspace level (admin / analyst / viewer) — separate from
+  Phase 11's per-plan owner/editor/viewer roles, which stay as-is for individual sharing
+- Shared dashboards aggregating plans/metrics across a workspace's members
+- Comments & tags on saved plans: threaded comments for discussion, free-text tags for
+  organizing/searching the My Plans dashboard
+
+### 18. Enterprise Readiness (Phase 18 — v5)
+The highest architectural risk in the roadmap — every item below needs a dedicated
+`erlangly-planner` scoping session and explicit user sign-off before implementation
+starts (see the ⚠️ note on Phase 18 in `ROADMAP.md` and `AGENTS.md`'s "stop and ask" list).
+- API access: an authenticated surface for external systems to read/write plan data.
+  Needs a decision on whether this rides on Supabase's own REST/RPC layer (no
+  architecture change) or requires a custom backend (a deviation that must be approved)
+- White-label option: custom branding/theming per customer — the lowest-risk item here,
+  likely an extension of the existing CSS token system
+- SSO (SAML/OAuth): evaluate against what Supabase Auth supports natively first;
+  anything beyond that is a stop-and-ask case
+- Multi-tenant support: the single biggest open question in the whole roadmap. The
+  current schema/RLS (Phase 5) and its Phase 11 extension are both user- and
+  plan-scoped, not organization-scoped — this is not an incremental change and needs its
+  own planning pass before it's broken into tasks
+
+### 19. Ecosystem & Integrations (Phase 19 — v6)
+The final phase in the current strategy; depends on Phase 18's API access work for the
+integration and BI-export items below.
+- Third-party integrations (e.g. Zendesk, Salesforce, NICE): client-side connectors
+  against each platform's public API where possible; anything requiring server-side
+  secrets or webhooks gets flagged for architecture review rather than assumed in-scope
+- BI export support (e.g. Power BI): scheduled or on-demand export of plan data in a
+  BI-consumable format
+- Mobile app as a Progressive Web App (PWA): an installable, offline-capable wrapper
+  around the existing responsive site — not a native app, which stays out of scope
+  per the "Explicitly out of scope" section above
+- Localization / i18n: externalize UI strings and support at least one additional
+  language end-to-end as a proof of concept
 

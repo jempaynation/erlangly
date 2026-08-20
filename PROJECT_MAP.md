@@ -29,12 +29,21 @@ a working portfolio piece as much as a usable tool.
 Scheduling, Real-Time/Intraday, Simulator), accounts & persistence (Supabase), shareable
 links, multi-skill pooling proof-of-concept, and portfolio polish are built and signed off.
 
-**v2 Phase 8 (Advanced Forecasting Models) is complete.** Phases 9–12 are planned:
-Scheduling Labor Rules, Enhanced Simulation & Real-Time (Monte Carlo, mobile view, live
-data feed), Collaboration & Multi-Skill Routing, and Forecasting Enhancements II
-(year-over-year trend projection, out-of-sample backtesting, and a forecast accuracy
-tracking tool). Check `ROADMAP.md` for the authoritative phase status — this paragraph
-will go stale as work progresses, `ROADMAP.md` will not.
+**v2 Phase 8 (Advanced Forecasting Models), Phase 12 (Forecasting Enhancements II), and
+Phase 13 (Forecast Holdout Sandbox) are complete**, built out of the original phase order
+per explicit user directive. Phases 9–11 (Scheduling Labor Rules, Enhanced Simulation &
+Real-Time, Collaboration & Multi-Skill Routing) remain not started.
+
+**Phases 14–19 are planned but not started**, added by a product-strategy review covering
+near-term polish and a v3–v6 direction: Phase 14 (Quick Wins & Polish), Phase 15 (AI
+Forecasting & Insights), Phase 16 (Advanced Visualizations & Performance), Phase 17 (Team
+Collaboration), Phase 18 (Enterprise Readiness), Phase 19 (Ecosystem & Integrations).
+Phase 18 in particular carries open architectural questions (multi-tenancy, SSO, a
+possible API backend) that are flagged as stop-and-ask items rather than approved scope —
+see `ROADMAP.md`'s "v3–v6 Product Strategy" section for the full picture.
+
+Check `ROADMAP.md` for the authoritative phase status — this paragraph will go stale as
+work progresses, `ROADMAP.md` will not.
 
 ## How the docs relate to each other
 
@@ -77,9 +86,12 @@ All v1 files exist. This is the current layout per `AGENTS.md`:
 /test/run-tests.js        automated math verification suite (29 tests)
 ```
 
-v2 phases (8–11) don't add new HTML pages. Phase 11 adds new schema tables
-(`plan_collaborators`, `plan_versions`) to `sql/schema.sql`. Phases 8–10 extend
-existing JS files only.
+v2 phases (8–13) don't add new HTML pages. Phase 11 adds new schema tables
+(`plan_collaborators`, `plan_versions`) to `sql/schema.sql`. Phases 8, 9, 10, 12, and 13
+extend existing JS files only. Phases 14–19 (v3–v6, planned) will likely add new schema
+(Phase 17 workspaces, Phase 18 multi-tenancy) and possibly new pages (Phase 17 dashboards,
+Phase 19 PWA shell) — see `ROADMAP.md` for the current thinking on each; nothing in that
+range is built yet.
 
 ## How data flows between tools
 
@@ -112,10 +124,24 @@ Same-session handoff between tools (e.g. Capacity → Scheduling) uses `localSto
 Cross-visit persistence (save/reopen later, from any device) uses Supabase. See
 `AGENTS.md` for the distinction and the rules around each.
 
-## The three skills, and when each one acts
+## The eight skills, and when each one acts
 
+**Core build-loop (every phase passes through these):**
+- **`erlangly-planner`** — active before any code is written for a phase; re-syncs
+  against `ROADMAP.md`/`CHANGELOG.md`/`PROJECT_MAP.md`, maps requirements into a visual
+  plan artifact, and gets explicit user confirmation before handoff — a hard gate, not optional
 - **`erlangly-developer`** — active while a phase is being built; enforces the rules in `AGENTS.md`
 - **`erlangly-wfm-analyst`** — active while a feature is being scoped or reviewed; checks operational realism against `FEATURES.md`
 - **`erlangly-qa`** — active at the end of a phase; tests against `FEATURES.md`/`AGENTS.md`, and on a pass, checks off the phase in `ROADMAP.md` and writes the `CHANGELOG.md` entry — this is what allows work to move to the next phase
+
+**Specialists (consulted by the core loop for the phases that need them — see
+`AGENTS.md` for the full mapping):**
+- **`erlangly-ai-engineer`** — ML forecasting models, anomaly detection, NL insights (Phase 15)
+- **`erlangly-ui-ux-designer`** — accessibility, theming, design-system evolution (Phases 14, 16, 17)
+- **`erlangly-security-auditor`** — auth, RLS, privacy/compliance review (Phase 18 especially)
+- **`erlangly-data-engineer`** — large-dataset performance, caching, pipelines (Phases 16, 19)
+
+The four specialist skills don't exist yet as `.skill` files — they get packaged with
+`skill-creator` just before the phase that first needs them (see `AGENTS.md`).
 
 See `AGENTS.md`'s "Autonomous phase workflow" section for the full build → QA → changelog → next-phase loop.

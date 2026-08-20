@@ -20,12 +20,13 @@ Read this before writing or editing any file in this repo.
 
 ## Skills for this project
 
-Four skills capture the different perspectives this project needs. Install all four —
-+ they're complementary, not overlapping: the planner skill decides *what's actually being
-+ built and whether everyone agrees on it* before a line of code exists, the developer
-+ skill enforces *how* code is written, the WFM analyst skill checks *whether it's
-+ operationally realistic*, and the QA skill catches *what's broken* before a task is
-+ marked done in `ROADMAP.md`.
+Eight skills capture the different perspectives this project needs: four **core build-loop
+roles** that every phase passes through, and four **specialist roles** introduced by the
+v3–v6 product strategy (see `ROADMAP.md` Phases 14–19) that get consulted by the core loop
+when a phase touches their domain — the same way `erlangly-wfm-analyst` has always been
+consulted for domain judgment calls rather than running on every task.
+
+### Core build-loop skills (install all four — required for every phase)
 
 | Skill | Role | Use it for |
 |---|---|---|
@@ -33,6 +34,15 @@ Four skills capture the different perspectives this project needs. Install all f
 | `erlangly-developer` | Developer | Writing/editing any code — enforces the no-build-step architecture, the shared `erlang.js` math engine, the design token system, and the Supabase security rules |
 | `erlangly-wfm-analyst` | WFM Manager / Analyst | Scoping or reviewing any feature for domain realism — sane defaults (shrinkage, occupancy, service level targets), catching gaps like ignoring seasonality or hire-ramp lag |
 | `erlangly-qa` | QA (testing & fixing) | Verifying correctness before a phase is called done — Erlang C sanity/monotonicity checks, edge cases, cross-tool handoff and save/load regressions — and, on a pass, checking off the phase in `ROADMAP.md` and writing the `CHANGELOG.md` entry |
+
+### Specialist skills (install as the phases that need them come up)
+
+| Skill | Role | Use it for | First needed in |
+|---|---|---|---|
+| `erlangly-ai-engineer` | AI/ML Engineer | Implementing and tuning ML-based forecasting models, anomaly detection, and natural-language insight generation | Phase 15 (AI Forecasting & Insights) |
+| `erlangly-ui-ux-designer` | Design & Accessibility | WCAG compliance, dark/light theming, consistent design-system evolution as new UI is added | Phase 14 (Quick Wins), Phase 16 (Advanced Visualizations), Phase 17 (Team Collaboration) |
+| `erlangly-security-auditor` | Security & Compliance | Reviewing auth, RLS policies, and data-privacy implications; OWASP-style review before anything enterprise-facing ships | Phase 18 (Enterprise Readiness) especially, but consult it for any schema/RLS change from Phase 17 onward |
+| `erlangly-data-engineer` | Data & Performance | Large-file handling, caching, and data-pipeline scalability for 100k+ row datasets and beyond | Phase 16 (Advanced Visualizations & Performance), Phase 19 (Ecosystem & Integrations) |
 
 **To install:** each skill ships as a `.skill` file. In Claude.ai or Claude Code, open the
 skill file and click **Save skill** (or run the equivalent "add skill" action in your
@@ -44,7 +54,10 @@ you want to force a specific pass.
 
 If you're setting these up for the first time and don't have the `.skill` files, they can
 be regenerated from this repo's skill definitions using Claude's `skill-creator` skill —
-ask it to package `erlangly-developer`, `erlangly-wfm-analyst`, and `erlangly-qa`.
+ask it to package whichever of the eight skills above are missing. The four specialist
+skills don't exist yet as of this writing (Phases 14–19 are planned but not started) —
+package each one just before the phase that first needs it, so its checklist can be
+written against the actual state of the codebase at that time rather than guessed at now.
 
 ## Autonomous phase workflow
 
@@ -65,7 +78,10 @@ Erlangly should follow this loop:
     plan and the spec in
    `FEATURES.md`. Consult `erlangly-wfm-analyst` for any judgment call about realistic
    defaults, formulas, or workflow (shrinkage %, occupancy ceilings, seasonality,
-   hire-ramp lag, etc.) rather than guessing.
+   hire-ramp lag, etc.) rather than guessing. For phases 15–19, also consult the relevant
+   specialist skill from the table above (`erlangly-ai-engineer`, `erlangly-ui-ux-designer`,
+   `erlangly-security-auditor`, `erlangly-data-engineer`) for judgment calls in their
+   domain, the same way `erlangly-wfm-analyst` is consulted today.
 4. **Hand off to `erlangly-qa`** once the phase's tasks appear complete. QA audits against
    `FEATURES.md` (does it do what was specified) and `AGENTS.md` (does it follow
    architecture/security rules), and runs the edge-case and math-correctness checks in
@@ -93,6 +109,9 @@ Erlangly should follow this loop:
 - `erlangly-qa` has failed the same phase twice in a row without a clear fix
 - The next action would touch real user data, spend real money (e.g. provisioning a live
   Supabase project), or otherwise leave the sandbox/no-build-step, static-file world
+- The phase is Phase 18 (Enterprise Readiness) — every item in that phase is a stop-and-ask
+  case by design (see the ⚠️ note on Phase 18 in `ROADMAP.md`); don't build ahead there
+  even if a task looks small in isolation
 
 ## What this project is
 Erlangly is a mostly-static, no-build-step website packaging five WFM tools:

@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models) complete. Phase 12 (Forecasting Enhancements II) complete out of order. v2 Phases 9–11 and 13 planned and queued for implementation.**
+**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models) complete. Phase 12 (Forecasting Enhancements II) and Phase 13 (Forecast Holdout Sandbox) complete out of order. v2 Phases 9–11 planned and queued for implementation. Phases 14–19 (Quick Wins, v3 AI & Intelligence, v4 Collaboration, v5 Enterprise, v6 Ecosystem) added below per the product strategy update — see "v3–v6 Product Strategy" section at the bottom for the full picture. These are planned/scoped only; no implementation has started on any of them.**
 
 This file is the single source of truth for project progress. Any agentic coding tool
 (Claude Code, Cursor, or otherwise) picking up this project must read it before writing
@@ -226,6 +226,111 @@ it's promoted into a numbered phase.
 - [x] CSV export of sandbox results (per algorithm, per target month: MAPE/WAPE/bias)
 - [x] `erlangly-qa` sign-off
 
+## Phase 14 — Quick Wins & Polish
+**Status:** Not started
+*Near-term (30–60 day) improvements identified in the product strategy review. These are
+small, independent, high-value items that don't require new skills or architecture
+changes — good candidates to pick up in any order, ahead of the larger v3–v6 phases below.*
+- [ ] Dark/light theme toggle (keep dark as default; extend the existing token system in `css/styles.css` rather than introducing a second stylesheet)
+- [ ] Expand inline help & examples: contextual tooltips/examples on inputs across all five tools
+- [ ] Confidence intervals on forecast charts (visual band around the forecast line — precursor to the fuller Monte Carlo confidence bands in Phase 10)
+- [ ] Improve mobile responsiveness beyond the Phase 7 pass and the Phase 10 real-time-specific mobile view (general pass across remaining tools)
+- [ ] Data validation preview before import: show a preview/summary of parsed CSV rows (including malformed-row counts) before committing an upload, across all CSV-upload entry points
+- [ ] `erlangly-qa` sign-off
+
+## Phase 15 — AI Forecasting & Insights (v3)
+**Status:** Not started — **requires new skill: `erlangly-ai-engineer`** (see `AGENTS.md`)
+*First phase of the "v3: AI & Intelligence" track. Extends forecasting beyond the
+statistical models in Phases 8/12/13 with ML-based models and natural-language output.
+Requires a scoping pass with `erlangly-planner` before build — in particular, whether any
+model training happens client-side (in keeping with the no-custom-backend rule) or
+requires a new architecture decision needs to be resolved before this phase starts.*
+- [ ] ML-based forecasting models (e.g. Prophet-style decomposition, XGBoost, LSTM) as additional entries in the Phase 8 model registry
+- [ ] Auto model selection: recommend a model based on detected data patterns (seasonality strength, trend, history length, noise) rather than requiring the user to pick
+- [ ] Anomaly detection on historical/actuals data (flag unusual spikes/dips distinct from the existing holiday/event flagging in Phase 8)
+- [ ] Natural-language insights generator (e.g. "Volume will peak 18% next Friday due to trend + seasonality") surfaced alongside the forecast chart
+- [ ] `erlangly-qa` sign-off
+- ⚠️ **Open question (flag for `erlangly-planner`):** ML models like LSTM/XGBoost are not "a small additional dependency" in the way the Phase 2 CSV worker was — confirm with the user whether these run via a lightweight in-browser JS implementation/library, or whether this phase requires revisiting the "no backend beyond Supabase" rule in `AGENTS.md` before any code is written.
+
+## Phase 16 — Advanced Visualizations & Performance (v3)
+**Status:** Not started
+*Second phase of the "v3: AI & Intelligence" track — pairs the "Advanced Visualizations"
+and "Performance & Reliability" items from the product strategy review, since both are
+cross-tool platform work rather than a single tool's feature. May involve
+`erlangly-ui-ux-designer` (visualizations, accessibility) and `erlangly-data-engineer`
+(large-dataset performance, caching).*
+- [ ] Interactive dashboards with drill-down (landing page and/or per-tool summary views)
+- [ ] Heatmap visualizations (volume, ASA, occupancy) as a Chart.js addition alongside existing line charts
+- [ ] Confidence intervals / uncertainty bands on charts beyond forecasting (builds on the Phase 14 forecast-chart version and the Phase 10 Monte Carlo bands)
+- [ ] IndexedDB-backed offline support for in-progress work (distinct from Supabase cross-visit persistence — this is a local-only cache)
+- [ ] Smarter data caching for large CSVs (reduce redundant re-parsing/re-aggregation on the same file)
+- [ ] Client-side performance monitoring (basic metrics: parse time, render time) surfaced for debugging, not sent to any server
+- [ ] `erlangly-qa` sign-off
+
+## Phase 17 — Team Collaboration (v4)
+**Status:** Not started — **requires new skill: `erlangly-ui-ux-designer`** (see `AGENTS.md`)
+*"v4: Collaboration" track. Builds on top of the plan-level sharing/versioning already
+scoped in Phase 11 (`plan_collaborators`, `plan_versions`) — Phase 11 must be complete
+before this phase starts, since workspaces and roles are a layer above individual-plan
+sharing, not a replacement for it.*
+- [ ] Team workspaces: a workspace groups multiple users and their shared plans under one namespace (new Supabase table(s), RLS scoped by workspace membership)
+- [ ] Role management at the workspace level (admin / analyst / viewer — distinct from Phase 11's per-plan owner/editor/viewer roles)
+- [ ] Shared dashboards: a workspace-level view aggregating plans/metrics across members, not just a single shared plan
+- [ ] Comments & tags on saved plans (threaded comments, free-text tags for organization/search on the My Plans dashboard)
+- [ ] `erlangly-qa` sign-off
+
+## Phase 18 — Enterprise Readiness (v5)
+**Status:** Not started — **requires new skill: `erlangly-security-auditor`** (see `AGENTS.md`)
+*"v5: Enterprise" track. This phase contains the items most likely to conflict with the
+current "Supabase-only, no custom backend" architecture rule in `AGENTS.md` — treat every
+item below as requiring an explicit `erlangly-planner` scoping session and direct user
+sign-off before any implementation, per the "when to stop and ask" rules in `AGENTS.md`.*
+- [ ] API access: a documented, authenticated API surface for external systems to read/write plan data — needs a decision on whether this is exposed via Supabase's own auto-generated REST/RPC layer (staying within the existing architecture) or requires a custom backend (a deviation from `AGENTS.md` that must be approved first)
+- [ ] White-label option (custom branding/theming per customer) — likely buildable on the existing CSS token system, lower architectural risk than the other items in this phase
+- [ ] SSO (SAML/OAuth) — evaluate against Supabase Auth's supported providers first; a requirement outside what Supabase Auth supports natively would be a stop-and-ask case
+- [ ] Multi-tenant support — the biggest architectural question in this entire roadmap: the current schema/RLS model (Phase 5) is single-tenant-per-user, and Phase 11 extends it to per-plan sharing, not organization-level tenancy. This needs a dedicated planning pass, not an incremental extension, before it's broken into tasks
+- [ ] `erlangly-qa` sign-off
+- ⚠️ **Do not start this phase's build step from an autonomous agent loop.** Every item here is a "stop and ask" case per `AGENTS.md`. `erlangly-planner` should scope this phase and get explicit user confirmation on each architectural question above before any task is broken out.
+
+## Phase 19 — Ecosystem & Integrations (v6)
+**Status:** Not started — **requires new skill: `erlangly-data-engineer`** (see `AGENTS.md`)
+*"v6: Ecosystem" track, and the final phase in the current product strategy. Depends on
+Phase 18's API access item for the integration and BI-export items below — sequence
+this after Phase 18, not in parallel.*
+- [ ] Third-party integrations (e.g. Zendesk, Salesforce, NICE) — client-side connectors against each platform's public API, in keeping with the no-custom-backend rule, or flagged for architecture review if a given integration requires server-side secrets/webhooks
+- [ ] BI export support (e.g. Power BI) — scheduled or on-demand export of plan data in a BI-consumable format
+- [ ] Mobile app as a Progressive Web App (PWA) — installable, offline-capable wrapper around the existing responsive site rather than a native app (native mobile stays explicitly out of scope per `FEATURES.md`)
+- [ ] Localization / i18n — externalize UI strings, support at least one additional language end-to-end as a proof of concept
+- [ ] `erlangly-qa` sign-off
+
+---
+
+## v3–v6 Product Strategy (context for Phases 14–19)
+
+This section captures the product-strategy review that produced Phases 14–19 above, so a
+future agent understands *why* these phases exist and how they relate to each other, not
+just their task lists.
+
+**Sequencing:** Phase 14 (Quick Wins) has no dependencies and can start anytime, in
+parallel with the remaining v2 phases (9–11). Phases 15–16 (v3) are next and only need
+the new `erlangly-ai-engineer` skill (Phase 15) plus design/perf specialists (Phase 16).
+Phase 17 (v4) depends on Phase 11 being complete. Phase 18 (v5) is the highest-risk phase
+architecturally and should not be started without a dedicated planning session. Phase 19
+(v6) depends on Phase 18's API work.
+
+**New skills introduced by this strategy** (in addition to the existing four —
+`erlangly-planner`, `erlangly-developer`, `erlangly-wfm-analyst`, `erlangly-qa` — see
+`AGENTS.md` for full role descriptions):
+- `erlangly-data-engineer` — large-dataset performance, caching, data pipelines (Phases 16, 19)
+- `erlangly-ui-ux-designer` — accessibility, theming, design-system evolution (Phases 14, 16, 17)
+- `erlangly-security-auditor` — auth, RLS, privacy, OWASP review (Phase 18 especially)
+- `erlangly-ai-engineer` — ML forecasting models, anomaly detection, NL insights (Phase 15)
+
+These are **specialist skills**, consulted the same way `erlangly-wfm-analyst` is
+consulted today for domain judgment calls — they don't replace the four-role build loop
+(`planner` → `developer` → `wfm-analyst` (as needed) → `qa`) in `AGENTS.md`; they plug
+into it for the phases that need their expertise.
+
 ---
 
 ## Post-v2 Backlog (not yet scheduled)
@@ -266,4 +371,18 @@ ideas and stretch goals go here until they're scoped and promoted into a numbere
   can start immediately. No dependency on Phases 9–11. It extends the same holdout config
   UI Phase 12 introduced rather than replacing it, so it should follow Phase 12
   conceptually even though both live in `forecasting.js` with no schema changes.
+- **Phase 14** (Quick Wins & Polish) has no dependencies on anything — it can be picked up
+  at any point, including in parallel with Phases 9–11, since each item is small and
+  isolated to a single tool or the shared stylesheet.
+- **Phase 15–16** (v3: AI Forecasting & Insights, Advanced Visualizations & Performance)
+  are the recommended next major track after the remaining v2 phases (9–11) are done.
+  Phase 15 needs `erlangly-ai-engineer` and a resolved answer on the client-side-only ML
+  question flagged inline in that phase. Phase 16 has no hard blockers.
+- **Phase 17** (v4: Team Collaboration) requires Phase 11 (plan-level sharing/versioning)
+  to be complete first — it's an extension of that data model, not a parallel track.
+- **Phase 18** (v5: Enterprise Readiness) is the highest-risk phase in the roadmap and
+  should be scoped last among 15–19, with its own dedicated planning session per the
+  ⚠️ note on that phase — don't let it get picked up "in order" without that step.
+- **Phase 19** (v6: Ecosystem & Integrations) follows Phase 18, since several of its items
+  depend on the API access work scoped there.
 
