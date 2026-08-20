@@ -57,10 +57,18 @@
           </p>
         </div>
 
-        <!-- Mode / Tool Switcher -->
-        <div style="display: flex; gap: var(--space-2); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
-          <button id="tab-intraday-sim" class="btn btn-sm btn-primary">Intraday Stepper</button>
-          <button id="tab-vto-calc" class="btn btn-sm btn-ghost">VTO Calculator</button>
+        <!-- Controls: Live Feed Status & Mode Switcher -->
+        <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
+          <button id="btn-open-live-feed-modal" class="btn btn-sm btn-secondary" style="display: flex; align-items: center; gap: var(--space-2);" title="Configure Live Data Feed">
+            <span id="badge-live-feed-status" class="feed-status-dot feed-status-manual"></span>
+            <span id="txt-live-feed-status">Feed: Manual</span>
+            <span style="font-size: 11px; opacity: 0.7;">⚙️</span>
+          </button>
+
+          <div style="display: flex; gap: var(--space-2); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+            <button id="tab-intraday-sim" class="btn btn-sm btn-primary">Intraday Stepper</button>
+            <button id="tab-vto-calc" class="btn btn-sm btn-ghost">VTO Calculator</button>
+          </div>
         </div>
       </div>
     </div>
@@ -78,9 +86,9 @@
 
         <!-- Step Controls -->
         <div style="display: flex; align-items: center; gap: var(--space-2);">
-          <button id="btn-sim-prev" class="btn btn-secondary btn-sm">⏪ Prev</button>
+          <button id="btn-sim-prev" class="btn btn-secondary btn-sm" aria-label="Previous interval">⏪ Prev</button>
           <button id="btn-sim-play" class="btn btn-primary btn-sm">▶ Play Auto-Advance</button>
-          <button id="btn-sim-next" class="btn btn-secondary btn-sm">Next ⏩</button>
+          <button id="btn-sim-next" class="btn btn-secondary btn-sm" aria-label="Next interval">Next ⏩</button>
           <button id="btn-sim-reset" class="btn btn-ghost btn-sm">Reset Day</button>
         </div>
 
@@ -94,8 +102,16 @@
 
     <!-- VIEW 1: Intraday Stepper & Real-Time Monitoring -->
     <div id="view-intraday" style="display: flex; flex-direction: column; gap: var(--space-6);">
+      <!-- Mobile Swipe Gesture Hint Bar (visible on mobile viewports) -->
+      <div class="mobile-swipe-prompt" id="mobile-swipe-prompt">
+        <span class="swipe-hint-icon">👈</span>
+        <span class="swipe-hint-text">Swipe left / right to step intervals</span>
+        <span class="swipe-hint-icon">👉</span>
+        <span class="badge badge-ghost mono" id="mobile-swipe-indicator" style="font-size: 11px;">1 / 24</span>
+      </div>
+
       <!-- Current Interval Spotlight Cards -->
-      <div class="stat-grid">
+      <div class="stat-grid" id="intraday-stat-grid">
         <div class="metric-card highlight">
           <div class="metric-label">Actual Service Level</div>
           <div class="metric-value" id="rt-current-sl">--%</div>
@@ -133,13 +149,18 @@
         </div>
       </div>
 
-      <!-- Intraday Cumulative Summary Bar -->
-      <div class="panel">
-        <div class="panel-header">
-          <div class="panel-title">Day-to-Date Performance Scorecard</div>
-          <span class="form-hint" id="dtd-interval-span">Intervals 1 to 1</span>
+      <!-- Intraday Cumulative Summary Bar (Collapsible on Mobile) -->
+      <div class="panel" id="panel-dtd-scorecard">
+        <div class="panel-header" style="cursor: pointer;" id="header-dtd-scorecard">
+          <div style="display: flex; align-items: center; gap: var(--space-3);">
+            <div class="panel-title">Day-to-Date Performance Scorecard</div>
+            <span class="form-hint" id="dtd-interval-span">Intervals 1 to 1</span>
+          </div>
+          <button id="btn-toggle-dtd-scorecard" class="btn btn-ghost btn-sm" style="font-size: var(--text-xs); padding: 2px 8px;" aria-expanded="true">
+            <span id="txt-toggle-dtd-scorecard">Collapse 🔼</span>
+          </button>
         </div>
-        <div class="panel-body" style="padding: var(--space-4) var(--space-6);">
+        <div class="panel-body" id="body-dtd-scorecard" style="padding: var(--space-4) var(--space-6);">
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-6);">
             <div>
               <div class="form-hint">Day-to-Date Volume</div>
@@ -307,6 +328,81 @@
               </thead>
               <tbody id="tbody-vto-sheet"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Data Feed Settings Modal -->
+    <div id="modal-live-feed" class="modal-backdrop" style="display: none;">
+      <div class="modal-card" style="max-width: 540px;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: var(--space-2);">
+            <span class="feed-status-dot feed-status-manual" id="modal-status-dot"></span>
+            <h3 class="modal-title">Live Data Feed Connector</h3>
+          </div>
+          <button class="modal-close-btn" id="btn-close-feed-modal" aria-label="Close modal">&times;</button>
+        </div>
+
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: var(--space-4);">
+          <p style="font-size: var(--text-sm); color: var(--text-muted); margin: 0;">
+            Connect your ACD / WFM intraday stream via client-side HTTP polling (JSON/CSV) or launch an offline synthetic live stream.
+          </p>
+
+          <!-- Feed Source Mode -->
+          <div class="form-group">
+            <label for="select-feed-mode" class="form-label">Feed Source</label>
+            <select id="select-feed-mode" class="form-control">
+              <option value="manual">Manual Stepper (Disabled)</option>
+              <option value="demo">Synthetic Live Stream (Built-in Demo)</option>
+              <option value="url">External REST / CSV Endpoint (HTTP Poll)</option>
+            </select>
+          </div>
+
+          <!-- URL & Format Container (shown when mode === 'url') -->
+          <div id="container-url-config" style="display: none; flex-direction: column; gap: var(--space-3);">
+            <div class="form-group">
+              <label for="input-feed-url" class="form-label">Endpoint URL</label>
+              <input type="url" id="input-feed-url" class="form-control mono" placeholder="https://api.mycenter.com/wfm/intraday">
+              <span class="form-hint">Must support CORS for browser client requests.</span>
+            </div>
+
+            <div class="form-group">
+              <label for="select-feed-format" class="form-label">Payload Format</label>
+              <select id="select-feed-format" class="form-control">
+                <option value="json">JSON Array of Interval Objects</option>
+                <option value="csv">CSV (Headers: Interval, ActVol, ActAHT, ActStaff...)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Polling Rate -->
+          <div class="form-group">
+            <label for="select-feed-interval" class="form-label">Polling Refresh Frequency</label>
+            <select id="select-feed-interval" class="form-control">
+              <option value="30">Every 30 Seconds</option>
+              <option value="60" selected>Every 60 Seconds (Default)</option>
+              <option value="120">Every 2 Minutes</option>
+            </select>
+          </div>
+
+          <!-- Feed Status Diagnostics -->
+          <div class="panel" style="background: var(--bg-surface-elevated); margin: 0; padding: var(--space-3);">
+            <div style="font-size: var(--text-xs); color: var(--text-muted); margin-bottom: 4px;">CONNECTION DIAGNOSTICS:</div>
+            <div id="feed-diagnostics-text" class="mono" style="font-size: var(--text-xs); color: var(--text-secondary);">
+              Status: Manual Stepper active. Polling idle.
+            </div>
+            <div id="feed-stale-warning" style="display: none; margin-top: 6px;" class="badge badge-warn">
+              ⚠️ Stale Data: No update received in over 2 poll cycles.
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+          <button id="btn-test-feed-connection" class="btn btn-secondary btn-sm">Test Connection</button>
+          <div style="display: flex; gap: var(--space-2);">
+            <button id="btn-cancel-feed-modal" class="btn btn-ghost btn-sm">Cancel</button>
+            <button id="btn-apply-feed-settings" class="btn btn-primary btn-sm">Save &amp; Start Feed</button>
           </div>
         </div>
       </div>

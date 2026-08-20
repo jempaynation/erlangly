@@ -33,6 +33,39 @@ When a phase passes audit:
 
 ---
 
+## [Phase 10] — Enhanced Simulation & Real-Time — 2026-08-21
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Monte Carlo Simulation Mode in Simulator (`simulator.html`, `js/simulator.js`)**:
+  - Probability engine executing 500 stochastic iterations over 12–24 planning horizons in <30ms client-side using pure `Erlangly.*` calculations.
+  - Multi-parameter variability configuration with Box-Muller Normal and Uniform distributions for Volume ($\pm \sigma_{\text{vol}}\%$), AHT ($\pm \sigma_{\text{aht}}\%$), Attrition ($\pm \sigma_{\text{att}}\%$), and Hires ($\pm \sigma_{\text{hire}}$ agents).
+  - Percentile aggregation engine calculating $P10, P25, P50$ (median), $P75, P90$, Mean, and StdDev across staffing needs, SLA, ASA, Occupancy, and labor cost.
+  - Interactive Chart.js confidence band visualizer rendering $P10\text{–}P90$ outer shaded band (`rgba(0, 210, 211, 0.12)`), $P25\text{–}P75$ inner confidence band (`rgba(0, 210, 211, 0.25)`), $P50$ median solid curve, and deterministic baseline overlay.
+  - Metric selector (`SLA`, `Required Headcount`, `Productive Headcount`, `Total Labor Cost`) and table view toggle (`Point Projections` vs `Percentiles P10–P90`).
+  - Probabilistic executive narrative summary and full matrix CSV exporter.
+- **Mobile-Optimized Real-Time Command Center (`realtime.html`, `js/realtime.js`, `css/styles.css`)**:
+  - Responsive single-column layout optimized for mobile viewports ($\le 480\text{px}$ and $\le 860\text{px}$).
+  - Touch gesture swipe navigation (`touchstart`, `touchmove`, `touchend`) allowing smooth horizontal swiping across intraday intervals.
+  - Mobile swipe indicator banner with active interval step counter (`1 / 24`).
+  - Mobile touch-optimized action targets ($\ge 44 \times 44\text{px}$) for VTO approval/revocation and stepper controls.
+  - Mobile collapsible Day-to-Date Performance Scorecard bar with accessible ARIA toggle.
+- **Client-Side Live Data Feed Connector (`realtime.html`, `js/realtime.js`)**:
+  - HTTP polling engine supporting JSON and CSV endpoint feeds with configurable refresh intervals (30s, 60s, 120s, or manual).
+  - Live status indicator dot and header badge (🟢 Connected / 🟡 Stale Data / 🔴 Connection Error / ⚪ Manual Stepper).
+  - Automatic stale data detection triggering visual warning if no update is received in $>2$ polling cycles.
+  - Built-in Synthetic Demo Live Feed for offline interactive demonstration with realistic volume and handle-time jitter.
+  - Live Feed Configuration modal with endpoint tester and connection diagnostics.
+- **Automated Verification**:
+  - Expanded `test/run-tests.js` with Test Suite 19 verifying random sampling distributions, percentile monotonicity ($P10 \le P25 \le P50 \le P75 \le P90$), 500-iteration Monte Carlo performance, real-time queue math, and live feed JSON/CSV parsers. Total passing tests: 299.
+
+### Found & fixed during QA
+- Guarded DOM references inside `initDOM()` in `js/simulator.js` and `js/realtime.js` so modules export pure calculations cleanly in both browser environments and headless Node.js unit test runners.
+- Ensured mathematical engine resolution via `ErlangEngine` fallback across all execution environments.
+
+### Deviations from spec (if any)
+- None.
+
 ## [Phase 9] — Scheduling Labor Rules & Constraints — 2026-08-21
 **QA sign-off:** erlangly-qa
 

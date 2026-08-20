@@ -146,26 +146,26 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` sign-off
 
 ## Phase 10 — Enhanced Simulation & Real-Time
-**Status:** Not started
-- [ ] Monte Carlo simulation mode in the Simulator:
-  - [ ] User configures variability ranges (volume ± σ%, AHT ± σ%, attrition ± σ%) on top of existing what-if levers
-  - [ ] Run N iterations (configurable, default 500) with randomized inputs drawn from those ranges
-  - [ ] Compute percentile outcomes: P10, P25, P50 (median), P75, P90 for staffing need, service level, and budget impact per period
-  - [ ] Must reuse `Erlangly.*` per iteration — loop over existing simulation engine with randomized inputs, not a new math system
-- [ ] Confidence band visualization: shade P10–P90 range on the scenario chart, plot median line, highlight worst-case breach period
-- [ ] Export Monte Carlo results: CSV with percentile columns per period, plain-language summary with confidence-interval narrative
-- [ ] Mobile-optimized real-time view:
-  - [ ] Responsive single-column layout for `realtime.html` at ≤ 480px viewport
-  - [ ] Swipeable interval cards (touch-friendly navigation)
-  - [ ] Large-touch VTO approve/revoke buttons sized for phone use
-  - [ ] Condensed day-to-date scorecard for small screens
-- [ ] Optional live data feed connector for the real-time tool:
-  - [ ] Define a polling endpoint URL (JSON or CSV format) in the tool settings
-  - [ ] Configurable polling interval (e.g. every 30s, 60s, 120s)
-  - [ ] Auto-populate forecast-vs-actual interval data from the feed instead of manual/CSV entry
-  - [ ] Client-side `fetch()` only — no WebSocket server, no custom backend
-  - [ ] Error handling: connection failure, malformed response, stale-data detection with visual indicators and fallback to last-known-good data
-- [ ] `erlangly-qa` sign-off
+**Status:** Done (2026-08-21)
+- [x] Monte Carlo simulation mode in the Simulator:
+  - [x] User configures variability ranges (volume ± σ%, AHT ± σ%, attrition ± σ%) on top of existing what-if levers
+  - [x] Run N iterations (configurable, default 500) with randomized inputs drawn from those ranges
+  - [x] Compute percentile outcomes: P10, P25, P50 (median), P75, P90 for staffing need, service level, and budget impact per period
+  - [x] Must reuse `Erlangly.*` per iteration — loop over existing simulation engine with randomized inputs, not a new math system
+- [x] Confidence band visualization: shade P10–P90 range on the scenario chart, plot median line, highlight worst-case breach period
+- [x] Export Monte Carlo results: CSV with percentile columns per period, plain-language summary with confidence-interval narrative
+- [x] Mobile-optimized real-time view:
+  - [x] Responsive single-column layout for `realtime.html` at ≤ 480px viewport
+  - [x] Swipeable interval cards (touch-friendly navigation)
+  - [x] Large-touch VTO approve/revoke buttons sized for phone use
+  - [x] Condensed day-to-date scorecard for small screens
+- [x] Optional live data feed connector for the real-time tool:
+  - [x] Define a polling endpoint URL (JSON or CSV format) in the tool settings
+  - [x] Configurable polling interval (e.g. every 30s, 60s, 120s)
+  - [x] Auto-populate forecast-vs-actual interval data from the feed instead of manual/CSV entry
+  - [x] Client-side `fetch()` only — no WebSocket server, no custom backend
+  - [x] Error handling: connection failure, malformed response, stale-data detection with visual indicators and fallback to last-known-good data
+- [x] `erlangly-qa` sign-off
 
 ## Phase 11 — Collaboration & Multi-Skill Routing
 **Status:** Not started

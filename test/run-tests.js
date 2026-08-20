@@ -1011,6 +1011,119 @@ const tmplRes = ErlanglyScheduling.downloadAgentAvailabilityTemplate();
 assert(tmplRes.headers.indexOf('Min_Rest_Hours') !== -1, 'Availability template includes Min_Rest_Hours column');
 assert(tmplRes.rows.length > 0, 'Availability template includes sample agent rows');
 
+// ====================================================
+// 19. SIMULATOR MONTE CARLO & REAL-TIME LIVE FEED (PHASE 10)
+// ====================================================
+console.log('\n====================================================');
+console.log('19. PHASE 10 VERIFICATION (js/simulator.js & js/realtime.js)');
+console.log('====================================================\n');
+
+const ErlanglySimulator = require('../js/simulator.js');
+const ErlanglyRealTime = require('../js/realtime.js');
+
+// 19a. Random Sampling & Statistics
+console.log('  [19a] Monte Carlo Sampling & Distribution Engine:');
+const normalSamples = [];
+for (let i = 0; i < 10000; i++) {
+  normalSamples.push(ErlanglySimulator.sampleNormal(100, 10));
+}
+const normalStats = ErlanglySimulator.getStats(normalSamples);
+assertClose(normalStats.mean, 100, 0.5, 'sampleNormal generates sample mean close to target mean 100');
+assertClose(normalStats.stdDev, 10, 0.5, 'sampleNormal generates sample stdDev close to target stdDev 10');
+
+const uniformSamples = [];
+let uniformBounded = true;
+for (let i = 0; i < 1000; i++) {
+  const u = ErlanglySimulator.sampleUniform(50, 150);
+  uniformSamples.push(u);
+  if (u < 50 || u > 150) uniformBounded = false;
+}
+assert(uniformBounded, 'sampleUniform generates values strictly within specified min and max bounds');
+
+// 19b. Percentiles & Monotonicity
+console.log('\n  [19b] Percentiles & Monotonic Ordering:');
+const sortedTestArray = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const p10 = ErlanglySimulator.getPercentile(sortedTestArray, 10);
+const p25 = ErlanglySimulator.getPercentile(sortedTestArray, 25);
+const p50 = ErlanglySimulator.getPercentile(sortedTestArray, 50);
+const p75 = ErlanglySimulator.getPercentile(sortedTestArray, 75);
+const p90 = ErlanglySimulator.getPercentile(sortedTestArray, 90);
+
+assert(p10 <= p25 && p25 <= p50 && p50 <= p75 && p75 <= p90, `Percentile monotonicity holds: P10(${p10}) <= P25(${p25}) <= P50(${p50}) <= P75(${p75}) <= P90(${p90})`);
+assertClose(p50, 55, 0.5, 'P50 (Median) interpolates correctly');
+
+// 19c. Deterministic Simulation Execution
+console.log('\n  [19c] Multi-Period Deterministic Simulation:');
+const scDefault = ErlanglySimulator.DEFAULT_SCENARIOS[0];
+const detResult = ErlanglySimulator.simulateScenario(scDefault, 12);
+assert(detResult.periods.length === 12, 'Deterministic simulation produces 12 monthly periods');
+assert(detResult.totalSpend > 0, 'Computes positive total horizon labor spend');
+assert(detResult.avgSla >= 0 && detResult.avgSla <= 1.0, 'Computes valid average horizon SLA');
+assert(detResult.periods[0].sla >= 0.80, 'Initial month meets baseline SLA');
+
+// 19d. 500-Iteration Monte Carlo Simulation Engine
+console.log('\n  [19d] Monte Carlo 500-Iteration Probabilistic Engine:');
+const mcConfig = {
+  volSigma: 5.0,
+  ahtSigma: 4.0,
+  attritionSigma: 1.0,
+  hiresSigma: 1,
+  distribution: 'normal',
+  iterations: 500
+};
+const t0 = Date.now();
+const mcResult = ErlanglySimulator.runMonteCarloSimulation(scDefault, 12, mcConfig);
+const elapsedMs = Date.now() - t0;
+
+assert(mcResult.iterations === 500, 'Monte Carlo executed 500 iterations');
+assert(mcResult.periods.length === 12, 'Monte Carlo aggregated across 12 monthly periods');
+assert(elapsedMs < 1500, `500 iterations completed rapidly client-side in ${elapsedMs}ms (< 1500ms)`);
+
+// Check confidence bands monotonic properties
+let bandsMonotonic = true;
+mcResult.periods.forEach((p, idx) => {
+  if (p.sla.p10 > p.sla.p25 || p.sla.p25 > p.sla.p50 || p.sla.p50 > p.sla.p75 || p.sla.p75 > p.sla.p90) {
+    bandsMonotonic = false;
+    console.error(`SLA percentile monotonicity failed at period ${idx + 1}`);
+  }
+  if (p.cost.p10 > p.cost.p25 || p.cost.p25 > p.cost.p50 || p.cost.p50 > p.cost.p75 || p.cost.p75 > p.cost.p90) {
+    bandsMonotonic = false;
+    console.error(`Cost percentile monotonicity failed at period ${idx + 1}`);
+  }
+});
+assert(bandsMonotonic, 'All Monte Carlo period confidence bands satisfy P10 <= P25 <= P50 <= P75 <= P90');
+assert(mcResult.slaBreachProbability >= 0 && mcResult.slaBreachProbability <= 1.0, 'Computes SLA breach probability between 0 and 100%');
+assert(mcResult.budgetBreachProbability >= 0 && mcResult.budgetBreachProbability <= 1.0, 'Computes budget breach probability between 0 and 100%');
+
+// 19e. Real-Time Queue Metrics & VTO Engine
+console.log('\n  [19e] Real-Time Queue Engine & VTO Calculations:');
+const sampleRow = ErlanglyRealTime.INTRADAY_DATA[0];
+const rtMetrics = ErlanglyRealTime.calculateQueueMetrics(sampleRow, 1800, 0.80, 20);
+assert(rtMetrics.erlangs > 0, 'Calculates active interval Erlangs');
+assert(rtMetrics.serviceLevel >= 0.80, '08:00 interval meets baseline service level');
+assert(rtMetrics.occupancy > 0 && rtMetrics.occupancy < 1.0, 'Calculates valid agent occupancy');
+
+// 19f. Live Data Feed JSON & CSV Parsers
+console.log('\n  [19f] Live Data Feed Payload Parsers:');
+const mockJsonFeed = JSON.stringify([
+  { interval: '08:00', fcstVol: 120, actVol: 130, fcstAht: 180, actAht: 185, schedStaff: 22, actStaff: 21 },
+  { interval: '08:30', fcstVol: 170, actVol: 160, fcstAht: 180, actAht: 175, schedStaff: 30, actStaff: 30 }
+]);
+const parsedJson = ErlanglyRealTime.parseFeedPayload(mockJsonFeed, 'json');
+assert(parsedJson.length === 2, 'JSON live feed parser extracts 2 interval rows');
+assert(parsedJson[0].actVol === 130 && parsedJson[0].actStaff === 21, 'JSON live feed parses field values accurately');
+
+const mockCsvFeed = `Interval,Fcst_Vol,Act_Vol,Fcst_AHT,Act_AHT,Sched_Staff,Act_Staff\n09:00,250,260,190,195,45,44\n09:30,320,330,200,205,60,58`;
+const parsedCsv = ErlanglyRealTime.parseFeedPayload(mockCsvFeed, 'csv');
+assert(parsedCsv.length === 2, 'CSV live feed parser extracts 2 interval rows');
+assert(parsedCsv[1].interval === '09:30' && parsedCsv[1].actVol === 330, 'CSV live feed parses values correctly');
+
+// 19g. Synthetic Demo Live Feed Generator
+console.log('\n  [19g] Synthetic Live Demo Stream Generator:');
+const demoFeed = ErlanglyRealTime.generateSyntheticDemoFeed(ErlanglyRealTime.INTRADAY_DATA);
+assert(demoFeed.length === ErlanglyRealTime.INTRADAY_DATA.length, 'Synthetic demo feed maintains full 24-interval daytime span');
+assert(demoFeed[0].actVol > 0 && demoFeed[0].actAht > 0, 'Synthetic demo feed produces positive volume and handle times');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -1018,6 +1131,7 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 
 
 
