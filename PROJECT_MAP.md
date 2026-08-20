@@ -29,10 +29,10 @@ a working portfolio piece as much as a usable tool.
 Scheduling, Real-Time/Intraday, Simulator), accounts & persistence (Supabase), shareable
 links, multi-skill pooling proof-of-concept, and portfolio polish are built and signed off.
 
-**v2 Phase 8 (Advanced Forecasting Models), Phase 12 (Forecasting Enhancements II), and
-Phase 13 (Forecast Holdout Sandbox) are complete**, built out of the original phase order
-per explicit user directive. Phases 9–11 (Scheduling Labor Rules, Enhanced Simulation &
-Real-Time, Collaboration & Multi-Skill Routing) remain not started.
+**v2 Phase 8 (Advanced Forecasting Models), Phase 9 (Scheduling Labor Rules & Constraints),
+Phase 12 (Forecasting Enhancements II), and Phase 13 (Forecast Holdout Sandbox) are complete.**
+Phase 10 (Enhanced Simulation & Real-Time) and Phase 11 (Collaboration & Multi-Skill Routing)
+remain queued for implementation.
 
 **Phases 14–19 are planned but not started**, added by a product-strategy review covering
 near-term polish and a v3–v6 direction: Phase 14 (Quick Wins & Polish), Phase 15 (AI

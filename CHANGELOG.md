@@ -33,6 +33,43 @@ When a phase passes audit:
 
 ---
 
+## [Phase 9] — Scheduling Labor Rules & Constraints — 2026-08-21
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Configurable Labor Rule Engine (`DEFAULT_LABOR_RULES`, `checkShiftCompliance`)**:
+  - Configurable hard labor constraints: Max Daily Hours (default 10h), Max Weekly Hours (default 40h), Minimum Rest Period between shifts (default 11h anti-clopening rule), and Max Consecutive Working Days (default 6 days).
+  - Pure validator function evaluating agent assignments against hard statutory rules and soft preferences.
+- **Part-Time Shift Patterns & Variable-Length Dynamic Breaks (`getBreakRulesForLength`, `DEFAULT_SHIFTS`)**:
+  - Dynamic shift break calculator adjusting meal deductions based on shift duration ($\le 4\text{h} \to 0\text{m}$, $\le 6\text{h} \to 15\text{m}$, $\le 8.5\text{h} \to 30\text{m}$, $> 8.5\text{h} \to 60\text{m}$).
+  - Supported shift library featuring Full-Time patterns (`S1` Early, `S2` Mid-Morning, `S3` Afternoon, `S4` Close) and Part-Time patterns (`PT1` Morning 4h, `PT2` Mid-Day 6h, `PT3` Afternoon 4h).
+- **Agent Availability, Preference Input & Profile Generator (`generateRosterFromFte`)**:
+  - Generates realistic agent profiles matching headcount and FT/PT contract mix with availability windows (e.g. Mon–Fri 07:00–21:00, weekends OFF) and preferred shifts.
+  - Agent Availability Manager modal dialog (`#modal-agent-manager`) with editable roster table, CSV upload dropzone, and downloadable template (`downloadAgentAvailabilityTemplate`).
+- **Constraint-Aware Heuristic Multi-Day Shift Allocator (`optimizeRoster`)**:
+  - Evaluates interval deficit reductions, ranks candidate shift patterns, and matches agents while strictly enforcing hard labor rules.
+  - Heuristic scoring prioritizes soft shift preferences and balances hours towards weekly target contracts.
+  - Generates Bottleneck Diagnostics (`#box-bottleneck-diagnostics`) detailing unmet interval deficits and blocked reason counts (rest periods, weekly hours, consecutive days, availability).
+- **7-Day Interactive Agent Roster & Compliance Matrix (`#panel-roster-grid`)**:
+  - Full weekly matrix table with sticky agent identity column, interactive colored shift chips (`.shift-ft`, `.shift-pt`, `.shift-off`, `.shift-violation`, `.shift-warning`), and real-time compliance badges (`Pass`, `Warn`, `Error`).
+  - Interactive shift picker popover (`#popover-shift-picker`) allowing instant 1-click reassignment of any shift cell with real-time schedule re-auditing.
+- **Schedule Audit Engine (`auditRoster`)**:
+  - Real-time audit engine verifying all 7-day assignments and computing total paid hours, days worked, compliance rate %, hard violation counts, and soft warning logs.
+- **Multi-Day Interval Coverage Visualizer**:
+  - Day selector pills (Mon–Sun) updating daytime KPI metrics, Chart.js required vs. scheduled coverage curve, and 48-interval net coverage table.
+- **Compliance-Aware CSV Exporter (`exportAgentRosterCSV`)**:
+  - Exports full 7-day agent schedule with Agent ID, Name, Contract Type, Mon–Sun shifts, Total Paid Hours, Compliance Status, and Violation Details.
+
+### Found & fixed during QA
+- Resolved greedy solver premature break condition by ranking all candidate shifts with positive coverage benefits so unfillable peak shifts do not block filling earlier intervals.
+- Tested clopening rest calculations across day boundaries (13:30–22:00 close followed by 08:00 open correctly yields 10.0h rest < 11.0h min, triggering hard error).
+- All 275 automated tests in `test/run-tests.js` passed with 0 errors.
+
+### Deviations from spec (if any)
+- None.
+
+---
+
 ## [Enhancement] — Multi-Skill Demand Forecasting & Standardized Templates — 2026-08-20
 **QA sign-off:** erlangly-qa
 

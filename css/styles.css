@@ -1281,10 +1281,282 @@ input[type="range"]::-moz-range-thumb {
   background: #0d2826 !important;
 }
 
-.winner-row {
-  background: rgba(16, 185, 129, 0.08);
+/* ==========================================================================
+   PHASE 9: SCHEDULING LABOR RULES, ROSTER MATRIX & COMPLIANCE STYLES
+   ========================================================================== */
+
+/* Roster Schedule Table */
+.roster-table {
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
 }
 
+.roster-table th,
+.roster-table td {
+  font-size: var(--text-xs);
+  padding: 8px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+/* Sticky first column (Agent Details) */
+.roster-table th:first-child,
+.roster-table td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  background: var(--bg-surface-elevated);
+  box-shadow: 3px 0 6px rgba(0, 0, 0, 0.4);
+  border-right: 1px solid var(--border-default);
+  min-width: 175px;
+  text-align: left;
+}
+
+.roster-table tr:hover td:first-child {
+  background: var(--bg-surface-hover);
+}
+
+.roster-table th:nth-child(2),
+.roster-table td:nth-child(2) {
+  min-width: 80px;
+}
+
+/* Day Column Cells */
+.roster-day-col {
+  min-width: 125px;
+}
+
+/* Shift Chips */
+.shift-chip {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border-default);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  cursor: pointer;
+  width: 100%;
+  max-width: 118px;
+  transition: all var(--transition-fast);
+  user-select: none;
+}
+
+.shift-chip:hover {
+  border-color: var(--accent);
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.shift-chip.shift-ft {
+  background: rgba(0, 210, 211, 0.08);
+  border-color: rgba(0, 210, 211, 0.35);
+  color: var(--accent-light);
+}
+
+.shift-chip.shift-pt {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.35);
+  color: var(--info);
+}
+
+.shift-chip.shift-off {
+  background: rgba(100, 116, 139, 0.1);
+  border-color: rgba(100, 116, 139, 0.2);
+  color: var(--text-muted);
+  border-style: dashed;
+}
+
+.shift-chip.shift-violation {
+  background: rgba(239, 68, 68, 0.18);
+  border-color: var(--danger);
+  color: var(--danger-light);
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+.shift-chip.shift-warning {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: var(--warn);
+  color: var(--warn-light);
+}
+
+.shift-chip-time {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  margin-top: 1px;
+}
+
+.shift-chip.shift-ft .shift-chip-time {
+  color: rgba(0, 210, 211, 0.7);
+}
+
+.shift-chip.shift-pt .shift-chip-time {
+  color: rgba(56, 189, 248, 0.7);
+}
+
+/* Compliance Badges */
+.badge-compliance-pass {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--success-light);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-compliance-warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--warn-light);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.badge-compliance-error {
+  background: rgba(239, 68, 68, 0.2);
+  color: var(--danger-light);
+  border: 1px solid var(--danger);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  animation: pulse-danger 2s infinite;
+}
+
+@keyframes pulse-danger {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+  50% { box-shadow: 0 0 8px 2px rgba(239, 68, 68, 0.4); }
+}
+
+/* Day selector pills */
+.day-selector-pill {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: var(--text-xs);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.day-selector-pill:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.day-selector-pill.active {
+  background: var(--accent);
+  color: var(--bg-base);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Diagnostics alert box */
+.diagnostics-box {
+  background: rgba(245, 158, 11, 0.07);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.diagnostics-box.has-errors {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.reason-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 10.5px;
+  font-family: var(--mono);
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  margin-right: 4px;
+  margin-top: 4px;
+}
+
+/* Modal overlay */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(8, 12, 20, 0.85);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--space-4);
+}
+
+.modal-dialog {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  width: 100%;
+  max-width: 750px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-default);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-body {
+  padding: var(--space-6);
+  overflow-y: auto;
+  flex: 1;
+}
+
+.modal-footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border-default);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  background: var(--bg-surface-elevated);
+}
 
 /* --- Site Footer --- */
 .site-footer {

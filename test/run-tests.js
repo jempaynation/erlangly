@@ -809,6 +809,208 @@ assert(Math.abs(multiAcc.biasPct) < 2.0, `Multi-skill bias is < 2% (got: ${multi
 assert(typeof ErlanglyForecast.downloadHistoricalTemplate === 'function', 'downloadHistoricalTemplate function is exported');
 assert(typeof ErlanglyForecast.downloadActualsTemplate === 'function', 'downloadActualsTemplate function is exported');
 
+// =========================================================================
+// [18] Phase 9 — Scheduling Labor Rules & Constraints
+// =========================================================================
+console.log('\n[18] Phase 9 — Scheduling Labor Rules & Constraints');
+
+const ErlanglyScheduling = require('../js/scheduling.js');
+assert(ErlanglyScheduling !== undefined, 'ErlanglyScheduling module loaded');
+
+// 18a. Variable-Length Shift Break Rules
+console.log('\n  [18a] Variable-Length Break Rules:');
+const break4h = ErlanglyScheduling.getBreakRulesForLength(4.0);
+assert(break4h.mealMins === 0 && break4h.paidHours === 4.0, '4.0h shift: 0 min meal, 4.0h paid (100% paid)');
+
+const break6h = ErlanglyScheduling.getBreakRulesForLength(6.0);
+assert(break6h.mealMins === 15 && break6h.paidHours === 5.75, '6.0h shift: 15 min meal, 5.75h paid');
+
+const break85h = ErlanglyScheduling.getBreakRulesForLength(8.5);
+assert(break85h.mealMins === 30 && break85h.paidHours === 8.0, '8.5h shift: 30 min meal, 8.0h paid');
+
+const break10h = ErlanglyScheduling.getBreakRulesForLength(10.0);
+assert(break10h.mealMins === 60 && break10h.paidHours === 9.0, '10.0h shift: 60 min meal, 9.0h paid');
+
+// 18b. Rest Period Calculation & Anti-Clopening Detection
+console.log('\n  [18b] Rest Period & Anti-Clopening Math:');
+// Prev shift: 13:30 to 22:00 (length 8.5h -> end 22:00 = 1320m)
+// Next shift: 08:00 (start 08:00 next day = 1920m)
+// Rest = (1920 - 1320) / 60 = 10.0h (< 11.0h min rest!)
+const eveningShift = { id: 'S4', start: '13:30', lengthHours: 8.5, paidHours: 8.0 };
+const morningShift = { id: 'S1', start: '08:00', lengthHours: 8.5, paidHours: 8.0 };
+const clopeningRest = ErlanglyScheduling.computeRestPeriod(eveningShift, morningShift);
+assertClose(clopeningRest, 10.0, 0.01, 'Evening close (22:00) to morning open (08:00) rest is exactly 10.0h');
+
+// Prev shift: 08:00 to 16:30 (end 16:30 = 990m). Next shift: 08:00 (1920m).
+// Rest = (1920 - 990) / 60 = 15.5h (>= 11.0h compliant)
+const earlyShift = { id: 'S1', start: '08:00', lengthHours: 8.5, paidHours: 8.0 };
+const compliantRest = ErlanglyScheduling.computeRestPeriod(earlyShift, morningShift);
+assertClose(compliantRest, 15.5, 0.01, 'Early shift to next morning shift rest is 15.5h (compliant)');
+
+// Rest from OFF day
+const offRest = ErlanglyScheduling.computeRestPeriod(null, morningShift);
+assert(offRest >= 24.0, 'Rest period from OFF day is >= 24.0h');
+
+// 18c. Shift Compliance Check (Hard & Soft Constraints)
+console.log('\n  [18c] Labor Rule Hard & Soft Constraint Checks:');
+const testShifts = {
+  'S1': { id: 'S1', name: 'Early', type: 'FT', start: '08:00', lengthHours: 8.5, paidHours: 8.0 },
+  'S4': { id: 'S4', name: 'Close', type: 'FT', start: '13:30', lengthHours: 8.5, paidHours: 8.0 },
+  'PT1': { id: 'PT1', name: 'PT Morn', type: 'PT', start: '08:00', lengthHours: 4.0, paidHours: 4.0 },
+  'LONG': { id: 'LONG', name: 'Long', type: 'FT', start: '08:00', lengthHours: 12.0, paidHours: 11.0 }
+};
+
+const testAgent = {
+  id: 'FT-01',
+  name: 'Test Agent',
+  contractType: 'FT',
+  targetWeeklyHours: 40.0,
+  maxDailyHours: 10.0,
+  maxWeeklyHours: 40.0,
+  minRestHours: 11.0,
+  maxConsecutiveDays: 6,
+  preferredShift: 'S1',
+  availability: [
+    { day: 0, available: true, start: '07:00', end: '21:00' },
+    { day: 1, available: true, start: '07:00', end: '21:00' },
+    { day: 2, available: true, start: '07:00', end: '21:00' },
+    { day: 3, available: true, start: '07:00', end: '21:00' },
+    { day: 4, available: true, start: '07:00', end: '21:00' },
+    { day: 5, available: false, start: '', end: '' }, // Sat OFF
+    { day: 6, available: false, start: '', end: '' }  // Sun OFF
+  ]
+};
+
+// Test Daily Hours Limit
+const longShiftCheck = ErlanglyScheduling.checkShiftCompliance(testAgent, 0, testShifts['LONG'], ['OFF','OFF','OFF','OFF','OFF','OFF','OFF'], null, testShifts);
+assert(!longShiftCheck.isFeasible && longShiftCheck.hardViolations.some(v => v.indexOf('daily') !== -1), '11.0h paid shift violates 10.0h max daily limit');
+
+// Test Clopening Hard Violation (Mon evening close S4, Tue morning open S1)
+const monAssignments = ['S4', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF'];
+const tueClopeningCheck = ErlanglyScheduling.checkShiftCompliance(testAgent, 1, testShifts['S1'], monAssignments, null, testShifts);
+assert(!tueClopeningCheck.isFeasible && tueClopeningCheck.hardViolations.some(v => v.indexOf('Clopening') !== -1), '10.0h rest gap flags hard Clopening breach on Tue morning');
+
+// Test Compliant Rest (Mon early S1, Tue early S1)
+const monEarlyAssignments = ['S1', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF'];
+const tueCompliantCheck = ErlanglyScheduling.checkShiftCompliance(testAgent, 1, testShifts['S1'], monEarlyAssignments, null, testShifts);
+assert(tueCompliantCheck.isFeasible && tueCompliantCheck.hardViolations.length === 0, '15.5h rest gap is 100% compliant');
+
+// Test Weekly Overtime Limit (Mon-Fri already 40.0h, trying to add 6th shift)
+const fullWeekAssignments = ['S1', 'S1', 'S1', 'S1', 'S1', 'OFF', 'OFF'];
+const satOvertimeCheck = ErlanglyScheduling.checkShiftCompliance(testAgent, 5, testShifts['PT1'], fullWeekAssignments, null, testShifts);
+assert(!satOvertimeCheck.isFeasible && satOvertimeCheck.hardViolations.some(v => v.indexOf('Weekly') !== -1), 'Exceeding 40.0h weekly hours ceiling flags hard violation');
+
+// Test Availability Window Block (Sat is unavailable)
+const satAvailCheck = ErlanglyScheduling.checkShiftCompliance(testAgent, 5, testShifts['S1'], ['OFF','OFF','OFF','OFF','OFF','OFF','OFF'], null, testShifts);
+assert(!satAvailCheck.isFeasible && satAvailCheck.hardViolations.some(v => v.indexOf('Unavailable') !== -1), 'Assigning shift on unavailable day flags hard violation');
+
+// Test Soft Preference Bonus
+assert(tueCompliantCheck.prefScore === 3.0, 'Assigning preferred shift (S1) returns +3.0 score bonus');
+const nonPrefCheck = ErlanglyScheduling.checkShiftCompliance(testAgent, 1, testShifts['S4'], monEarlyAssignments, null, testShifts);
+assert(nonPrefCheck.softWarnings.length > 0, 'Assigning non-preferred shift (S4) returns soft warning');
+
+// 18d. Agent Roster Generation & Contract Mix
+console.log('\n  [18d] Roster Generation:');
+const generatedRoster = ErlanglyScheduling.generateRosterFromFte({
+  totalBodies: 40,
+  ptMix: 0.25,
+  ftWeeklyHours: 40.0,
+  ptWeeklyHours: 20.0
+});
+assert(generatedRoster.length === 40, 'Generated 40 agent profiles');
+const ftCount = generatedRoster.filter(a => a.contractType === 'FT').length;
+const ptCount = generatedRoster.filter(a => a.contractType === 'PT').length;
+assert(ftCount === 30, 'Contains exactly 30 FT agents (75%)');
+assert(ptCount === 10, 'Contains exactly 10 PT agents (25%)');
+assert(generatedRoster[0].minRestHours === 11.0, 'FT agent has 11.0h min rest rule');
+assert(generatedRoster[30].targetWeeklyHours === 20.0, 'PT agent has 20.0h target weekly hours');
+
+// 18e. Constraint-Aware Heuristic Optimizer Execution
+console.log('\n  [18e] Multi-Day Constraint-Aware Optimizer:');
+const optResult = ErlanglyScheduling.optimizeRoster({
+  intervals: ErlanglyScheduling.DEFAULT_INTERVALS,
+  intervalLength: 1800,
+  operatingDays: 7,
+  shifts: ErlanglyScheduling.DEFAULT_SHIFTS,
+  agents: generatedRoster
+});
+
+assert(optResult.dailyCoverage.length === 7, 'Generated 7-day daily coverage schedule');
+assert(Object.keys(optResult.rosterAssignments).length === 40, 'Generated assignments for all 40 agents');
+
+// Audit check on optimizer output
+const auditOutput = optResult.auditResults;
+assert(auditOutput.errorCount === 0, `Optimizer generated 100% compliant schedule with 0 hard labor rule errors (got: ${auditOutput.errorCount})`);
+assert(auditOutput.compliantCount > 0, `Compliant agents count is positive (got: ${auditOutput.compliantCount})`);
+
+const monCoverage = optResult.dailyCoverage[0];
+assert(monCoverage.requiredHours > 0, 'Monday required hours is positive');
+assert(monCoverage.scheduledHours > 0, 'Monday scheduled hours is positive');
+assert(monCoverage.matchPct > 30.0, `Monday scheduled coverage accounts for all allocated agent supply (${monCoverage.matchPct.toFixed(1)}%)`);
+
+// Test optimal roster with right-sized team (85 agents)
+const fullRoster = ErlanglyScheduling.generateRosterFromFte({
+  totalBodies: 85,
+  ptMix: 0.20,
+  ftWeeklyHours: 40.0,
+  ptWeeklyHours: 20.0
+});
+const fullOptResult = ErlanglyScheduling.optimizeRoster({
+  intervals: ErlanglyScheduling.DEFAULT_INTERVALS,
+  operatingDays: 7,
+  shifts: ErlanglyScheduling.DEFAULT_SHIFTS,
+  agents: fullRoster
+});
+assert(fullOptResult.dailyCoverage[0].matchPct >= 70.0, `Full 85-agent roster covers peak Monday demand (${fullOptResult.dailyCoverage[0].matchPct.toFixed(1)}%)`);
+assert(fullOptResult.dailyCoverage[3].matchPct >= 85.0, `Full 85-agent roster achieves optimal baseline Thursday alignment (${fullOptResult.dailyCoverage[3].matchPct.toFixed(1)}%)`);
+
+// 18f. Bottleneck Diagnostics Detection under Severe Constraints
+console.log('\n  [18f] Infeasibility & Bottleneck Diagnostics:');
+const tinyRoster = [
+  {
+    id: 'FT-01',
+    name: 'Solo Worker',
+    contractType: 'FT',
+    targetWeeklyHours: 40.0,
+    maxDailyHours: 8.0,
+    maxWeeklyHours: 8.0, // Only allowed 1 shift for the whole week!
+    minRestHours: 11.0,
+    maxConsecutiveDays: 1,
+    availability: new Array(7).fill({ day: 0, available: true, start: '08:00', end: '18:00' })
+  }
+];
+
+const bottleneckResult = ErlanglyScheduling.optimizeRoster({
+  intervals: ErlanglyScheduling.DEFAULT_INTERVALS,
+  operatingDays: 3,
+  shifts: ErlanglyScheduling.DEFAULT_SHIFTS,
+  agents: tinyRoster
+});
+
+assert(bottleneckResult.auditResults.bottlenecks.length > 0, 'Infeasibility diagnostics captured unmet demand under constrained roster');
+assert(bottleneckResult.auditResults.bottlenecks[0].unmetDeficit > 0, 'Diagnostic identifies unmet deficit quantity');
+
+// 18g. Schedule Audit Engine Detection on Dirty Manual Overrides
+console.log('\n  [18g] Audit Engine on Manual Overrides:');
+const dirtyAssignments = {
+  'FT-01': ['S4', 'S1', 'OFF', 'OFF', 'OFF', 'OFF', 'OFF'] // Mon close (22:00) + Tue open (08:00) = clopening!
+};
+const dirtyAudit = ErlanglyScheduling.auditRoster(dirtyAssignments, [testAgent], testShifts, null);
+assert(dirtyAudit.errorCount === 1, 'Audit engine detects 1 hard violation on manual clopening override');
+assert(dirtyAudit.agentReports['FT-01'].status === 'ERROR', 'Agent FT-01 marked with ERROR status');
+assert(dirtyAudit.agentReports['FT-01'].hardViolations.some(v => v.indexOf('Clopening') !== -1), 'Audit report details exact Clopening breach');
+
+// 18h. CSV Exporter Verification
+console.log('\n  [18h] CSV Exporters & Availability Templates:');
+const csvRes = ErlanglyScheduling.exportAgentRosterCSV(optResult.rosterAssignments, generatedRoster, testShifts, auditOutput);
+assert(csvRes.headers.length === 13, 'Roster CSV has 13 standard columns');
+assert(csvRes.rows.length === 40, 'Roster CSV contains 40 agent rows');
+assert(csvRes.headers[0] === 'Agent_ID' && csvRes.headers[10] === 'Total_Paid_Hours', 'Roster CSV headers correctly formatted');
+
+const tmplRes = ErlanglyScheduling.downloadAgentAvailabilityTemplate();
+assert(tmplRes.headers.indexOf('Min_Rest_Hours') !== -1, 'Availability template includes Min_Rest_Hours column');
+assert(tmplRes.rows.length > 0, 'Availability template includes sample agent rows');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -816,6 +1018,7 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 
 
 

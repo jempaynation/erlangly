@@ -213,58 +213,179 @@
       </div>
     </div>
 
-    <!-- SECTION 2: Shift Pattern Allocation & Coverage Optimizer -->
+    <!-- SECTION 2: Shift Pattern Allocation & Labor Rule Roster Optimizer -->
     <div id="view-shift-allocation" style="display: none; flex-direction: column; gap: var(--space-6);">
-      <!-- Shift Builder & Allocation Config -->
-      <div style="display: grid; grid-template-columns: 1fr; gap: var(--space-6);">
-        <div class="panel">
-          <div class="panel-header">
-            <div class="panel-title">Active Shift Patterns</div>
-            <button id="btn-add-shift" class="btn btn-secondary btn-sm">+ Add Shift Pattern</button>
+      
+      <!-- Labor Rules & Global Constraints Panel -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            Labor Rules &amp; Compliance Constraints
           </div>
-
-          <div class="panel-body" style="padding: 0;">
-            <div class="table-container" style="border: none;">
-              <table class="data-table" id="table-shift-patterns">
-                <thead>
-                  <tr>
-                    <th>Pattern Name</th>
-                    <th>Start Time</th>
-                    <th>Shift Length</th>
-                    <th>Unpaid Meal Start</th>
-                    <th>Meal Length</th>
-                    <th>Paid Work Hours</th>
-                    <th style="width: 50px;"></th>
-                  </tr>
-                </thead>
-                <tbody id="tbody-shift-patterns"></tbody>
-              </table>
-            </div>
+          <div style="display: flex; gap: var(--space-2); flex-wrap: wrap;">
+            <button id="btn-download-agent-template" class="btn btn-secondary btn-sm" title="Download sample CSV template for agent availability and labor preferences">📥 Availability Template</button>
+            <button id="btn-manage-agents" class="btn btn-secondary btn-sm" title="Manage agent roster, availability windows, and shift preferences">👥 Roster &amp; Availability (<span id="count-roster-badge">45</span>)</button>
+            <button id="btn-run-roster-optimizer" class="btn btn-primary btn-sm">⚡ Optimize Roster Allocation</button>
           </div>
+        </div>
 
-          <div class="panel-footer" style="justify-content: space-between;">
-            <div style="display: flex; align-items: center; gap: var(--space-3);">
-              <label for="num-alloc-headcount" class="form-label" style="margin: 0;">Total Staff Available:</label>
-              <input type="number" id="num-alloc-headcount" class="form-control mono" style="width: 100px; height: 36px;" min="1" max="1000" value="45">
-              <span class="form-hint">headcount to allocate</span>
+        <div class="panel-body">
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4);">
+            <!-- Max Daily Hours -->
+            <div class="form-group">
+              <label for="num-rule-max-daily" class="form-label">Max Daily Hours</label>
+              <div class="input-group">
+                <input type="number" id="num-rule-max-daily" class="form-control mono" min="4" max="16" step="0.5" value="10.0">
+                <span class="input-addon">hrs/day</span>
+              </div>
+              <span class="form-hint">Hard limit per workday</span>
             </div>
-            <button id="btn-run-optimizer" class="btn btn-primary btn-sm">Optimize Shift Allocation</button>
+
+            <!-- Max Weekly Hours -->
+            <div class="form-group">
+              <label for="num-rule-max-weekly" class="form-label">Max Weekly Hours</label>
+              <div class="input-group">
+                <input type="number" id="num-rule-max-weekly" class="form-control mono" min="10" max="60" step="0.5" value="40.0">
+                <span class="input-addon">hrs/wk</span>
+              </div>
+              <span class="form-hint">Statutory overtime ceiling</span>
+            </div>
+
+            <!-- Min Rest Between Shifts -->
+            <div class="form-group">
+              <label for="num-rule-min-rest" class="form-label">Min Rest Between Shifts</label>
+              <div class="input-group">
+                <input type="number" id="num-rule-min-rest" class="form-control mono" min="8" max="24" step="0.5" value="11.0">
+                <span class="input-addon">hrs rest</span>
+              </div>
+              <span class="form-hint">Anti-clopening mandatory gap</span>
+            </div>
+
+            <!-- Max Consecutive Days -->
+            <div class="form-group">
+              <label for="num-rule-max-consec" class="form-label">Max Consecutive Days</label>
+              <div class="input-group">
+                <input type="number" id="num-rule-max-consec" class="form-control mono" min="1" max="14" value="6">
+                <span class="input-addon">days</span>
+              </div>
+              <span class="form-hint">Mandatory rest day frequency</span>
+            </div>
+
+            <!-- Total Available Roster Headcount -->
+            <div class="form-group">
+              <label for="num-alloc-headcount" class="form-label">Roster Pool Size</label>
+              <div class="input-group">
+                <input type="number" id="num-alloc-headcount" class="form-control mono" min="1" max="500" value="45">
+                <span class="input-addon">staff</span>
+              </div>
+              <span class="form-hint">Total agents in scheduling pool</span>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Coverage Summary KPIs -->
+      <!-- Active Shift Patterns & Variable-Length Break Library -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Active Shift Patterns &amp; Dynamic Break Rules
+          </div>
+          <button id="btn-add-shift" class="btn btn-secondary btn-sm">+ Add Shift Pattern</button>
+        </div>
+
+        <div class="panel-body" style="padding: 0;">
+          <div class="table-container" style="border: none;">
+            <table class="data-table" id="table-shift-patterns">
+              <thead>
+                <tr>
+                  <th>Shift Code &amp; Name</th>
+                  <th>Type</th>
+                  <th>Start Time</th>
+                  <th>Duration</th>
+                  <th>Break / Meal Schedule</th>
+                  <th>Paid Hours</th>
+                  <th style="width: 50px;"></th>
+                </tr>
+              </thead>
+              <tbody id="tbody-shift-patterns"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Feasibility & Bottleneck Diagnostics Box (Hidden by default, shown if bottlenecks occur) -->
+      <div id="box-bottleneck-diagnostics" class="diagnostics-box" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-4);">
+          <div>
+            <div style="display: flex; align-items: center; gap: var(--space-2); font-weight: 600; color: var(--warn-light); font-size: var(--text-sm);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span>Constraint-Aware Allocation Diagnostics</span>
+            </div>
+            <p id="text-bottleneck-summary" style="font-size: var(--text-xs); color: var(--text-secondary); margin-top: var(--space-1); margin-bottom: var(--space-2);">
+              Some intervals have unmet staffing demand because all available agents are constrained by hard labor rules.
+            </p>
+            <div id="list-bottleneck-items" style="display: flex; flex-wrap: wrap; gap: 4px;"></div>
+          </div>
+          <button id="btn-dismiss-diagnostics" class="btn btn-ghost btn-sm">Dismiss</button>
+        </div>
+      </div>
+
+      <!-- 7-Day Interactive Agent Roster & Compliance Matrix -->
+      <div class="panel" id="panel-roster-grid">
+        <div class="panel-header">
+          <div>
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              Weekly Agent Roster &amp; Labor Rule Compliance Matrix
+            </div>
+            <div id="roster-compliance-summary" style="font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px; font-family: var(--mono);">
+              Roster Pool: <span class="text-accent" id="stat-roster-count">45</span> agents | Compliant: <span class="text-success" id="stat-compliant-pct">100%</span> | Hard Violations: <span id="stat-hard-violations">0</span> | Soft Warnings: <span id="stat-soft-warnings">0</span>
+            </div>
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button id="btn-export-roster-csv" class="btn btn-secondary btn-sm">Export Roster CSV</button>
+            <button id="btn-reset-roster" class="btn btn-ghost btn-sm" title="Re-run optimizer to reset manual edits">↺ Reset Edits</button>
+          </div>
+        </div>
+
+        <div class="panel-body" style="padding: 0;">
+          <div class="table-container" style="border: none; max-height: 480px; overflow: auto;">
+            <table class="roster-table" id="table-roster-matrix">
+              <thead>
+                <tr>
+                  <th>Agent Name &amp; Profile</th>
+                  <th>Contract</th>
+                  <th class="roster-day-col">Mon</th>
+                  <th class="roster-day-col">Tue</th>
+                  <th class="roster-day-col">Wed</th>
+                  <th class="roster-day-col">Thu</th>
+                  <th class="roster-day-col">Fri</th>
+                  <th class="roster-day-col">Sat</th>
+                  <th class="roster-day-col">Sun</th>
+                  <th>Total Paid</th>
+                  <th>Compliance</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-roster-matrix"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Coverage Summary KPIs (for selected day / week) -->
       <div class="stat-grid">
         <div class="metric-card">
           <div class="metric-label">Required Headcount-Hours</div>
           <div class="metric-value" id="cov-req-hours">--</div>
-          <div class="metric-subtext">Total demand demand</div>
+          <div class="metric-subtext">Total workload demand</div>
         </div>
 
         <div class="metric-card">
           <div class="metric-label">Scheduled Headcount-Hours</div>
           <div class="metric-value" id="cov-sched-hours">--</div>
-          <div class="metric-subtext">Total supply provided</div>
+          <div class="metric-subtext">Total labor supply</div>
         </div>
 
         <div class="metric-card highlight">
@@ -276,7 +397,7 @@
         <div class="metric-card">
           <div class="metric-label">Understaffed Deficit</div>
           <div class="metric-value" id="cov-deficit-hours" style="color: var(--danger-light);">-- hrs</div>
-          <div class="metric-subtext">Coverage gap</div>
+          <div class="metric-subtext">Unstaffed deficit gap</div>
         </div>
 
         <div class="metric-card">
@@ -286,14 +407,25 @@
         </div>
       </div>
 
-      <!-- Coverage Chart.js Visualizer -->
+      <!-- Interval Coverage Analysis & Day Selector -->
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16h3v5H7zM14 8h3v13h-3z"/></svg>
-            Interval Coverage Analysis (Required vs. Scheduled Headcount)
+          <div>
+            <div class="panel-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 16h3v5H7zM14 8h3v13h-3z"/></svg>
+              Daily Interval Coverage Analysis
+            </div>
+            <div style="display: flex; gap: var(--space-2); margin-top: var(--space-2);" id="day-selector-container">
+              <button class="day-selector-pill active" data-day="0">Mon</button>
+              <button class="day-selector-pill" data-day="1">Tue</button>
+              <button class="day-selector-pill" data-day="2">Wed</button>
+              <button class="day-selector-pill" data-day="3">Thu</button>
+              <button class="day-selector-pill" data-day="4">Fri</button>
+              <button class="day-selector-pill" data-day="5">Sat</button>
+              <button class="day-selector-pill" data-day="6">Sun</button>
+            </div>
           </div>
-          <div style="display: flex; gap: var(--space-3); font-size: var(--text-xs); font-family: var(--mono);">
+          <div style="display: flex; gap: var(--space-3); font-size: var(--text-xs); font-family: var(--mono); align-items: center;">
             <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--danger-light);">
               <span style="display: inline-block; width: 10px; height: 10px; background: #ef4444; border-radius: 2px;"></span> Required
             </span>
@@ -311,8 +443,8 @@
       <!-- Coverage Table -->
       <div class="panel">
         <div class="panel-header">
-          <div class="panel-title">Interval Coverage Breakdown Table</div>
-          <button id="btn-export-schedule-csv" class="btn btn-secondary btn-sm">Export Schedule CSV</button>
+          <div class="panel-title">Interval Coverage Breakdown Table (<span id="label-active-coverage-day">Monday</span>)</div>
+          <button id="btn-export-schedule-csv" class="btn btn-secondary btn-sm">Export Coverage CSV</button>
         </div>
 
         <div class="panel-body" style="padding: 0;">
@@ -336,6 +468,62 @@
       </div>
     </div>
   </main>
+
+  <!-- Agent Roster & Availability Manager Modal -->
+  <div id="modal-agent-manager" class="modal-overlay" style="display: none;">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <div class="panel-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Agent Availability &amp; Shift Preferences Manager
+        </div>
+        <button id="btn-close-agent-modal" class="btn btn-ghost btn-sm" style="font-size: 16px;">✕</button>
+      </div>
+
+      <div class="modal-body">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-4); flex-wrap: wrap; gap: var(--space-2);">
+          <div style="font-size: var(--text-xs); color: var(--text-secondary);">
+            Configure worker availability windows, full-time/part-time contracts, and preferred shift patterns.
+          </div>
+          <div style="display: flex; gap: var(--space-2);">
+            <button id="btn-modal-add-agent" class="btn btn-secondary btn-sm">+ Add Agent</button>
+            <button id="btn-modal-gen-fte" class="btn btn-secondary btn-sm">↺ Re-sync with FTE Converter</button>
+            <label class="btn btn-secondary btn-sm" style="cursor: pointer; margin: 0;">
+              📤 Upload CSV
+              <input type="file" id="input-upload-agent-csv" accept=".csv" style="display: none;">
+            </label>
+          </div>
+        </div>
+
+        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+          <table class="data-table" id="table-agents-list">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Agent Name</th>
+                <th>Contract</th>
+                <th>Max Wk Hrs</th>
+                <th>Availability Window</th>
+                <th>Preferred Shift</th>
+                <th style="width: 40px;"></th>
+              </tr>
+            </thead>
+            <tbody id="tbody-agents-list"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-modal-save-close" class="btn btn-primary btn-sm">Save &amp; Re-Optimize Roster</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shift Selection Popover (for interactive matrix cell editing) -->
+  <div id="popover-shift-picker" style="display: none; position: absolute; z-index: 1000; background: var(--bg-surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); padding: var(--space-2); min-width: 190px;">
+    <div style="font-size: 10.5px; font-weight: 600; color: var(--text-muted); margin-bottom: var(--space-1); padding: 0 4px;">Assign Shift:</div>
+    <div id="popover-shift-options" style="display: flex; flex-direction: column; gap: 2px;"></div>
+  </div>
 
   <!-- Site Footer -->
   <footer class="site-footer">

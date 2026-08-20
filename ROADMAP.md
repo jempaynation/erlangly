@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models) complete. Phase 12 (Forecasting Enhancements II) and Phase 13 (Forecast Holdout Sandbox) complete out of order. v2 Phases 9–11 planned and queued for implementation. Phases 14–19 (Quick Wins, v3 AI & Intelligence, v4 Collaboration, v5 Enterprise, v6 Ecosystem) added below per the product strategy update — see "v3–v6 Product Strategy" section at the bottom for the full picture. These are planned/scoped only; no implementation has started on any of them.**
+**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models), Phase 9 (Scheduling Labor Rules & Constraints), Phase 12 (Forecasting Enhancements II), and Phase 13 (Forecast Holdout Sandbox) complete. v2 Phase 10 (Enhanced Simulation & Real-Time) next. Phases 14–19 (Quick Wins, v3 AI & Intelligence, v4 Collaboration, v5 Enterprise, v6 Ecosystem) added below per the product strategy update — see "v3–v6 Product Strategy" section at the bottom for the full picture. These are planned/scoped only; no implementation has started on any of them.**
 
 This file is the single source of truth for project progress. Any agentic coding tool
 (Claude Code, Cursor, or otherwise) picking up this project must read it before writing
@@ -136,14 +136,14 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` sign-off
 
 ## Phase 9 — Scheduling Labor Rules & Constraints
-**Status:** Not started
-- [ ] Labor rule engine: configurable max daily hours, max weekly hours, minimum rest period between shifts, max consecutive working days
-- [ ] Agent availability / preference input: per-agent or per-group availability windows (e.g. "available Mon–Fri 06:00–22:00") and shift preferences (preferred vs. available vs. unavailable)
-- [ ] Part-time shift patterns: support variable-length shifts (4h, 6h, 8h) with break rules that adjust by shift length
-- [ ] Constraint-aware shift allocator: extend the existing greedy optimizer to respect labor rules as hard constraints, with a fallback warning when no feasible allocation exists
-- [ ] Constraint violation highlighting: flag any shift assignment that breaches a labor rule, with severity level (warning = soft preference violated, error = hard rule violated)
-- [ ] Updated CSV export: include constraint compliance status per shift assignment
-- [ ] `erlangly-qa` sign-off
+**Status:** Complete
+- [x] Labor rule engine: configurable max daily hours, max weekly hours, minimum rest period between shifts, max consecutive working days
+- [x] Agent availability / preference input: per-agent or per-group availability windows (e.g. "available Mon–Fri 06:00–22:00") and shift preferences (preferred vs. available vs. unavailable)
+- [x] Part-time shift patterns: support variable-length shifts (4h, 6h, 8h) with break rules that adjust by shift length
+- [x] Constraint-aware shift allocator: extend the existing greedy optimizer to respect labor rules as hard constraints, with a fallback warning when no feasible allocation exists
+- [x] Constraint violation highlighting: flag any shift assignment that breaches a labor rule, with severity level (warning = soft preference violated, error = hard rule violated)
+- [x] Updated CSV export: include constraint compliance status per shift assignment
+- [x] `erlangly-qa` sign-off
 
 ## Phase 10 — Enhanced Simulation & Real-Time
 **Status:** Not started
