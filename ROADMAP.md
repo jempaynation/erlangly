@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models) complete. v2 Phases 9–12 planned and queued for implementation.**
+**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models) complete. Phase 12 (Forecasting Enhancements II) complete out of order. v2 Phases 9–11 and 13 planned and queued for implementation.**
 
 This file is the single source of truth for project progress. Any agentic coding tool
 (Claude Code, Cursor, or otherwise) picking up this project must read it before writing
@@ -212,6 +212,20 @@ it's promoted into a numbered phase.
       existing forecast export
 - [x] `erlangly-qa` sign-off
 
+## Phase 13 — Forecast Holdout Sandbox
+**Status:** Done (2026-08-20) — *Note: Implemented per explicit user directive; Phases 9–11 remain pending.*
+- [x] Backtest mode toggle in the existing Phase 12 holdout config: "Last N periods" (existing) vs. "Pick specific month(s)" (new)
+- [x] Target month picker: multi-select of any calendar month(s) already present in the uploaded history
+- [x] Before-only training: for each target month, every model trains only on data strictly before it (no data leakage from after the target month, even if present in the uploaded set)
+- [x] Configurable lookback window: "use everything available before target" (default) or a specific number of months
+- [x] Live chart overlay: forecast vs. actual for the target month(s), updates immediately when the user switches algorithms
+- [x] Reuse Phase 12's accuracy metrics engine (MAPE, WAPE, signed bias %) per algorithm per target month — no separate calculation logic
+- [x] Multi-month consistency view: one algorithm's accuracy shown across all selected target months side by side
+- [x] "Use this algorithm for my next forecast" carry-over action: sets the sandbox-winning algorithm as the active model in the production (future-month) forecast flow
+- [x] Persistence: sandbox sessions savable/reopenable via the existing `plans.js` layer (`tool: "forecasting"`)
+- [x] CSV export of sandbox results (per algorithm, per target month: MAPE/WAPE/bias)
+- [x] `erlangly-qa` sign-off
+
 ---
 
 ## Post-v2 Backlog (not yet scheduled)
@@ -247,4 +261,9 @@ ideas and stretch goals go here until they're scoped and promoted into a numbere
   new pages. It can be built immediately after Phase 8, in parallel with Phase 9, or
   slotted in whenever forecasting work is next picked up. Ordering here is a preference,
   not a requirement.
+- **Phase 13** (Forecast Holdout Sandbox) depends on Phase 12's backtesting engine
+  (`backtestModel`/`runBacktestAll`) and metrics, which are already complete — so Phase 13
+  can start immediately. No dependency on Phases 9–11. It extends the same holdout config
+  UI Phase 12 introduced rather than replacing it, so it should follow Phase 12
+  conceptually even though both live in `forecasting.js` with no schema changes.
 

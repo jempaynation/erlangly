@@ -33,6 +33,52 @@ When a phase passes audit:
 
 ---
 
+## [Phase 13] — Forecast Holdout Sandbox — 2026-08-20
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Forecast Holdout Sandbox UI & Architecture (`forecasting.html`, `js/forecasting.js`, `css/styles.css`)**:
+  - Interactive "test algorithm on past months" harness integrated directly into the Model Comparison panel.
+  - Interactive Segmented Mode Toggle: easily switches between **📊 Last N Periods** (fast walk-forward holdout) and **🎯 Specific Month Sandbox** (calendar month holdout).
+- **Target Month Selection & Discovery (`extractHistoryMonths`)**:
+  - Automatically parses historical dates, groups records by calendar year-month (`YYYY-MM`), extracts period counts and preceding training days.
+  - Interactive month chip grid in UI with multi-select support, eligibility status badges, and quick-select helpers (*Select Last Month*, *Select Last 3 Months*, *Clear*).
+  - First calendar month in historical series is automatically marked ineligible and disabled with explanatory tooltip (zero preceding training data).
+- **Strict Before-Only Training (Zero Data Leakage)**:
+  - For any target month $M$, training slice strictly includes data with timestamp $< M_{\text{start}}$.
+  - Data from or after target month $M$ is strictly excluded, ensuring 100% out-of-sample integrity.
+- **Configurable Lookback Window**:
+  - Allows constraining the training window preceding the target month: "All available history" or 1, 3, 6, or 12 months lookback.
+- **Accuracy Metrics Engine Integration**:
+  - Reuses the shared Phase 12 accuracy metrics engine (`calculateAccuracyMetrics`) across candidate models (`holt`, `decomp_mult`, `trend`, `regression`, `yoy_trend`, `ensemble`) to compute:
+    - Holdout WAPE % (Volume-weighted error)
+    - Holdout MAPE % (Mean absolute percentage error)
+    - Signed Forecast Bias % ($+$/$-$ error direction)
+    - Holdout MAE & RMSE
+- **Multi-Month Consistency Matrix (`evaluateSandboxConsistency`)**:
+  - When 2+ target months are selected, dynamically renders a side-by-side consistency matrix table.
+  - Displays per-month WAPE columns, Overall Volume-Weighted WAPE %, Overall Signed Bias %, Stability Standard Deviation ($\sigma_{\text{WAPE}}$), and WAPE Range ($\max - \min$).
+  - Highlights the **🏆 Best Overall** algorithm and **Most Stable** algorithm.
+- **Interactive Live Chart Overlay (`renderChart`)**:
+  - Displays full historical actuals, target month ground truth curve, and dashed holdout prediction curve for the actively viewed model.
+  - 1-click "👁️ View" buttons allow instant switching of the active overlay model.
+- **1-Click Model Selection & Carry-Over Action (`applySandboxWinner`)**:
+  - "⚡ Use Winner for Production" action immediately promotes the top-performing holdout algorithm to the active production forecast for future horizons.
+- **Persistence & RFC-4180 CSV Export**:
+  - Holdout sandbox configuration (`backtestMode`, `sandboxTargetMonths`, `sandboxLookback`, `sandboxActiveModelId`) persists in Supabase plans via `plans.js` and URL share tokens.
+  - Dedicated "Export Sandbox CSV" exports comprehensive holdout records and accuracy metrics.
+
+### Found & fixed during QA
+- Verified in `SAMPLE_MULTI_YEAR_HISTORY` that 730 periods generate 24 calendar months spanning `2024-06` to `2026-05`, with preceding counts starting at 0 for the first month and advancing to 699 for the 24th month.
+- Verified that lookback window filtering correctly bounds the training slice (e.g. 92 days for 3-month lookback vs 487 days for all-history lookback on October 2025).
+- All 194 automated test assertions passed with 0 failures (`node test/run-tests.js`).
+- Verified complete browser interaction via browser subagent.
+
+### Deviations from spec (if any)
+- None. Fully adheres to `FEATURES.md`, `ROADMAP.md`, `AGENTS.md`, and `styles.css` token conventions.
+
+---
+
 ## [Phase 12] — Forecasting Enhancements II — 2026-08-19
 **QA sign-off:** erlangly-qa
 

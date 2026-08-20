@@ -588,6 +588,136 @@ overlappingActuals.forEach(pair => {
 assert(updatedCount === 1, 'Correctly updated existing period on overlapping merge');
 assert(historyMap['2026-06-01'].volume === 1530, 'Volume updated to 1530 without duplicating row');
 
+// =========================================================================
+// [15] Phase 13 — Forecast Holdout Sandbox (Strict Backtesting & Consistency)
+// =========================================================================
+console.log('\n[15] Phase 13 — Forecast Holdout Sandbox (Strict Backtesting & Consistency)');
+
+const sandboxMultiYearHistory = ErlanglyForecast.SAMPLE_MULTI_YEAR_HISTORY;
+assert(sandboxMultiYearHistory && sandboxMultiYearHistory.length === 730, 'Multi-year history available for sandbox testing (730 periods)');
+
+// 1. Test extractHistoryMonths
+const months = ErlanglyForecast.extractHistoryMonths(sandboxMultiYearHistory);
+assert(months && months.length === 24, `Extracted all 24 calendar months from 2-year history (found: ${months.length})`);
+assert(months[0].key === '2024-06', `First month is 2024-06 (found: ${months[0].key})`);
+assert(months[0].isEligible === false, 'First month is not eligible as holdout (no preceding training data)');
+assert(months[0].precedingCount === 0, 'First month preceding count is 0');
+assert(months[1].key === '2024-07', `Second month is 2024-07 (found: ${months[1].key})`);
+assert(months[1].isEligible === true, 'Second month is eligible as holdout');
+assert(months[1].precedingCount === 30, `Second month has 30 preceding days (found: ${months[1].precedingCount})`);
+assert(months[23].key === '2026-05', `Last month is 2026-05 (found: ${months[23].key})`);
+assert(months[23].precedingCount === 699, `Last month has 699 preceding days (found: ${months[23].precedingCount})`);
+
+// 2. Test single month holdout sandbox with strict before-only training
+const sandboxModels = ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'];
+const defaultParams = {
+  windowSize: 6,
+  seasonLength: 7,
+  alpha: 0.30,
+  beta: 0.10,
+  autoOptimize: true,
+  includeDummies: true,
+  lookbackWeeks: 8,
+  selectedModels: ['holt', 'decomp_mult', 'trend']
+};
+
+const singleHoldout = ErlanglyForecast.runHoldoutSandbox(sandboxMultiYearHistory, '2025-10', sandboxModels, defaultParams, 'all', {});
+assert(singleHoldout.monthEvaluations.length === 1, 'Single month holdout returned 1 evaluation');
+const octEval = singleHoldout.monthEvaluations[0];
+assert(octEval.isFeasible === true, 'October 2025 holdout evaluation is feasible');
+assert(octEval.holdoutPeriodsCount === 31, `October holdout slice contains 31 days (found: ${octEval.holdoutPeriodsCount})`);
+assert(octEval.trainPeriodsCount === 487, `All-lookback training slice contains exactly 487 preceding days (found: ${octEval.trainPeriodsCount})`);
+assert(octEval.models.length === 6, `Evaluated all 6 candidate models on October holdout (found: ${octEval.models.length})`);
+
+// Check top model holdout metrics
+const topModel = octEval.models[0];
+assert(topModel.holdoutMetrics !== undefined, 'Top model has holdout metrics');
+assert(topModel.holdoutMetrics.wape >= 0 && topModel.holdoutMetrics.wape < 100, `Top model achieved realistic holdout WAPE (${topModel.holdoutMetrics.wape.toFixed(1)}%)`);
+assert(topModel.holdoutMetrics.mape >= 0, `Top model calculated holdout MAPE (${topModel.holdoutMetrics.mape.toFixed(1)}%)`);
+assert(typeof topModel.holdoutMetrics.biasPct === 'number', `Top model calculated holdout signed bias (${topModel.holdoutMetrics.biasPct.toFixed(1)}%)`);
+assert(topModel.holdoutMetrics.mae > 0, `Top model calculated holdout MAE (${topModel.holdoutMetrics.mae.toFixed(1)})`);
+assert(topModel.holdoutMetrics.rmse > 0, `Top model calculated holdout RMSE (${topModel.holdoutMetrics.rmse.toFixed(1)})`);
+
+// 3. Test lookback window filtering (e.g. 3 months lookback)
+const lookback3Holdout = ErlanglyForecast.runHoldoutSandbox(sandboxMultiYearHistory, '2025-10', sandboxModels, defaultParams, 3, {});
+assert(lookback3Holdout.monthEvaluations[0].isFeasible === true, '3-Month lookback holdout evaluation is feasible');
+assert(lookback3Holdout.monthEvaluations[0].trainPeriodsCount === 92, `3-Month lookback restricts training slice to 92 preceding days (found: ${lookback3Holdout.monthEvaluations[0].trainPeriodsCount})`);
+
+const lookback1Holdout = ErlanglyForecast.runHoldoutSandbox(sandboxMultiYearHistory, '2025-10', sandboxModels, defaultParams, 1, {});
+assert(lookback1Holdout.monthEvaluations[0].isFeasible === true, '1-Month lookback holdout evaluation is feasible');
+assert(lookback1Holdout.monthEvaluations[0].trainPeriodsCount === 30, `1-Month lookback restricts training slice to 30 preceding days (found: ${lookback1Holdout.monthEvaluations[0].trainPeriodsCount})`);
+
+// 4. Test multi-month consistency matrix
+const targetMonths = ['2025-08', '2025-09', '2025-10'];
+const consistencyRes = ErlanglyForecast.evaluateSandboxConsistency(sandboxMultiYearHistory, targetMonths, sandboxModels, defaultParams, 'all', {});
+assert(consistencyRes.monthEvaluations.length === 3, `Evaluated across 3 target holdout months (found: ${consistencyRes.monthEvaluations.length})`);
+assert(consistencyRes.modelSummaries.length === 6, `Summarized performance across all 6 candidate models (found: ${consistencyRes.modelSummaries.length})`);
+
+const bestOverall = consistencyRes.winner;
+assert(bestOverall !== null, 'Identified overall best model across multi-month holdouts');
+assert(bestOverall.overallWape > 0 && bestOverall.overallWape < 100, `Best overall model (${bestOverall.modelName}) achieved ${bestOverall.overallWape.toFixed(1)}% volume-weighted WAPE`);
+assert(typeof bestOverall.wapeStdDev === 'number' && bestOverall.wapeStdDev >= 0, `WAPE standard deviation computed (±${bestOverall.wapeStdDev.toFixed(2)}%)`);
+assert(typeof bestOverall.wapeRange === 'number' && bestOverall.wapeRange >= 0, `WAPE range computed (${bestOverall.wapeRange.toFixed(1)}%)`);
+
+const mostConsistent = consistencyRes.mostConsistent;
+assert(mostConsistent !== null, `Identified most stable algorithm (${mostConsistent.modelName}) with lowest WAPE std-dev (±${mostConsistent.wapeStdDev.toFixed(2)}%)`);
+
+// 5. Test 1-click model selection / carry-over logic
+const chosenAlgorithm = bestOverall.modelId;
+const futureOptions = { horizon: 14, growthModifier: 0.05, assumedAht: 180, holidays: [] };
+const prodForecast = ErlanglyForecast.executeForecast(sandboxMultiYearHistory, chosenAlgorithm, defaultParams, futureOptions);
+assert(prodForecast !== null, 'Successfully executed production forecast using sandbox winner algorithm');
+assert(prodForecast.forecast.length === 14, `Generated 14 future projections using winner (${prodForecast.modelName})`);
+assert(prodForecast.forecast[0].volume > 0, `First future projection volume is positive (${Math.round(prodForecast.forecast[0].volume)} calls)`);
+
+console.log('\n[16] Chart Aggregation & Date Range Controls (Daily, Weekly, Monthly & Zoom)');
+
+// 1. Test Daily aggregation (passthrough)
+const rawSample = ErlanglyForecast.SAMPLE_MULTI_YEAR_HISTORY;
+const dailyAgg = ErlanglyForecast.aggregateTimeSeries(rawSample, 'daily');
+assert(dailyAgg.length === rawSample.length, `Daily aggregation preserves exact length (${dailyAgg.length} points)`);
+assert(dailyAgg[0].volume === rawSample[0].volume, 'Daily aggregation preserves first point volume');
+
+// 2. Test Weekly aggregation
+const weeklyAgg = ErlanglyForecast.aggregateTimeSeries(rawSample, 'weekly');
+assert(weeklyAgg.length > 0 && weeklyAgg.length < rawSample.length, `Weekly aggregation grouped 730 days into ${weeklyAgg.length} calendar weeks`);
+const rawTotal = rawSample.reduce((a, b) => a + b.volume, 0);
+const weeklyTotal = weeklyAgg.reduce((a, b) => a + b.volume, 0);
+assert(Math.abs(rawTotal - weeklyTotal) < 0.001, `Weekly aggregation perfectly preserves total volume (${Math.round(weeklyTotal)} calls)`);
+assert(weeklyAgg[0].label.startsWith('Wk'), `Weekly label formatted correctly (${weeklyAgg[0].label})`);
+
+// 3. Test Monthly aggregation
+const monthlyAgg = ErlanglyForecast.aggregateTimeSeries(rawSample, 'monthly');
+assert(monthlyAgg.length === 24, `Monthly aggregation grouped 730 days into exactly 24 calendar months (found: ${monthlyAgg.length})`);
+const monthlyTotal = monthlyAgg.reduce((a, b) => a + b.volume, 0);
+assert(Math.abs(rawTotal - monthlyTotal) < 0.001, `Monthly aggregation perfectly preserves total volume (${Math.round(monthlyTotal)} calls)`);
+assert(monthlyAgg[0].label.includes('2024'), `First monthly label is formatted with year (${monthlyAgg[0].label})`);
+
+// 4. Test Date Filtering
+const dateFiltered = ErlanglyForecast.filterTimeSeriesByDate(rawSample, '2025-01-01', '2025-03-31');
+assert(dateFiltered.length === 90, `Date filter restricted series to Q1 2025 (90 days, found: ${dateFiltered.length})`);
+assert(dateFiltered[0].period === '2025-01-01', 'First filtered date is 2025-01-01');
+assert(dateFiltered[dateFiltered.length - 1].period === '2025-03-31', 'Last filtered date is 2025-03-31');
+
+// 5. Test Range Bounds Computation
+const allSampleDates = rawSample.map(r => r.period);
+const boundsAll = ErlanglyForecast.computeRangeBounds(allSampleDates, 'all');
+assert(boundsAll.startDate === '2024-06-01', `All preset start date is 2024-06-01 (found: ${boundsAll.startDate})`);
+assert(boundsAll.endDate === '2026-05-31', `All preset end date is 2026-05-31 (found: ${boundsAll.endDate})`);
+
+const bounds1Y = ErlanglyForecast.computeRangeBounds(allSampleDates, '1y');
+assert(bounds1Y.startDate === '2025-05-31', `1Y preset start date is 2025-05-31 (found: ${bounds1Y.startDate})`);
+assert(bounds1Y.endDate === '2026-05-31', '1Y preset end date is 2026-05-31');
+
+const bounds3M = ErlanglyForecast.computeRangeBounds(allSampleDates, '3m');
+assert(bounds3M.startDate === '2026-03-02', `3M preset start date is 2026-03-02 (found: ${bounds3M.startDate})`);
+assert(bounds3M.endDate === '2026-05-31', '3M preset end date is 2026-05-31');
+
+const fcSampleDates = ['2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04'];
+const boundsFc = ErlanglyForecast.computeRangeBounds(allSampleDates.concat(fcSampleDates), 'forecast', fcSampleDates);
+assert(boundsFc.startDate === '2026-05-18', `Forecast preset pads 14 days before forecast start (found: ${boundsFc.startDate})`);
+assert(boundsFc.endDate === '2026-06-04', `Forecast preset ends on last forecast date (${boundsFc.endDate})`);
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');
@@ -595,6 +725,7 @@ console.log('====================================================');
 if (failed > 0) {
   process.exit(1);
 }
+
 
 
 

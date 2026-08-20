@@ -124,7 +124,7 @@ needs evolve over a multi-week or multi-month horizon, not just one interval or 
 
 ---
 
-## v2 Features (Phases 8–11 — see ROADMAP.md for build order and status)
+## v2 Features (Phases 8–13 — see ROADMAP.md for build order and status)
 
 ### 8. Advanced Forecasting Models (Phase 8)
 Extends the forecasting tool from three basic models (WMA, SMA, Linear Trend) to a
@@ -383,4 +383,50 @@ forward. Both build directly on the Phase 8 model interface (`fit`/`predict`/`ge
 - **CSV export**: accuracy metrics and backtest results export alongside the existing
   forecast CSV export, so an analyst can paste accuracy figures into a reporting deck
   without re-deriving them.
+
+### 13. Forecast Holdout Sandbox (Phase 13)
+Extends Phase 12's out-of-sample backtesting (`backtestModel`/`runBacktestAll`) from a
+single "hold out the last N periods" check into an interactive sandbox where a user can
+pick any specific month(s) already inside their uploaded history, watch each algorithm's
+forecast for that month plotted against the real actual, and settle on a winning
+algorithm before trusting it on a real future month. No new pages — this lives inside
+`forecasting.html`/`js/forecasting.js`, as a mode alongside the existing "last N periods"
+backtest, sharing the same model registry and accuracy metrics.
+
+- **Backtest mode toggle**: the existing Phase 12 holdout configuration gets two modes:
+  - **Last N periods** (existing Phase 12 behavior, unchanged)
+  - **Pick specific month(s)** (new): user selects one or more calendar months that
+    already exist in their uploaded history as holdout targets, instead of a trailing count
+- **Target month selection**: multi-select of any month(s) present in the uploaded
+  history (e.g. October 2025 and November 2025 from a Jan–Dec 2025 upload). Not limited
+  to one month at a time — picking multiple lets the user check whether an algorithm's
+  accuracy holds up consistently across different months, not just one favorable one.
+- **Before-only training (no data leakage)**: for each target month, every registered
+  model trains **only on data before that month** — never on data from after it, even if
+  it exists in the uploaded set. This keeps the simulation honest: it answers "if I only
+  knew data up to this point, how would this algorithm have predicted the target month?"
+- **Configurable lookback window**: alongside the target month picker, a lookback input
+  controls how much history before the target month is used for training — either
+  "use everything available before the target month" (default) or a specific number of
+  months (e.g. "last 6 months before target"). This lets a user also test how an
+  algorithm performs with limited history, not just with the full dataset.
+- **Live chart overlay**: as the user switches the selected algorithm, the Chart.js
+  view re-renders the forecast line for the target month(s) against the real actual
+  line for that same period, using the existing dual-curve chart pattern. Switching
+  algorithms updates the overlay immediately — no need to re-run the whole page.
+- **Accuracy panel (reused from Phase 12)**: MAPE, WAPE, and signed bias % are computed
+  per algorithm per target month using the same metrics engine as the existing Accuracy
+  Tracking Tool — no separate calculation logic.
+- **Multi-month consistency view**: when more than one target month is selected, an
+  additional view shows one algorithm's accuracy across all picked months side by side,
+  so the user can judge consistency rather than relying on a single lucky/unlucky month.
+- **Carry-over to production forecast**: once the user settles on a winning algorithm in
+  the sandbox, an explicit "Use this algorithm for my next forecast" action sets that
+  algorithm as the active model in the normal (production) forecast flow for a real
+  future/unknown month — no need to manually reselect it.
+- **Persistence**: a sandbox session (target months picked, lookback window, algorithm
+  results) is savable through the existing persistence layer (`tool: "forecasting"`,
+  `js/plans.js`), the same as any other saved forecast — reopenable later via My Plans.
+- **CSV export**: sandbox results (per algorithm, per target month: MAPE/WAPE/bias) can
+  be exported the same way as the existing Phase 12 backtest/accuracy exports.
 

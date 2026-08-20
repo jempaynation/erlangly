@@ -1354,6 +1354,539 @@
   }
 
   // =========================================================================
+  // 3b. PHASE 13 — FORECAST HOLDOUT SANDBOX ENGINE
+  // =========================================================================
+
+  /**
+   * Phase 13: Extract all distinct calendar months (YYYY-MM) from history.
+   * Returns array of month objects sorted chronologically with metadata and eligibility.
+   */
+  function extractHistoryMonths(history) {
+    if (!history || history.length === 0) return [];
+
+    var monthNames = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    var monthMap = {};
+
+    history.forEach(function(row) {
+      if (!row || !row.period) return;
+      var dInfo = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(row.period) : null;
+      if (!dInfo || !dInfo.isDate) return;
+
+      var mPad = dInfo.month < 10 ? '0' + dInfo.month : String(dInfo.month);
+      var key = dInfo.year + '-' + mPad;
+
+      if (!monthMap[key]) {
+        monthMap[key] = {
+          key: key,
+          label: monthNames[dInfo.month - 1] + ' ' + dInfo.year,
+          shortLabel: monthNames[dInfo.month - 1].substring(0, 3) + ' ' + dInfo.year,
+          year: dInfo.year,
+          month: dInfo.month,
+          periodCount: 0,
+          firstDate: dInfo.isoDate,
+          lastDate: dInfo.isoDate,
+          firstTimestamp: dInfo.timestamp,
+          lastTimestamp: dInfo.timestamp,
+          totalVolume: 0,
+          rows: []
+        };
+      }
+
+      var mObj = monthMap[key];
+      mObj.periodCount++;
+      mObj.totalVolume += (row.volume || 0);
+      mObj.rows.push(row);
+      if (dInfo.timestamp < mObj.firstTimestamp) {
+        mObj.firstTimestamp = dInfo.timestamp;
+        mObj.firstDate = dInfo.isoDate;
+      }
+      if (dInfo.timestamp > mObj.lastTimestamp) {
+        mObj.lastTimestamp = dInfo.timestamp;
+        mObj.lastDate = dInfo.isoDate;
+      }
+    });
+
+    var monthKeys = Object.keys(monthMap).sort();
+    var resultList = [];
+
+    monthKeys.forEach(function(k) {
+      var m = monthMap[k];
+      // Start of month timestamp (UTC)
+      var monthStartUtc = Date.UTC(m.year, m.month - 1, 1);
+
+      // Count rows in history that occur strictly BEFORE this month
+      var precedingRows = history.filter(function(r) {
+        var info = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(r.period) : null;
+        return info && info.isDate && info.timestamp < monthStartUtc;
+      });
+
+      m.precedingCount = precedingRows.length;
+      m.precedingStartDate = precedingRows[0] ? precedingRows[0].period : null;
+      m.precedingEndDate = precedingRows[precedingRows.length - 1] ? precedingRows[precedingRows.length - 1].period : null;
+      m.isEligible = m.precedingCount >= 4; // At least 4 data points before target month
+
+      resultList.push(m);
+    });
+
+    return resultList;
+  }
+
+  /**
+   * Phase 13: Execute Holdout Sandbox for specific target month(s).
+   * Strict before-only training: for each target month M, models train exclusively on
+   * history prior to the 1st of that month (t < M_start), with zero data leakage.
+   * Configurable lookback: lookbackMonths specifies max history window preceding target.
+   * 
+   * @param {Array} history - Full historical time series dataset
+   * @param {string|Array} targetMonths - Target month key(s), e.g. '2025-10' or ['2025-09', '2025-10']
+   * @param {Array} [modelIds] - Candidate model IDs to evaluate
+   * @param {Object} [modelParams] - Model parameters configuration
+   * @param {string|number} [lookbackMonths] - 'all' or integer number of months (1, 3, 6, 12)
+   * @param {Object} [options] - Additional options (holidays, assumedAht, etc.)
+   * @returns {Object} Sandbox results containing per-month, per-model evaluations
+   */
+  function runHoldoutSandbox(history, targetMonths, modelIds, modelParams, lookbackMonths, options) {
+    var targets = Array.isArray(targetMonths) ? targetMonths.slice() : (targetMonths ? [targetMonths] : []);
+    if (!history || history.length === 0 || targets.length === 0) {
+      return { targetMonths: [], lookbackMonths: lookbackMonths || 'all', results: [] };
+    }
+
+    var defaultModels = ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'];
+    var activeModels = (modelIds && modelIds.length > 0) ? modelIds : defaultModels;
+    var allMonthMetadata = extractHistoryMonths(history);
+    var monthMetaMap = {};
+    allMonthMetadata.forEach(function(m) { monthMetaMap[m.key] = m; });
+
+    var perMonthEvaluations = [];
+
+    targets.forEach(function(mKey) {
+      var meta = monthMetaMap[mKey];
+      var mYear, mMonth;
+      if (meta) {
+        mYear = meta.year;
+        mMonth = meta.month;
+      } else {
+        var parts = mKey.split('-');
+        mYear = parseInt(parts[0], 10);
+        mMonth = parseInt(parts[1], 10);
+      }
+
+      if (isNaN(mYear) || isNaN(mMonth)) return;
+
+      var monthStartUtc = Date.UTC(mYear, mMonth - 1, 1);
+      var monthEndUtc = Date.UTC(mYear, mMonth, 0, 23, 59, 59, 999);
+
+      // 1. Extract holdout rows (evaluation ground truth) for this month
+      var holdoutRows = history.filter(function(r) {
+        var info = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(r.period) : null;
+        return info && info.isDate && info.timestamp >= monthStartUtc && info.timestamp <= monthEndUtc;
+      });
+
+      if (holdoutRows.length === 0) return;
+
+      // 2. Extract candidate training pool (strictly before the 1st of target month)
+      var beforePool = history.filter(function(r) {
+        var info = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(r.period) : null;
+        return info && info.isDate && info.timestamp < monthStartUtc;
+      });
+
+      // 3. Apply configurable lookback window
+      var trainingRows = beforePool;
+      var lookbackVal = lookbackMonths !== undefined ? lookbackMonths : 'all';
+      if (lookbackVal !== 'all' && lookbackVal !== 0 && lookbackVal !== '0') {
+        var lbInt = parseInt(lookbackVal, 10);
+        if (lbInt > 0) {
+          // Lookback start timestamp = mMonth - lbInt
+          var lbStartUtc = Date.UTC(mYear, mMonth - 1 - lbInt, 1);
+          trainingRows = beforePool.filter(function(r) {
+            var info = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(r.period) : null;
+            return info && info.isDate && info.timestamp >= lbStartUtc;
+          });
+        }
+      }
+
+      if (trainingRows.length < 3) {
+        perMonthEvaluations.push({
+          monthKey: mKey,
+          monthLabel: meta ? meta.label : mKey,
+          isFeasible: false,
+          reason: 'Insufficient training data before ' + mKey + ' (found ' + trainingRows.length + ' periods, min 3 required)',
+          models: []
+        });
+        return;
+      }
+
+      var modelResults = [];
+      var futureDates = holdoutRows.map(function(h) { return h.period; });
+      var actualVolumes = holdoutRows.map(function(h) { return h.volume; });
+
+      activeModels.forEach(function(mId) {
+        var model = MODEL_REGISTRY[mId];
+        if (!model) return;
+
+        // Fit candidate model strictly on training slice
+        var fitResult = model.fit(trainingRows, modelParams || {});
+
+        // Predict H steps matching exact holdout target dates
+        var predictions = model.predict(fitResult, holdoutRows.length, {
+          futureDates: futureDates,
+          assumedAht: options ? options.assumedAht : 180,
+          holidays: options ? options.holidays : []
+        });
+
+        var predictedVolumes = predictions.map(function(p) {
+          return Math.max(0, Math.round(p.rawVolume !== undefined ? p.rawVolume : (p.volume || 0)));
+        });
+
+        // Compute out-of-sample accuracy metrics using reused Phase 12 engine
+        var oosMetrics = calculateAccuracyMetrics(actualVolumes, predictedVolumes);
+        var inSampleMetrics = fitResult.metrics || { mae: 0, mape: 0, rmse: 0, wape: 0 };
+        var overfitGap = Math.max(0, oosMetrics.mape - inSampleMetrics.mape);
+
+        modelResults.push({
+          modelId: model.id,
+          modelName: model.name,
+          monthKey: mKey,
+          monthLabel: meta ? meta.label : mKey,
+          trainCount: trainingRows.length,
+          trainStartDate: trainingRows[0] ? trainingRows[0].period : '',
+          trainEndDate: trainingRows[trainingRows.length - 1] ? trainingRows[trainingRows.length - 1].period : '',
+          holdoutCount: holdoutRows.length,
+          holdoutStartDate: holdoutRows[0] ? holdoutRows[0].period : '',
+          holdoutEndDate: holdoutRows[holdoutRows.length - 1] ? holdoutRows[holdoutRows.length - 1].period : '',
+          lookbackWindow: lookbackVal,
+          inSampleMetrics: inSampleMetrics,
+          holdoutMetrics: oosMetrics,
+          overfitGap: overfitGap,
+          predictions: predictedVolumes,
+          actuals: actualVolumes,
+          holdoutPeriods: futureDates,
+          totalActual: oosMetrics.totalActual,
+          totalForecast: oosMetrics.totalForecast,
+          varianceTotal: oosMetrics.varianceTotal
+        });
+      });
+
+      // Sort models by holdout WAPE %
+      modelResults.sort(function(a, b) {
+        return a.holdoutMetrics.wape - b.holdoutMetrics.wape;
+      });
+
+      perMonthEvaluations.push({
+        monthKey: mKey,
+        monthLabel: meta ? meta.label : mKey,
+        isFeasible: true,
+        holdoutPeriodsCount: holdoutRows.length,
+        trainPeriodsCount: trainingRows.length,
+        models: modelResults
+      });
+    });
+
+    return {
+      targetMonths: targets,
+      lookbackMonths: lookbackMonths || 'all',
+      monthEvaluations: perMonthEvaluations
+    };
+  }
+
+  /**
+   * Phase 13: Multi-month consistency aggregation.
+   * Compares model accuracy across all selected target months side-by-side,
+   * computing volume-weighted overall WAPE, mean bias, variance/stability, and ranking.
+   */
+  function evaluateSandboxConsistency(history, targetMonths, modelIds, modelParams, lookbackMonths, options) {
+    var rawSandbox = runHoldoutSandbox(history, targetMonths, modelIds, modelParams, lookbackMonths, options);
+    var validMonths = rawSandbox.monthEvaluations.filter(function(m) { return m.isFeasible && m.models.length > 0; });
+
+    if (validMonths.length === 0) {
+      return {
+        targetMonths: rawSandbox.targetMonths,
+        lookbackMonths: rawSandbox.lookbackMonths,
+        monthEvaluations: [],
+        modelSummaries: [],
+        winner: null
+      };
+    }
+
+    var modelMap = {};
+
+    validMonths.forEach(function(mEval) {
+      mEval.models.forEach(function(mRes) {
+        if (!modelMap[mRes.modelId]) {
+          modelMap[mRes.modelId] = {
+            modelId: mRes.modelId,
+            modelName: mRes.modelName,
+            monthResults: {},
+            allActuals: [],
+            allForecasts: [],
+            inSampleMapeSum: 0,
+            monthCount: 0
+          };
+        }
+        var mRec = modelMap[mRes.modelId];
+        mRec.monthResults[mRes.monthKey] = mRes;
+        mRec.allActuals = mRec.allActuals.concat(mRes.actuals);
+        mRec.allForecasts = mRec.allForecasts.concat(mRes.predictions);
+        mRec.inSampleMapeSum += (mRes.inSampleMetrics.mape || 0);
+        mRec.monthCount++;
+      });
+    });
+
+    var modelSummaries = [];
+
+    Object.keys(modelMap).forEach(function(mId) {
+      var mRec = modelMap[mId];
+      var overallMetrics = calculateAccuracyMetrics(mRec.allActuals, mRec.allForecasts);
+      var wapes = [];
+      var mapes = [];
+      var biases = [];
+
+      validMonths.forEach(function(mEval) {
+        var res = mRec.monthResults[mEval.monthKey];
+        if (res) {
+          wapes.push(res.holdoutMetrics.wape);
+          mapes.push(res.holdoutMetrics.mape);
+          biases.push(res.holdoutMetrics.biasPct);
+        }
+      });
+
+      // Calculate WAPE stability (Standard Deviation & Range across months)
+      var n = wapes.length;
+      var wapeMean = n > 0 ? (wapes.reduce(function(a, b) { return a + b; }, 0) / n) : 0;
+      var wapeVariance = 0;
+      for (var i = 0; i < n; i++) {
+        var diff = wapes[i] - wapeMean;
+        wapeVariance += (diff * diff);
+      }
+      var wapeStdDev = n > 1 ? Math.sqrt(wapeVariance / n) : 0;
+      var minWape = n > 0 ? Math.min.apply(null, wapes) : 0;
+      var maxWape = n > 0 ? Math.max.apply(null, wapes) : 0;
+      var wapeRange = maxWape - minWape;
+
+      modelSummaries.push({
+        modelId: mId,
+        modelName: mRec.modelName,
+        monthCount: n,
+        avgInSampleMape: mRec.monthCount > 0 ? (mRec.inSampleMapeSum / mRec.monthCount) : 0,
+        overallWape: overallMetrics.wape,
+        overallMape: overallMetrics.mape,
+        overallBiasPct: overallMetrics.biasPct,
+        overallMae: overallMetrics.mae,
+        overallRmse: overallMetrics.rmse,
+        totalActual: overallMetrics.totalActual,
+        totalForecast: overallMetrics.totalForecast,
+        varianceTotal: overallMetrics.varianceTotal,
+        monthResults: mRec.monthResults,
+        wapeMean: wapeMean,
+        wapeStdDev: wapeStdDev,
+        wapeRange: wapeRange,
+        isBestOverall: false,
+        isMostConsistent: false
+      });
+    });
+
+    // Rank by overall volume-weighted WAPE (ascending)
+    modelSummaries.sort(function(a, b) {
+      return a.overallWape - b.overallWape;
+    });
+
+    if (modelSummaries.length > 0) {
+      modelSummaries[0].isBestOverall = true;
+
+      // Find most consistent (lowest WAPE std dev among top performers)
+      var minStdDev = Infinity;
+      var mostConsistentIdx = 0;
+      modelSummaries.forEach(function(s, idx) {
+        if (s.wapeStdDev < minStdDev) {
+          minStdDev = s.wapeStdDev;
+          mostConsistentIdx = idx;
+        }
+      });
+      modelSummaries[mostConsistentIdx].isMostConsistent = true;
+    }
+
+    return {
+      targetMonths: rawSandbox.targetMonths,
+      lookbackMonths: rawSandbox.lookbackMonths,
+      monthEvaluations: validMonths,
+      modelSummaries: modelSummaries,
+      winner: modelSummaries[0] || null,
+      mostConsistent: (modelSummaries.length > 0 ? modelSummaries[mostConsistentIdx] : null)
+    };
+  }
+
+  // =========================================================================
+  // 3b. TIME SERIES AGGREGATION & DATE RANGE HELPERS (DAILY, WEEKLY, MONTHLY)
+  // =========================================================================
+
+  /**
+   * Aggregate an array of time series data points into Daily, Weekly, or Monthly buckets.
+   *
+   * @param {Array<{period: string, volume: number, baseVolume?: number, holidayName?: string}>} data - Raw series
+   * @param {'daily'|'weekly'|'monthly'} granularity - Aggregation level
+   * @returns {Array<{period: string, label: string, volume: number, count: number, firstPeriod: string, lastPeriod: string}>}
+   */
+  function aggregateTimeSeries(data, granularity) {
+    if (!data || !Array.isArray(data) || data.length === 0) return [];
+    if (granularity === 'daily' || !granularity) {
+      return data.map(function(d) {
+        return {
+          period: d.period,
+          label: d.period,
+          volume: d.volume,
+          baseVolume: d.baseVolume !== undefined ? d.baseVolume : d.volume,
+          count: 1,
+          firstPeriod: d.period,
+          lastPeriod: d.period,
+          holidayName: d.holidayName || null
+        };
+      });
+    }
+
+    var groups = {};
+    var order = [];
+
+    data.forEach(function(item, idx) {
+      var p = item.period;
+      var dInfo = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(p) : null;
+      var key = p;
+      var label = p;
+
+      if (granularity === 'weekly') {
+        if (dInfo && dInfo.isDate) {
+          var offset = (dInfo.dayOfWeek + 6) % 7; // Monday = 0, Sunday = 6
+          var mondayTs = dInfo.timestamp - (offset * 86400000);
+          var monObj = ErlanglyUtils.parseDate(new Date(mondayTs));
+          key = monObj.isoDate;
+          label = 'Wk ' + monObj.isoDate;
+        } else {
+          var wkNum = Math.floor(idx / 7) + 1;
+          key = 'Wk ' + wkNum;
+          label = 'Week ' + wkNum;
+        }
+      } else if (granularity === 'monthly') {
+        if (dInfo && dInfo.isDate) {
+          var pad = function(n) { return n < 10 ? '0' + n : String(n); };
+          key = dInfo.year + '-' + pad(dInfo.month);
+          var monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          label = monthNames[dInfo.month - 1] + ' ' + dInfo.year;
+        } else {
+          var moNum = Math.floor(idx / 30) + 1;
+          key = 'Mo ' + moNum;
+          label = 'Month ' + moNum;
+        }
+      }
+
+      if (!groups[key]) {
+        groups[key] = {
+          period: key,
+          label: label,
+          volume: 0,
+          baseVolume: 0,
+          count: 0,
+          firstPeriod: p,
+          lastPeriod: p,
+          holidayName: item.holidayName || null
+        };
+        order.push(key);
+      }
+
+      groups[key].volume += (item.volume || 0);
+      groups[key].baseVolume += (item.baseVolume !== undefined ? item.baseVolume : (item.volume || 0));
+      groups[key].count++;
+      groups[key].lastPeriod = p;
+      if (item.holidayName) groups[key].holidayName = item.holidayName;
+    });
+
+    return order.map(function(k) { return groups[k]; });
+  }
+
+  /**
+   * Filter time series data to a specified [startDate, endDate] window.
+   *
+   * @param {Array<{period: string, volume: number}>} series
+   * @param {string|null} startDate - 'YYYY-MM-DD' or null
+   * @param {string|null} endDate - 'YYYY-MM-DD' or null
+   * @returns {Array<{period: string, volume: number}>}
+   */
+  function filterTimeSeriesByDate(series, startDate, endDate) {
+    if (!series || !Array.isArray(series)) return [];
+    return series.filter(function(item) {
+      if (!item || !item.period) return false;
+      var p = item.period;
+      if (startDate && p < startDate) return false;
+      if (endDate && p > endDate) return false;
+      return true;
+    });
+  }
+
+  /**
+   * Calculate date range window bounds based on full date set and preset selection.
+   *
+   * @param {Array<string>} allDates - Array of 'YYYY-MM-DD' strings
+   * @param {'all'|'1y'|'6m'|'3m'|'1m'|'forecast'|'custom'} preset
+   * @param {Array<string>} [forecastDates]
+   * @returns {{startDate: string|null, endDate: string|null}}
+   */
+  function computeRangeBounds(allDates, preset, forecastDates) {
+    if (!allDates || allDates.length === 0) return { startDate: null, endDate: null };
+    var sorted = allDates.slice().sort();
+    var minDate = sorted[0];
+    var maxDate = sorted[sorted.length - 1];
+
+    if (!preset || preset === 'all') {
+      return { startDate: minDate, endDate: maxDate };
+    }
+
+    if (preset === 'forecast') {
+      if (forecastDates && forecastDates.length > 0) {
+        var fcSorted = forecastDates.slice().sort();
+        var fcStart = fcSorted[0];
+        var fcEnd = fcSorted[fcSorted.length - 1];
+        var fcStartInfo = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(fcStart) : null;
+        if (fcStartInfo && fcStartInfo.isDate) {
+          var padDays = 14 * 86400000;
+          var padObj = ErlanglyUtils.parseDate(new Date(fcStartInfo.timestamp - padDays));
+          var padIso = padObj ? padObj.isoDate : fcStart;
+          return { startDate: padIso < minDate ? minDate : padIso, endDate: fcEnd };
+        }
+        return { startDate: fcStart, endDate: fcEnd };
+      }
+      var trailingCount = Math.min(sorted.length, 30);
+      return { startDate: sorted[sorted.length - trailingCount], endDate: maxDate };
+    }
+
+    var maxInfo = ErlanglyUtils && ErlanglyUtils.parseDate ? ErlanglyUtils.parseDate(maxDate) : null;
+    if (!maxInfo || !maxInfo.isDate) {
+      var count = sorted.length;
+      var sliceCount = count;
+      if (preset === '1y') sliceCount = Math.min(count, 365);
+      else if (preset === '6m') sliceCount = Math.min(count, 180);
+      else if (preset === '3m') sliceCount = Math.min(count, 90);
+      else if (preset === '1m') sliceCount = Math.min(count, 30);
+      var sIdx = Math.max(0, count - sliceCount);
+      return { startDate: sorted[sIdx], endDate: maxDate };
+    }
+
+    var daysToSubtract = 365;
+    if (preset === '1y') daysToSubtract = 365;
+    else if (preset === '6m') daysToSubtract = 180;
+    else if (preset === '3m') daysToSubtract = 90;
+    else if (preset === '1m') daysToSubtract = 30;
+
+    var startTs = maxInfo.timestamp - (daysToSubtract * 86400000);
+    var startObj = ErlanglyUtils.parseDate(new Date(startTs));
+    var startIso = startObj ? startObj.isoDate : minDate;
+    if (startIso < minDate) startIso = minDate;
+
+    return { startDate: startIso, endDate: maxDate };
+  }
+
+  // =========================================================================
   // 4. USER-DEFINED TREND PROFILES
   // =========================================================================
 
@@ -1715,12 +2248,26 @@
     compareModelIds: ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'],
     backtestHoldout: 7,
     lastBacktestResults: [],
+
+    // Phase 13: Holdout Sandbox State
+    backtestMode: 'last_n', // 'last_n' | 'month_sandbox'
+    sandboxTargetMonths: [],
+    sandboxLookback: 'all',
+    sandboxActiveModelId: null,
+    lastSandboxResults: null,
     
     // Accuracy tracking state (Phase 12 / Enhancement)
     accuracyPairs: [],
     accuracyRunsHistory: [],
     lastAccuracyMetrics: null,
     lockedForecast: null,
+
+    // Chart Interactive Controls (Granularity & Date Range Zoom)
+    chartGranularity: 'daily', // 'daily' | 'weekly' | 'monthly'
+    chartRangePreset: 'all',   // 'all' | '1y' | '6m' | '3m' | '1m' | 'forecast' | 'custom'
+    chartStartDate: null,
+    chartEndDate: null,
+    lastComparisonResults: [],
 
     chart: null,
     worker: null
@@ -1778,12 +2325,22 @@
       if (shared.accuracyPairs) UIState.accuracyPairs = shared.accuracyPairs;
       if (shared.accuracyRunsHistory) UIState.accuracyRunsHistory = shared.accuracyRunsHistory;
       if (shared.lockedForecast) UIState.lockedForecast = shared.lockedForecast;
+      if (shared.backtestMode) UIState.backtestMode = shared.backtestMode;
+      if (shared.sandboxTargetMonths) UIState.sandboxTargetMonths = shared.sandboxTargetMonths;
+      if (shared.sandboxLookback) UIState.sandboxLookback = shared.sandboxLookback;
+      if (shared.sandboxActiveModelId) UIState.sandboxActiveModelId = shared.sandboxActiveModelId;
+      if (shared.chartGranularity) UIState.chartGranularity = shared.chartGranularity;
+      if (shared.chartRangePreset) UIState.chartRangePreset = shared.chartRangePreset;
+      if (shared.chartStartDate) UIState.chartStartDate = shared.chartStartDate;
+      if (shared.chartEndDate) UIState.chartEndDate = shared.chartEndDate;
       loadHistory(UIState.history);
       renderHolidaysTable();
       renderAccuracyTable();
       renderLockedForecastUI();
       updateModelParamsUI();
       renderTrendProfileUI();
+      updateBacktestModeUI();
+      updateChartControlsUI();
       ErlanglyUtils.showToast('Restored shared forecast plan', 'info');
       return;
     }
@@ -1805,12 +2362,22 @@
         if (saved.accuracyPairs) UIState.accuracyPairs = saved.accuracyPairs;
         if (saved.accuracyRunsHistory) UIState.accuracyRunsHistory = saved.accuracyRunsHistory;
         if (saved.lockedForecast) UIState.lockedForecast = saved.lockedForecast;
+        if (saved.backtestMode) UIState.backtestMode = saved.backtestMode;
+        if (saved.sandboxTargetMonths) UIState.sandboxTargetMonths = saved.sandboxTargetMonths;
+        if (saved.sandboxLookback) UIState.sandboxLookback = saved.sandboxLookback;
+        if (saved.sandboxActiveModelId) UIState.sandboxActiveModelId = saved.sandboxActiveModelId;
+        if (saved.chartGranularity) UIState.chartGranularity = saved.chartGranularity;
+        if (saved.chartRangePreset) UIState.chartRangePreset = saved.chartRangePreset;
+        if (saved.chartStartDate) UIState.chartStartDate = saved.chartStartDate;
+        if (saved.chartEndDate) UIState.chartEndDate = saved.chartEndDate;
         loadHistory(UIState.history);
         renderHolidaysTable();
         renderAccuracyTable();
         renderLockedForecastUI();
         updateModelParamsUI();
         renderTrendProfileUI();
+        updateBacktestModeUI();
+        updateChartControlsUI();
         ErlanglyUtils.showToast('Loaded plan from My Plans dashboard', 'success');
         return;
       }
@@ -2312,9 +2879,184 @@
     var btnSaveAccuracyRun = document.getElementById('btn-save-accuracy-run');
     var btnExportAccuracyCSV = document.getElementById('btn-export-accuracy-csv');
 
-    // Backtest Controls
+    // Backtest & Sandbox Controls
     var btnRunBacktest = document.getElementById('btn-run-backtest');
     var inpBacktestHoldout = document.getElementById('num-backtest-holdout');
+    var btnModeLastN = document.getElementById('btn-mode-last-n');
+    var btnModeSandbox = document.getElementById('btn-mode-sandbox');
+    var btnSandboxSelectLast = document.getElementById('btn-sandbox-select-last');
+    var btnSandboxSelectLast3 = document.getElementById('btn-sandbox-select-last3');
+    var btnSandboxClearMonths = document.getElementById('btn-sandbox-clear-months');
+    var selectSandboxLookback = document.getElementById('select-sandbox-lookback');
+    var btnRunSandbox = document.getElementById('btn-run-sandbox');
+    var btnExportSandboxCSV = document.getElementById('btn-export-sandbox-csv');
+    var btnApplySandboxWinner = document.getElementById('btn-apply-sandbox-winner');
+
+    if (btnModeLastN && btnModeSandbox) {
+      btnModeLastN.addEventListener('click', function() {
+        UIState.backtestMode = 'last_n';
+        updateBacktestModeUI();
+        runForecast();
+      });
+      btnModeSandbox.addEventListener('click', function() {
+        UIState.backtestMode = 'month_sandbox';
+        updateBacktestModeUI();
+        renderSandboxMonthChips();
+        runForecast();
+      });
+    }
+
+    if (btnSandboxSelectLast) {
+      btnSandboxSelectLast.addEventListener('click', function() {
+        var months = extractHistoryMonths(UIState.history).filter(function(m) { return m.isEligible; });
+        if (months.length > 0) {
+          UIState.sandboxTargetMonths = [months[months.length - 1].key];
+          renderSandboxMonthChips();
+          runForecast();
+        } else {
+          ErlanglyUtils.showToast('No eligible holdout months with preceding data available', 'warn');
+        }
+      });
+    }
+
+    if (btnSandboxSelectLast3) {
+      btnSandboxSelectLast3.addEventListener('click', function() {
+        var months = extractHistoryMonths(UIState.history).filter(function(m) { return m.isEligible; });
+        if (months.length > 0) {
+          UIState.sandboxTargetMonths = months.slice(Math.max(0, months.length - 3)).map(function(m) { return m.key; });
+          renderSandboxMonthChips();
+          runForecast();
+        } else {
+          ErlanglyUtils.showToast('No eligible holdout months with preceding data available', 'warn');
+        }
+      });
+    }
+
+    if (btnSandboxClearMonths) {
+      btnSandboxClearMonths.addEventListener('click', function() {
+        UIState.sandboxTargetMonths = [];
+        renderSandboxMonthChips();
+        runForecast();
+        ErlanglyUtils.showToast('Cleared holdout target months', 'info');
+      });
+    }
+
+    if (selectSandboxLookback) {
+      selectSandboxLookback.addEventListener('change', function() {
+        UIState.sandboxLookback = selectSandboxLookback.value;
+        runForecast();
+      });
+    }
+
+    if (btnRunSandbox) {
+      btnRunSandbox.addEventListener('click', function() {
+        runForecast();
+        ErlanglyUtils.showToast('Re-evaluated holdout sandbox across candidate models', 'success');
+      });
+    }
+
+    if (btnExportSandboxCSV) {
+      btnExportSandboxCSV.addEventListener('click', function() {
+        exportSandboxCSV();
+      });
+    }
+
+    if (btnApplySandboxWinner) {
+      btnApplySandboxWinner.addEventListener('click', function() {
+        if (UIState.lastSandboxResults && UIState.lastSandboxResults.winner) {
+          applySandboxWinner(UIState.lastSandboxResults.winner.modelId);
+        } else if (UIState.sandboxActiveModelId) {
+          applySandboxWinner(UIState.sandboxActiveModelId);
+        } else {
+          ErlanglyUtils.showToast('No sandbox winner identified yet', 'warn');
+        }
+      });
+    }
+
+    // Chart Granularity Toggle Buttons (Daily, Weekly, Monthly)
+    var btnDaily = document.getElementById('btn-granularity-daily');
+    var btnWeekly = document.getElementById('btn-granularity-weekly');
+    var btnMonthly = document.getElementById('btn-granularity-monthly');
+
+    if (btnDaily) {
+      btnDaily.addEventListener('click', function() {
+        UIState.chartGranularity = 'daily';
+        updateChartControlsUI();
+        renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+      });
+    }
+    if (btnWeekly) {
+      btnWeekly.addEventListener('click', function() {
+        UIState.chartGranularity = 'weekly';
+        updateChartControlsUI();
+        renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+      });
+    }
+    if (btnMonthly) {
+      btnMonthly.addEventListener('click', function() {
+        UIState.chartGranularity = 'monthly';
+        updateChartControlsUI();
+        renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+      });
+    }
+
+    // Chart Range Preset Buttons (All, 1Y, 6M, 3M, 1M, Forecast)
+    var rangePresets = [
+      { id: 'btn-range-all', preset: 'all' },
+      { id: 'btn-range-1y', preset: '1y' },
+      { id: 'btn-range-6m', preset: '6m' },
+      { id: 'btn-range-3m', preset: '3m' },
+      { id: 'btn-range-1m', preset: '1m' },
+      { id: 'btn-range-fc', preset: 'forecast' }
+    ];
+    rangePresets.forEach(function(rp) {
+      var btn = document.getElementById(rp.id);
+      if (btn) {
+        btn.addEventListener('click', function() {
+          UIState.chartRangePreset = rp.preset;
+          UIState.chartStartDate = null;
+          UIState.chartEndDate = null;
+          updateChartControlsUI();
+          renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+        });
+      }
+    });
+
+    // Chart Custom Date Inputs & Reset Button
+    var inpChartStart = document.getElementById('input-chart-start-date');
+    var inpChartEnd = document.getElementById('input-chart-end-date');
+    var btnChartReset = document.getElementById('btn-chart-reset-range');
+
+    if (inpChartStart) {
+      inpChartStart.addEventListener('change', function() {
+        if (inpChartStart.value) {
+          UIState.chartRangePreset = 'custom';
+          UIState.chartStartDate = inpChartStart.value;
+          updateChartControlsUI();
+          renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+        }
+      });
+    }
+    if (inpChartEnd) {
+      inpChartEnd.addEventListener('change', function() {
+        if (inpChartEnd.value) {
+          UIState.chartRangePreset = 'custom';
+          UIState.chartEndDate = inpChartEnd.value;
+          updateChartControlsUI();
+          renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+        }
+      });
+    }
+    if (btnChartReset) {
+      btnChartReset.addEventListener('click', function() {
+        UIState.chartRangePreset = 'all';
+        UIState.chartStartDate = null;
+        UIState.chartEndDate = null;
+        updateChartControlsUI();
+        renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+        ErlanglyUtils.showToast('Reset chart window to all available dates', 'info');
+      });
+    }
 
     if (btnLoadSample) {
       btnLoadSample.addEventListener('click', function() {
@@ -2714,7 +3456,15 @@
             assumedAht: UIState.assumedAht,
             accuracyPairs: UIState.accuracyPairs,
             accuracyRunsHistory: UIState.accuracyRunsHistory,
-            lockedForecast: UIState.lockedForecast
+            lockedForecast: UIState.lockedForecast,
+            backtestMode: UIState.backtestMode,
+            sandboxTargetMonths: UIState.sandboxTargetMonths,
+            sandboxLookback: UIState.sandboxLookback,
+            sandboxActiveModelId: UIState.sandboxActiveModelId,
+            chartGranularity: UIState.chartGranularity,
+            chartRangePreset: UIState.chartRangePreset,
+            chartStartDate: UIState.chartStartDate,
+            chartEndDate: UIState.chartEndDate
           };
           var outputs = UIState.lastForecast ? {
             modelName: UIState.lastForecast.modelName,
@@ -2722,7 +3472,8 @@
             forecastCount: UIState.lastForecast.forecast.length,
             totalVolume: UIState.lastForecast.forecast.reduce(function(a, b) { return a + b.volume; }, 0),
             accuracyMetrics: UIState.lastAccuracyMetrics,
-            lockedForecast: UIState.lockedForecast
+            lockedForecast: UIState.lockedForecast,
+            sandboxResults: UIState.lastSandboxResults
           } : {};
           window.ErlanglyPlans.showSaveModal('forecasting', inputs, outputs);
         }
@@ -2745,7 +3496,15 @@
             assumedAht: UIState.assumedAht,
             accuracyPairs: UIState.accuracyPairs,
             accuracyRunsHistory: UIState.accuracyRunsHistory,
-            lockedForecast: UIState.lockedForecast
+            lockedForecast: UIState.lockedForecast,
+            backtestMode: UIState.backtestMode,
+            sandboxTargetMonths: UIState.sandboxTargetMonths,
+            sandboxLookback: UIState.sandboxLookback,
+            sandboxActiveModelId: UIState.sandboxActiveModelId,
+            chartGranularity: UIState.chartGranularity,
+            chartRangePreset: UIState.chartRangePreset,
+            chartStartDate: UIState.chartStartDate,
+            chartEndDate: UIState.chartEndDate
           };
           window.ErlanglyPlans.showShareModal('forecasting', inputs);
         }
@@ -2864,6 +3623,8 @@
 
     UIState.history = rawList;
     renderHistoryTable();
+    renderSandboxMonthChips();
+    updateBacktestModeUI();
     setupModelSelector();
     runForecast();
   }
@@ -3222,7 +3983,7 @@
       if (result.fitResult.beta !== undefined) UIState.modelParams.beta = result.fitResult.beta;
     }
 
-    // 2. Run model comparison & backtesting if comparison view is open
+    // 2. Run model comparison & backtesting / sandbox if comparison view is open
     var comparisonResults = [];
     if (UIState.compareMode) {
       var modelsToCompare = UIState.compareModelIds.length > 0 ? UIState.compareModelIds : ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'];
@@ -3231,7 +3992,13 @@
         comparisonResults.push(compRes);
       });
 
-      UIState.lastBacktestResults = runBacktestAll(UIState.history, modelsToCompare, UIState.modelParams, UIState.backtestHoldout, options);
+      if (UIState.backtestMode === 'last_n') {
+        UIState.lastBacktestResults = runBacktestAll(UIState.history, modelsToCompare, UIState.modelParams, UIState.backtestHoldout, options);
+      } else {
+        // Phase 13: Month Holdout Sandbox Evaluation
+        var sandboxRes = evaluateSandboxConsistency(UIState.history, UIState.sandboxTargetMonths, modelsToCompare, UIState.modelParams, UIState.sandboxLookback, options);
+        UIState.lastSandboxResults = sandboxRes;
+      }
     }
 
     // 3. Update KPI metrics cards
@@ -3240,12 +4007,16 @@
     // 4. Render Forecast breakdown table
     renderForecastTable(result);
 
-    // 5. Render Chart.js
+    // 5. Render Chart.js (with sandbox overlay if active)
     renderChart(result, comparisonResults);
 
-    // 6. Render Model Comparison table
+    // 6. Render Model Comparison / Sandbox table
     if (UIState.compareMode) {
-      renderComparisonTable(comparisonResults, UIState.lastBacktestResults);
+      if (UIState.backtestMode === 'last_n') {
+        renderComparisonTable(comparisonResults, UIState.lastBacktestResults);
+      } else {
+        renderSandboxUI(UIState.lastSandboxResults);
+      }
     }
 
     // 7. Update Accuracy Dashboard if active
@@ -3403,29 +4174,517 @@
     });
   }
 
+  // =========================================================================
+  // 9b. PHASE 13: HOLDOUT SANDBOX UI RENDERING & ACTIONS
+  // =========================================================================
+
+  function updateBacktestModeUI() {
+    var isLastN = UIState.backtestMode === 'last_n';
+    var btnModeLastN = document.getElementById('btn-mode-last-n');
+    var btnModeSandbox = document.getElementById('btn-mode-sandbox');
+    var boxLastNControls = document.getElementById('box-last-n-controls');
+    var boxLastNTable = document.getElementById('box-last-n-table');
+    var boxSandboxControls = document.getElementById('box-sandbox-controls');
+    var boxSandboxResults = document.getElementById('box-sandbox-results');
+
+    if (btnModeLastN) btnModeLastN.className = 'segmented-btn ' + (isLastN ? 'active' : '');
+    if (btnModeSandbox) btnModeSandbox.className = 'segmented-btn ' + (!isLastN ? 'active' : '');
+
+    if (boxLastNControls) boxLastNControls.style.display = isLastN ? 'flex' : 'none';
+    if (boxLastNTable) boxLastNTable.style.display = isLastN ? 'block' : 'none';
+    if (boxSandboxControls) boxSandboxControls.style.display = !isLastN ? 'block' : 'none';
+    if (boxSandboxResults) boxSandboxResults.style.display = !isLastN ? 'block' : 'none';
+
+    var selLookback = document.getElementById('select-sandbox-lookback');
+    if (selLookback && UIState.sandboxLookback !== undefined) {
+      selLookback.value = String(UIState.sandboxLookback);
+    }
+  }
+
+  function renderSandboxMonthChips() {
+    var container = document.getElementById('sandbox-month-chips');
+    if (!container) return;
+
+    var allMonths = extractHistoryMonths(UIState.history);
+    var eligibleMonths = allMonths.filter(function(m) { return m.isEligible; });
+
+    if (allMonths.length === 0) {
+      container.innerHTML = '<span class="text-muted" style="font-size: 11px;">No history loaded. Load sample or CSV to enable holdout sandbox.</span>';
+      return;
+    }
+
+    if (eligibleMonths.length === 0) {
+      container.innerHTML = '<span class="text-muted" style="font-size: 11px;">Single month dataset detected (' + allMonths[0].label + '). Multi-month history required for month holdout sandbox.</span>';
+      return;
+    }
+
+    // Default auto-select last eligible month if nothing selected
+    if (!UIState.sandboxTargetMonths || UIState.sandboxTargetMonths.length === 0) {
+      UIState.sandboxTargetMonths = [eligibleMonths[eligibleMonths.length - 1].key];
+    }
+
+    container.innerHTML = '';
+    allMonths.forEach(function(m) {
+      var isSel = UIState.sandboxTargetMonths.indexOf(m.key) !== -1;
+      var chip = document.createElement('div');
+      chip.className = 'sandbox-month-chip' + (isSel ? ' active' : '') + (!m.isEligible ? ' disabled' : '');
+      chip.setAttribute('data-month-key', m.key);
+      chip.title = m.isEligible
+        ? (m.label + ' (' + m.periodCount + ' days, ' + m.precedingCount + ' preceding training days)')
+        : (m.label + ' (First month in series — no preceding training data)');
+      chip.innerHTML = 
+        '<span>' + (isSel ? '✓ ' : '') + m.label + '</span>' +
+        '<span style="opacity: 0.7; font-size: 10px;">(' + m.periodCount + 'd)</span>';
+
+      if (m.isEligible) {
+        chip.addEventListener('click', function() {
+          var idx = UIState.sandboxTargetMonths.indexOf(m.key);
+          if (idx !== -1) {
+            UIState.sandboxTargetMonths.splice(idx, 1);
+          } else {
+            UIState.sandboxTargetMonths.push(m.key);
+          }
+          renderSandboxMonthChips();
+          runForecast();
+        });
+      }
+
+      container.appendChild(chip);
+    });
+  }
+
+  function renderSandboxUI(sandboxResults) {
+    if (!sandboxResults) return;
+
+    var banner = document.getElementById('sandbox-active-banner');
+    var bannerText = document.getElementById('sandbox-banner-text');
+    var btnApplyWinner = document.getElementById('btn-apply-sandbox-winner');
+    var singleBox = document.getElementById('sandbox-single-results');
+    var multiBox = document.getElementById('sandbox-multi-results');
+    var tbodySingle = document.getElementById('tbody-sandbox-single');
+    var theadConsistency = document.getElementById('thead-sandbox-consistency');
+    var tbodyConsistency = document.getElementById('tbody-sandbox-consistency');
+    var lblConsistencyCount = document.getElementById('lbl-consistency-month-count');
+    var badgeBestModel = document.getElementById('badge-sandbox-best-model');
+
+    var validMonths = sandboxResults.monthEvaluations ? sandboxResults.monthEvaluations.filter(function(m) { return m.isFeasible; }) : [];
+
+    if (validMonths.length === 0) {
+      if (banner) banner.style.display = 'none';
+      if (singleBox) singleBox.style.display = 'block';
+      if (multiBox) multiBox.style.display = 'none';
+      if (tbodySingle) {
+        tbodySingle.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No valid holdout months selected or insufficient preceding training data. Select 1+ target months above.</td></tr>';
+      }
+      return;
+    }
+
+    // Set default active overlay model if null
+    if (!UIState.sandboxActiveModelId) {
+      UIState.sandboxActiveModelId = sandboxResults.winner ? sandboxResults.winner.modelId : UIState.modelId;
+    }
+
+    var activeModelName = MODEL_REGISTRY[UIState.sandboxActiveModelId] ? MODEL_REGISTRY[UIState.sandboxActiveModelId].name : UIState.sandboxActiveModelId;
+
+    if (banner) {
+      banner.style.display = 'flex';
+      if (bannerText) {
+        bannerText.innerHTML = '<strong class="text-accent">👁️ Active Overlay:</strong> Plotting <span class="text-accent" style="font-weight: 600;">' + activeModelName + '</span> holdout forecast vs actuals on chart below.';
+      }
+      if (btnApplyWinner && sandboxResults.winner) {
+        btnApplyWinner.textContent = '⚡ Use Winner (' + sandboxResults.winner.modelName + ') for Production';
+      }
+    }
+
+    // Single Month View
+    if (validMonths.length === 1) {
+      if (singleBox) singleBox.style.display = 'block';
+      if (multiBox) multiBox.style.display = 'none';
+      if (!tbodySingle) return;
+
+      tbodySingle.innerHTML = '';
+      var mEval = validMonths[0];
+
+      mEval.models.forEach(function(m, idx) {
+        var tr = document.createElement('tr');
+        var isOverlayActive = m.modelId === UIState.sandboxActiveModelId;
+        var isActiveProd = m.modelId === UIState.modelId;
+        var isWinner = idx === 0;
+        var biasPrefix = m.holdoutMetrics.biasPct >= 0 ? '+' : '';
+
+        tr.className = isWinner ? 'winner-row' : '';
+        tr.innerHTML = 
+          '<td>' +
+            '<strong>' + m.modelName + '</strong>' +
+            (isWinner ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Holdout</span>' : '') +
+            (isOverlayActive ? ' <span class="badge badge-neutral" style="font-size: 10px; margin-left: 4px;">Viewing</span>' : '') +
+          '</td>' +
+          '<td class="mono text-muted">' + m.inSampleMetrics.mape.toFixed(1) + '%</td>' +
+          '<td class="mono text-accent"><strong>' + m.holdoutMetrics.wape.toFixed(1) + '%</strong></td>' +
+          '<td class="mono">' + m.holdoutMetrics.mape.toFixed(1) + '%</td>' +
+          '<td class="mono ' + (Math.abs(m.holdoutMetrics.biasPct) <= 5 ? 'text-success' : 'text-warn') + '">' + biasPrefix + m.holdoutMetrics.biasPct.toFixed(1) + '%</td>' +
+          '<td class="mono">' + Math.round(m.holdoutMetrics.mae).toLocaleString() + '</td>' +
+          '<td class="mono">' + Math.round(m.holdoutMetrics.rmse).toLocaleString() + '</td>' +
+          '<td class="mono">' + Math.round(m.totalActual).toLocaleString() + ' / ' + Math.round(m.totalForecast).toLocaleString() + '</td>' +
+          '<td style="white-space: nowrap;">' +
+            '<div style="display: flex; gap: 4px;">' +
+              '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-overlay-model="' + m.modelId + '">👁️ View</button>' +
+              '<button class="btn btn-sm ' + (isActiveProd ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-promote-model="' + m.modelId + '">' + (isActiveProd ? 'Active' : '⚡ Use') + '</button>' +
+            '</div>' +
+          '</td>';
+
+        var btnOverlay = tr.querySelector('[data-overlay-model]');
+        if (btnOverlay) {
+          btnOverlay.addEventListener('click', function() {
+            UIState.sandboxActiveModelId = m.modelId;
+            renderSandboxUI(sandboxResults);
+            renderChart(UIState.lastForecast, []);
+          });
+        }
+
+        var btnPromote = tr.querySelector('[data-promote-model]');
+        if (btnPromote) {
+          btnPromote.addEventListener('click', function() {
+            applySandboxWinner(m.modelId);
+          });
+        }
+
+        tbodySingle.appendChild(tr);
+      });
+    } else {
+      // Multi-Month Consistency Matrix View
+      if (singleBox) singleBox.style.display = 'none';
+      if (multiBox) multiBox.style.display = 'block';
+      if (!theadConsistency || !tbodyConsistency) return;
+
+      if (lblConsistencyCount) lblConsistencyCount.textContent = validMonths.length;
+      if (badgeBestModel && sandboxResults.winner) {
+        badgeBestModel.textContent = '🏆 Best: ' + sandboxResults.winner.modelName + ' (' + sandboxResults.winner.overallWape.toFixed(1) + '% WAPE)';
+      }
+
+      // Build Headers
+      var headerHtml = '<tr><th>Model Algorithm</th><th style="color: var(--accent);">Overall WAPE</th><th>Overall Bias</th>';
+      validMonths.forEach(function(mEval) {
+        headerHtml += '<th class="mono">' + mEval.monthLabel + '</th>';
+      });
+      headerHtml += '<th>WAPE StdDev</th><th>WAPE Range</th><th style="width: 140px;">Actions</th></tr>';
+      theadConsistency.innerHTML = headerHtml;
+
+      tbodyConsistency.innerHTML = '';
+      sandboxResults.modelSummaries.forEach(function(s, idx) {
+        var tr = document.createElement('tr');
+        var isOverlayActive = s.modelId === UIState.sandboxActiveModelId;
+        var isActiveProd = s.modelId === UIState.modelId;
+        var isWinner = idx === 0;
+        var biasPrefix = s.overallBiasPct >= 0 ? '+' : '';
+
+        tr.className = isWinner ? 'winner-row' : '';
+
+        var rowHtml = 
+          '<td>' +
+            '<strong>' + s.modelName + '</strong>' +
+            (isWinner ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Overall</span>' : '') +
+            (s.isMostConsistent ? ' <span class="badge badge-neutral" style="font-size: 10px; margin-left: 4px;">Most Stable</span>' : '') +
+          '</td>' +
+          '<td class="mono text-accent"><strong>' + s.overallWape.toFixed(1) + '%</strong></td>' +
+          '<td class="mono ' + (Math.abs(s.overallBiasPct) <= 5 ? 'text-success' : 'text-warn') + '">' + biasPrefix + s.overallBiasPct.toFixed(1) + '%</td>';
+
+        validMonths.forEach(function(mEval) {
+          var mRes = s.monthResults[mEval.monthKey];
+          var mWape = mRes ? mRes.holdoutMetrics.wape.toFixed(1) + '%' : '—';
+          rowHtml += '<td class="mono">' + mWape + '</td>';
+        });
+
+        rowHtml += 
+          '<td class="mono text-muted">±' + s.wapeStdDev.toFixed(2) + '%</td>' +
+          '<td class="mono text-muted">' + s.wapeRange.toFixed(1) + '%</td>' +
+          '<td style="white-space: nowrap;">' +
+            '<div style="display: flex; gap: 4px;">' +
+              '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-overlay-model="' + s.modelId + '">👁️ View</button>' +
+              '<button class="btn btn-sm ' + (isActiveProd ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-promote-model="' + s.modelId + '">' + (isActiveProd ? 'Active' : '⚡ Use') + '</button>' +
+            '</div>' +
+          '</td>';
+
+        tr.innerHTML = rowHtml;
+
+        var btnOverlay = tr.querySelector('[data-overlay-model]');
+        if (btnOverlay) {
+          btnOverlay.addEventListener('click', function() {
+            UIState.sandboxActiveModelId = s.modelId;
+            renderSandboxUI(sandboxResults);
+            renderChart(UIState.lastForecast, []);
+          });
+        }
+
+        var btnPromote = tr.querySelector('[data-promote-model]');
+        if (btnPromote) {
+          btnPromote.addEventListener('click', function() {
+            applySandboxWinner(s.modelId);
+          });
+        }
+
+        tbodyConsistency.appendChild(tr);
+      });
+    }
+  }
+
+  function applySandboxWinner(winnerModelId) {
+    if (!winnerModelId || !MODEL_REGISTRY[winnerModelId]) {
+      ErlanglyUtils.showToast('Invalid model ID', 'error');
+      return;
+    }
+    UIState.modelId = winnerModelId;
+    var sel = document.getElementById('select-model-type');
+    if (sel) sel.value = winnerModelId;
+    updateModelParamsUI();
+    runForecast();
+    var modelName = MODEL_REGISTRY[winnerModelId].name;
+    ErlanglyUtils.showToast('⚡ Applied ' + modelName + ' as active forecast algorithm for future periods', 'success');
+  }
+
+  function exportSandboxCSV() {
+    if (!UIState.lastSandboxResults || !UIState.lastSandboxResults.monthEvaluations || UIState.lastSandboxResults.monthEvaluations.length === 0) {
+      ErlanglyUtils.showToast('No sandbox evaluation results to export', 'warn');
+      return;
+    }
+
+    var headers = [
+      'Target_Month',
+      'Model_ID',
+      'Model_Name',
+      'Lookback_Window',
+      'Holdout_Periods',
+      'Actual_Total_Volume',
+      'Forecast_Total_Volume',
+      'Variance_Calls',
+      'Holdout_WAPE_Pct',
+      'Holdout_MAPE_Pct',
+      'Signed_Bias_Pct',
+      'Holdout_MAE',
+      'Holdout_RMSE',
+      'In_Sample_MAPE_Pct'
+    ];
+
+    var rows = [];
+    UIState.lastSandboxResults.monthEvaluations.forEach(function(mEval) {
+      if (!mEval.isFeasible || !mEval.models) return;
+      mEval.models.forEach(function(m) {
+        rows.push([
+          m.monthLabel || m.monthKey,
+          m.modelId,
+          m.modelName,
+          m.lookbackWindow || 'All',
+          m.holdoutCount,
+          Math.round(m.totalActual),
+          Math.round(m.totalForecast),
+          Math.round(m.varianceTotal),
+          m.holdoutMetrics.wape.toFixed(2) + '%',
+          m.holdoutMetrics.mape.toFixed(2) + '%',
+          (m.holdoutMetrics.biasPct >= 0 ? '+' : '') + m.holdoutMetrics.biasPct.toFixed(2) + '%',
+          m.holdoutMetrics.mae.toFixed(2),
+          m.holdoutMetrics.rmse.toFixed(2),
+          m.inSampleMetrics.mape.toFixed(2) + '%'
+        ]);
+      });
+    });
+
+    if (rows.length === 0) {
+      ErlanglyUtils.showToast('No valid model rows in sandbox results', 'warn');
+      return;
+    }
+
+    ErlanglyUtils.exportCSV('erlangly_holdout_sandbox.csv', headers, rows);
+    ErlanglyUtils.showToast('Exported ' + rows.length + ' sandbox evaluation records to CSV', 'success');
+  }
+
+  function updateChartControlsUI() {
+    var gran = UIState.chartGranularity || 'daily';
+    var range = UIState.chartRangePreset || 'all';
+
+    var btnDaily = document.getElementById('btn-granularity-daily');
+    var btnWeekly = document.getElementById('btn-granularity-weekly');
+    var btnMonthly = document.getElementById('btn-granularity-monthly');
+
+    if (btnDaily) btnDaily.className = 'segmented-btn ' + (gran === 'daily' ? 'active' : '');
+    if (btnWeekly) btnWeekly.className = 'segmented-btn ' + (gran === 'weekly' ? 'active' : '');
+    if (btnMonthly) btnMonthly.className = 'segmented-btn ' + (gran === 'monthly' ? 'active' : '');
+
+    var rangePresets = ['all', '1y', '6m', '3m', '1m', 'forecast'];
+    rangePresets.forEach(function(rKey) {
+      var el = document.getElementById('btn-range-' + (rKey === 'forecast' ? 'fc' : rKey));
+      if (el) {
+        el.className = 'segmented-btn ' + (range === rKey ? 'active' : '');
+      }
+    });
+
+    var inpStart = document.getElementById('input-chart-start-date');
+    var inpEnd = document.getElementById('input-chart-end-date');
+    if (inpStart && UIState.chartStartDate) inpStart.value = UIState.chartStartDate;
+    if (inpEnd && UIState.chartEndDate) inpEnd.value = UIState.chartEndDate;
+  }
+
   function renderChart(result, compResults) {
     var canvas = document.getElementById('chart-forecast');
     if (!canvas || typeof Chart === 'undefined') return;
 
-    var histLabels = UIState.history.map(function(h) { return h.period; });
-    var histData = UIState.history.map(function(h) { return h.volume; });
+    var histPeriods = UIState.history.map(function(h) { return h.period; });
+    var fcPeriods = (result && result.forecast) ? result.forecast.map(function(f) { return f.period; }) : [];
+    var allDates = histPeriods.concat(fcPeriods);
 
-    var fcLabels = result.forecast.map(function(f) { return f.period; });
+    if (allDates.length === 0) {
+      if (UIState.chart) {
+        UIState.chart.data.labels = [];
+        UIState.chart.data.datasets = [];
+        UIState.chart.update();
+      }
+      return;
+    }
+
+    // Compute or validate active date window bounds
+    var bounds;
+    if (UIState.chartRangePreset && UIState.chartRangePreset !== 'custom') {
+      bounds = computeRangeBounds(allDates, UIState.chartRangePreset, fcPeriods);
+      UIState.chartStartDate = bounds.startDate;
+      UIState.chartEndDate = bounds.endDate;
+    } else {
+      bounds = {
+        startDate: UIState.chartStartDate || allDates[0],
+        endDate: UIState.chartEndDate || allDates[allDates.length - 1]
+      };
+    }
+
+    // Update Start and End date inputs & buttons
+    updateChartControlsUI();
+
+    var granularity = UIState.chartGranularity || 'daily';
+
+    // 1. Filter raw history and forecast by date bounds
+    var filteredHistory = filterTimeSeriesByDate(UIState.history, bounds.startDate, bounds.endDate);
+    var filteredForecast = (result && result.forecast) ? filterTimeSeriesByDate(result.forecast, bounds.startDate, bounds.endDate) : [];
+
+    // 2. Aggregate history and forecast
+    var aggHistory = aggregateTimeSeries(filteredHistory, granularity);
+    var aggForecast = aggregateTimeSeries(filteredForecast, granularity);
+
+    var histLabels = aggHistory.map(function(h) { return h.label; });
+    var histData = aggHistory.map(function(h) { return h.volume; });
+
+    var fcLabels = aggForecast.map(function(f) { return f.label; });
+    var fcData = aggForecast.map(function(f) { return f.volume; });
+
     var combinedLabels = histLabels.concat(fcLabels);
-
     var paddedHist = histData.concat(new Array(fcLabels.length).fill(null));
 
-    function createPaddedForecast(forecastList) {
+    function createPaddedForecast(rawForecastList) {
+      var filtered = filterTimeSeriesByDate(rawForecastList, bounds.startDate, bounds.endDate);
+      var aggFc = aggregateTimeSeries(filtered, granularity);
       var arr = new Array(Math.max(0, histLabels.length - 1)).fill(null);
       if (histData.length > 0) {
         arr.push(histData[histData.length - 1]);
       }
-      return arr.concat(forecastList.map(function(f) { return f.volume; }));
+      return arr.concat(aggFc.map(function(f) { return f.volume; }));
     }
 
-    var datasets = [
-      {
-        label: 'Historical Actuals',
+    // Update View badge in panel title
+    var viewBadge = document.getElementById('lbl-chart-view-badge');
+    if (viewBadge) {
+      var granLabel = granularity.charAt(0).toUpperCase() + granularity.slice(1);
+      var ptsCount = combinedLabels.length;
+      var unit = granularity === 'daily' ? 'days' : (granularity === 'weekly' ? 'wks' : 'mos');
+      viewBadge.textContent = granLabel + ' (' + ptsCount + ' ' + unit + ')';
+    }
+
+    var datasets = [];
+
+    // Check if in Sandbox Mode with valid holdout results
+    if (UIState.compareMode && UIState.backtestMode === 'month_sandbox' && UIState.lastSandboxResults && UIState.lastSandboxResults.monthEvaluations && UIState.lastSandboxResults.monthEvaluations.length > 0) {
+      var activeModelId = UIState.sandboxActiveModelId || (UIState.lastSandboxResults.winner ? UIState.lastSandboxResults.winner.modelId : UIState.modelId);
+      var modelName = MODEL_REGISTRY[activeModelId] ? MODEL_REGISTRY[activeModelId].name : activeModelId;
+
+      // Build map of holdout forecasts and actuals
+      var rawHoldoutMap = {};
+      var rawHoldoutActualMap = {};
+      UIState.lastSandboxResults.monthEvaluations.forEach(function(mEval) {
+        var mModel = mEval.models.find(function(m) { return m.modelId === activeModelId; });
+        if (mModel) {
+          mModel.holdoutPeriods.forEach(function(p, i) {
+            rawHoldoutMap[p] = mModel.predictions[i];
+            rawHoldoutActualMap[p] = mModel.actuals[i];
+          });
+        }
+      });
+
+      // Aggregate target actuals and predictions
+      var targetActualsList = [];
+      var holdoutPredsList = [];
+      filteredHistory.forEach(function(h) {
+        if (rawHoldoutActualMap[h.period] !== undefined) {
+          targetActualsList.push({ period: h.period, volume: rawHoldoutActualMap[h.period] });
+          holdoutPredsList.push({ period: h.period, volume: rawHoldoutMap[h.period] });
+        }
+      });
+
+      var aggTargetActuals = aggregateTimeSeries(targetActualsList, granularity);
+      var aggHoldoutPreds = aggregateTimeSeries(holdoutPredsList, granularity);
+
+      var targetActualsMap = {};
+      var holdoutPredsMap = {};
+      aggTargetActuals.forEach(function(a) { targetActualsMap[a.period] = a.volume; });
+      aggHoldoutPreds.forEach(function(p) { holdoutPredsMap[p.period] = p.volume; });
+
+      // Dataset 1: Full History Actuals
+      datasets.push({
+        label: 'Historical Actuals' + (granularity !== 'daily' ? ' (' + granularity + ' total)' : ''),
+        data: histData,
+        borderColor: '#00d2d3',
+        backgroundColor: 'rgba(0, 210, 211, 0.08)',
+        borderWidth: 2,
+        pointRadius: histLabels.length > 50 ? 0 : 3,
+        pointHoverRadius: 5,
+        fill: false,
+        tension: 0.2
+      });
+
+      // Dataset 2: Holdout Target Actuals (Highlighted Ground Truth)
+      var targetActualsPadded = aggHistory.map(function(h) {
+        return targetActualsMap[h.period] !== undefined ? targetActualsMap[h.period] : null;
+      });
+      datasets.push({
+        label: 'Target Month Actuals (Ground Truth)',
+        data: targetActualsPadded,
+        borderColor: '#38bdf8',
+        backgroundColor: 'rgba(56, 189, 248, 0.2)',
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#38bdf8',
+        fill: false,
+        tension: 0.2
+      });
+
+      // Dataset 3: Model Holdout Prediction
+      var holdoutPredictionsPadded = aggHistory.map(function(h) {
+        return holdoutPredsMap[h.period] !== undefined ? holdoutPredsMap[h.period] : null;
+      });
+      datasets.push({
+        label: modelName + ' (Holdout Forecast)',
+        data: holdoutPredictionsPadded,
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.15)',
+        borderWidth: 2.5,
+        borderDash: [5, 5],
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: '#10b981',
+        fill: false,
+        tension: 0.2
+      });
+
+      combinedLabels = histLabels;
+    } else {
+      // Standard or Last-N Comparison Mode
+      datasets.push({
+        label: 'Historical Actuals' + (granularity !== 'daily' ? ' (' + granularity + ' total)' : ''),
         data: paddedHist,
         borderColor: '#00d2d3',
         backgroundColor: 'rgba(0, 210, 211, 0.08)',
@@ -3434,43 +4693,46 @@
         pointHoverRadius: 5,
         fill: false,
         tension: 0.2
-      },
-      {
-        label: result.modelName + ' (Active)',
-        data: createPaddedForecast(result.forecast),
-        borderColor: '#10b981',
-        backgroundColor: 'rgba(16, 185, 129, 0.12)',
-        borderWidth: 2.5,
-        borderDash: [5, 5],
-        pointRadius: combinedLabels.length > 50 ? 0 : 4,
-        pointHoverRadius: 6,
-        pointBackgroundColor: '#10b981',
-        fill: !UIState.compareMode,
-        tension: 0.2
-      }
-    ];
-
-    if (UIState.compareMode && compResults && compResults.length > 0) {
-      var compareColors = ['#f59e0b', '#a855f7', '#38bdf8', '#ec4899', '#34d399', '#f87171'];
-      var cIdx = 0;
-      compResults.forEach(function(cr) {
-        if (cr.modelId !== result.modelId) {
-          var color = compareColors[cIdx % compareColors.length];
-          cIdx++;
-          datasets.push({
-            label: cr.modelName,
-            data: createPaddedForecast(cr.forecast),
-            borderColor: color,
-            borderWidth: 2,
-            borderDash: [2, 4],
-            pointRadius: 0,
-            pointHoverRadius: 5,
-            pointBackgroundColor: color,
-            fill: false,
-            tension: 0.2
-          });
-        }
       });
+
+      if (result) {
+        datasets.push({
+          label: result.modelName + ' (Active)',
+          data: createPaddedForecast(result.forecast),
+          borderColor: '#10b981',
+          backgroundColor: 'rgba(16, 185, 129, 0.12)',
+          borderWidth: 2.5,
+          borderDash: [5, 5],
+          pointRadius: combinedLabels.length > 50 ? 0 : 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#10b981',
+          fill: !UIState.compareMode,
+          tension: 0.2
+        });
+      }
+
+      if (UIState.compareMode && compResults && compResults.length > 0) {
+        var compareColors = ['#f59e0b', '#a855f7', '#38bdf8', '#ec4899', '#34d399', '#f87171'];
+        var cIdx = 0;
+        compResults.forEach(function(cr) {
+          if (!result || cr.modelId !== result.modelId) {
+            var color = compareColors[cIdx % compareColors.length];
+            cIdx++;
+            datasets.push({
+              label: cr.modelName,
+              data: createPaddedForecast(cr.forecast),
+              borderColor: color,
+              borderWidth: 2,
+              borderDash: [2, 4],
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              pointBackgroundColor: color,
+              fill: false,
+              tension: 0.2
+            });
+          }
+        });
+      }
     }
 
     if (UIState.chart) {
@@ -3512,7 +4774,8 @@
             callbacks: {
               label: function(context) {
                 var val = context.parsed.y;
-                return context.dataset.label + ': ' + (val !== null ? Math.round(val).toLocaleString() + ' calls' : '');
+                var granSuffix = UIState.chartGranularity === 'weekly' ? ' (Weekly Total)' : (UIState.chartGranularity === 'monthly' ? ' (Monthly Total)' : '');
+                return context.dataset.label + ': ' + (val !== null ? Math.round(val).toLocaleString() + ' calls' + granSuffix : '');
               }
             }
           }
@@ -3574,11 +4837,17 @@
     calculateAccuracyMetrics: calculateAccuracyMetrics,
     backtestModel: backtestModel,
     runBacktestAll: runBacktestAll,
+    extractHistoryMonths: extractHistoryMonths,
+    runHoldoutSandbox: runHoldoutSandbox,
+    evaluateSandboxConsistency: evaluateSandboxConsistency,
     checkHistorySufficiency: checkHistorySufficiency,
     preprocessHistory: preprocessHistory,
     getTrendProfileFactor: getTrendProfileFactor,
     extractDateParts: extractDateParts,
     executeForecast: executeForecast,
+    aggregateTimeSeries: aggregateTimeSeries,
+    filterTimeSeriesByDate: filterTimeSeriesByDate,
+    computeRangeBounds: computeRangeBounds,
     generateMultiYearHistory: generateMultiYearHistory,
     SAMPLE_HISTORY: SAMPLE_HISTORY,
     SAMPLE_MULTI_YEAR_HISTORY: SAMPLE_MULTI_YEAR_HISTORY,
