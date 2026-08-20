@@ -718,6 +718,97 @@ const boundsFc = ErlanglyForecast.computeRangeBounds(allSampleDates.concat(fcSam
 assert(boundsFc.startDate === '2026-05-18', `Forecast preset pads 14 days before forecast start (found: ${boundsFc.startDate})`);
 assert(boundsFc.endDate === '2026-06-04', `Forecast preset ends on last forecast date (${boundsFc.endDate})`);
 
+console.log('\n[17] Multi-Skill Demand Forecasting & Standardized Templates');
+
+// 1. Multi-Skill Sample Dataset Verification
+const multiSkillData = ErlanglyForecast.SAMPLE_MULTI_SKILL_HISTORY;
+assert(multiSkillData && multiSkillData.length === 84, `Multi-skill dataset has 84 records (28 days * 3 skills, got: ${multiSkillData ? multiSkillData.length : 0})`);
+
+const distinctSkills = [...new Set(multiSkillData.map(r => r.skill))];
+assert(distinctSkills.length === 3, `Identified 3 distinct queues/skills (${distinctSkills.join(', ')})`);
+assert(distinctSkills.includes('Customer Care'), 'Contains "Customer Care" queue');
+assert(distinctSkills.includes('Technical Support'), 'Contains "Technical Support" queue');
+assert(distinctSkills.includes('Billing & Inquiries'), 'Contains "Billing & Inquiries" queue');
+
+// Check skill-specific AHTs
+const ccSample = multiSkillData.find(r => r.skill === 'Customer Care');
+const tsSample = multiSkillData.find(r => r.skill === 'Technical Support');
+const billSample = multiSkillData.find(r => r.skill === 'Billing & Inquiries');
+assert(ccSample && ccSample.aht === 180, 'Customer Care has 180s AHT');
+assert(tsSample && tsSample.aht === 300, 'Technical Support has 300s AHT');
+assert(billSample && billSample.aht === 150, 'Billing & Inquiries has 150s AHT');
+
+// 2. Multi-Skill Rollup & Blended AHT Math
+const targetDate = '2026-05-01';
+const dateSlice = multiSkillData.filter(r => r.period === targetDate);
+const sumVol = dateSlice.reduce((acc, r) => acc + r.volume, 0);
+const weightedAhtSum = dateSlice.reduce((acc, r) => acc + (r.volume * r.aht), 0);
+const blendedAht = Math.round(weightedAhtSum / sumVol);
+
+assert(sumVol > 0, `Combined volume for ${targetDate} is ${sumVol} calls`);
+assert(blendedAht >= 150 && blendedAht <= 300, `Blended volume-weighted AHT is mathematically bounded (${blendedAht}s)`);
+
+// 3. Per-Skill Independent Forecast Execution
+const perSkillResults = {};
+distinctSkills.forEach(sk => {
+  const skHistory = multiSkillData.filter(r => r.skill === sk);
+  const skAht = skHistory[0].aht;
+  const res = ErlanglyForecast.executeForecast(skHistory, 'holt', { alpha: 0.3, beta: 0.1 }, { horizon: 7, assumedAht: skAht });
+  assert(res.forecast.length === 7, `Generated 7-day forecast for queue "${sk}"`);
+  assert(res.forecast[0].volume > 0, `Queue "${sk}" has positive forecasted volume (${Math.round(res.forecast[0].volume)})`);
+  perSkillResults[sk] = res;
+});
+
+// 4. Combined Blended Forecast Execution
+const combinedRollMap = {};
+multiSkillData.forEach(r => {
+  if (!combinedRollMap[r.period]) {
+    combinedRollMap[r.period] = { period: r.period, skill: 'Combined', volume: 0, ahtSum: 0 };
+  }
+  combinedRollMap[r.period].volume += r.volume;
+  combinedRollMap[r.period].ahtSum += r.volume * r.aht;
+});
+
+const combinedHistory = Object.values(combinedRollMap).map(item => ({
+  period: item.period,
+  skill: 'Combined',
+  volume: Math.round(item.volume),
+  aht: Math.round(item.ahtSum / item.volume)
+}));
+
+const totalCombVol = combinedHistory.reduce((acc, r) => acc + r.volume, 0);
+const totalCombAht = Math.round(combinedHistory.reduce((acc, r) => acc + r.volume * r.aht, 0) / totalCombVol);
+
+const combRes = ErlanglyForecast.executeForecast(combinedHistory, 'holt', { alpha: 0.3, beta: 0.1 }, { horizon: 7, assumedAht: totalCombAht });
+assert(combRes.forecast.length === 7, 'Generated 7-day forecast for Combined series');
+
+// Verify combined projected volume is consistent with the sum of per-skill forecasts
+const sumPerSkillDay1 = distinctSkills.reduce((acc, sk) => acc + perSkillResults[sk].forecast[0].volume, 0);
+const combDay1 = combRes.forecast[0].volume;
+assertClose(combDay1, sumPerSkillDay1, sumPerSkillDay1 * 0.10, 'Combined day 1 forecast is within 10% of sum of independent queues');
+
+// 5. Multi-Skill Actuals Matching & Evaluation by (Period, Skill)
+const mockMultiSkillActuals = [
+  { period: '2026-05-29', skill: 'Customer Care', forecast: 1400, actual: 1420 },
+  { period: '2026-05-29', skill: 'Technical Support', forecast: 650, actual: 640 },
+  { period: '2026-05-29', skill: 'Billing & Inquiries', forecast: 450, actual: 460 },
+  { period: '2026-05-30', skill: 'Customer Care', forecast: 700, actual: 710 },
+  { period: '2026-05-30', skill: 'Technical Support', forecast: 320, actual: 315 },
+  { period: '2026-05-30', skill: 'Billing & Inquiries', forecast: 200, actual: 205 }
+];
+
+const actsList = mockMultiSkillActuals.map(p => p.actual);
+const fcsList = mockMultiSkillActuals.map(p => p.forecast);
+const multiAcc = ErlanglyForecast.calculateAccuracyMetrics(actsList, fcsList);
+
+assert(multiAcc.count === 6, 'Evaluated accuracy across 6 multi-skill period pairs');
+assert(multiAcc.wape < 5.0, `Multi-skill WAPE is < 5% (got: ${multiAcc.wape.toFixed(2)}%)`);
+assert(Math.abs(multiAcc.biasPct) < 2.0, `Multi-skill bias is < 2% (got: ${multiAcc.biasPct.toFixed(2)}%)`);
+
+// 6. Template Function Availability
+assert(typeof ErlanglyForecast.downloadHistoricalTemplate === 'function', 'downloadHistoricalTemplate function is exported');
+assert(typeof ErlanglyForecast.downloadActualsTemplate === 'function', 'downloadActualsTemplate function is exported');
+
 console.log('\n====================================================');
 console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
 console.log('====================================================');

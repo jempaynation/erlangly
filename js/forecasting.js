@@ -2188,6 +2188,93 @@
 
   var SAMPLE_MULTI_YEAR_HISTORY = generateMultiYearHistory('2024-06-01', 730, 1500, 8.0);
 
+  // Multi-Skill Synthetic Dataset (Customer Care, Technical Support, Billing & Inquiries)
+  function generateMultiSkillHistory(startDateStr, totalDays) {
+    var rows = [];
+    var startInfo = ErlanglyUtils.parseDate(startDateStr || '2026-05-01');
+    var days = totalDays || 28;
+    var skills = [
+      { name: 'Customer Care', base: 1400, aht: 180, dowWeights: [0.35, 1.35, 1.15, 1.10, 1.05, 0.95, 0.45] },
+      { name: 'Technical Support', base: 650, aht: 300, dowWeights: [0.25, 1.40, 1.25, 1.15, 1.05, 0.85, 0.35] },
+      { name: 'Billing & Inquiries', base: 450, aht: 150, dowWeights: [0.15, 1.50, 1.30, 1.10, 0.95, 0.80, 0.20] }
+    ];
+
+    for (var i = 0; i < days; i++) {
+      var d = ErlanglyUtils.addDays(startInfo, i);
+      var dayOfWeek = d.dayOfWeek;
+      skills.forEach(function(sk) {
+        var dowFactor = sk.dowWeights[dayOfWeek] || 1.0;
+        var trendFactor = 1.0 + (0.05 * (i / days));
+        var pseudoNoise = 1.0 + 0.04 * Math.sin(i * 7.3 + (sk.aht % 10));
+        var vol = Math.round(sk.base * trendFactor * dowFactor * pseudoNoise);
+        rows.push({
+          period: d.isoDate,
+          skill: sk.name,
+          volume: Math.max(50, vol),
+          aht: sk.aht
+        });
+      });
+    }
+    return rows;
+  }
+
+  var SAMPLE_MULTI_SKILL_HISTORY = generateMultiSkillHistory('2026-05-01', 28);
+
+  // Standardized Template Generators (RFC-4180 CSV with multi-skill queue support)
+  function downloadHistoricalTemplate() {
+    var headers = ['Date', 'Skill', 'Volume', 'AHT'];
+    var sampleRows = [
+      ['2026-05-01', 'Customer Care', 1450, 180],
+      ['2026-05-01', 'Technical Support', 620, 300],
+      ['2026-05-01', 'Billing & Inquiries', 410, 150],
+      ['2026-05-02', 'Customer Care', 680, 180],
+      ['2026-05-02', 'Technical Support', 310, 300],
+      ['2026-05-02', 'Billing & Inquiries', 180, 150],
+      ['2026-05-03', 'Customer Care', 520, 180],
+      ['2026-05-03', 'Technical Support', 240, 300],
+      ['2026-05-03', 'Billing & Inquiries', 140, 150],
+      ['2026-05-04', 'Customer Care', 2150, 180],
+      ['2026-05-04', 'Technical Support', 920, 300],
+      ['2026-05-04', 'Billing & Inquiries', 640, 150],
+      ['2026-05-05', 'Customer Care', 1820, 180],
+      ['2026-05-05', 'Technical Support', 780, 300],
+      ['2026-05-05', 'Billing & Inquiries', 530, 150],
+      ['2026-05-06', 'Customer Care', 1710, 180],
+      ['2026-05-06', 'Technical Support', 730, 300],
+      ['2026-05-06', 'Billing & Inquiries', 490, 150],
+      ['2026-05-07', 'Customer Care', 1640, 180],
+      ['2026-05-07', 'Technical Support', 700, 300],
+      ['2026-05-07', 'Billing & Inquiries', 470, 150]
+    ];
+    if (ErlanglyUtils && ErlanglyUtils.exportCSV) {
+      ErlanglyUtils.exportCSV('erlangly_demand_forecast_template.csv', headers, sampleRows);
+    }
+  }
+
+  function downloadActualsTemplate() {
+    var headers = ['Date', 'Skill', 'Forecast', 'Actual', 'AHT'];
+    var sampleRows = [
+      ['2026-05-01', 'Customer Care', 1450, 1480, 180],
+      ['2026-05-01', 'Technical Support', 620, 610, 300],
+      ['2026-05-01', 'Billing & Inquiries', 410, 425, 150],
+      ['2026-05-02', 'Customer Care', 680, 695, 180],
+      ['2026-05-02', 'Technical Support', 310, 305, 300],
+      ['2026-05-02', 'Billing & Inquiries', 180, 175, 150],
+      ['2026-05-03', 'Customer Care', 520, 510, 180],
+      ['2026-05-03', 'Technical Support', 240, 245, 300],
+      ['2026-05-03', 'Billing & Inquiries', 140, 138, 150],
+      ['2026-05-04', 'Customer Care', 2150, 2180, 180],
+      ['2026-05-04', 'Technical Support', 920, 905, 300],
+      ['2026-05-04', 'Billing & Inquiries', 640, 660, 150],
+      ['2026-05-05', 'Customer Care', 1820, 1845, 180],
+      ['2026-05-05', 'Technical Support', 780, 765, 300],
+      ['2026-05-05', 'Billing & Inquiries', 530, 545, 150]
+    ];
+    if (ErlanglyUtils && ErlanglyUtils.exportCSV) {
+      ErlanglyUtils.exportCSV('erlangly_actuals_template.csv', headers, sampleRows);
+    }
+  }
+
   // Sample Accuracy Tracking Dataset (Forecast vs Actual paired series)
   var SAMPLE_ACCURACY_DATA = [
     { period: '2026-05-15', forecast: 1520, actual: 1510 },
@@ -2217,6 +2304,11 @@
 
   var UIState = {
     history: [],
+    multiSkillHistory: [],
+    skills: [],
+    selectedSkill: 'all',
+    perSkillForecasts: {},
+    combinedForecast: null,
     holidays: [],
     modelId: 'holt',
     modelParams: {
@@ -2849,8 +2941,13 @@
   function setupEventListeners() {
     var btnLoadSample = document.getElementById('btn-load-sample-forecast');
     var btnLoad2Yr = document.getElementById('btn-load-2yr-sample');
+    var btnLoadMultiSkill = document.getElementById('btn-load-multiskill-sample');
     var btnClearHistory = document.getElementById('btn-clear-history');
     var btnAddRow = document.getElementById('btn-add-row');
+
+    var btnDownloadForecastTemplate = document.getElementById('btn-download-forecast-template');
+    var btnDownloadAccuracyTemplate = document.getElementById('btn-download-accuracy-template');
+    var selectSkill = document.getElementById('select-skill-filter');
 
     var numHorizon = document.getElementById('num-forecast-horizon');
     var numGrowth = document.getElementById('num-growth-modifier');
@@ -2891,6 +2988,32 @@
     var btnRunSandbox = document.getElementById('btn-run-sandbox');
     var btnExportSandboxCSV = document.getElementById('btn-export-sandbox-csv');
     var btnApplySandboxWinner = document.getElementById('btn-apply-sandbox-winner');
+
+    // Multi-Skill Filter Listener
+    if (selectSkill) {
+      selectSkill.addEventListener('change', function() {
+        UIState.selectedSkill = selectSkill.value;
+        updateActiveSkillView();
+        renderHistoryTable();
+        setupSkillFilterUI();
+        runForecast();
+        var label = UIState.selectedSkill === 'all' ? 'Combined (All Skills)' : UIState.selectedSkill;
+        ErlanglyUtils.showToast('Switched queue view to ' + label, 'info');
+      });
+    }
+
+    // Template Download Listeners
+    if (btnDownloadForecastTemplate) {
+      btnDownloadForecastTemplate.addEventListener('click', function() {
+        downloadHistoricalTemplate();
+      });
+    }
+
+    if (btnDownloadAccuracyTemplate) {
+      btnDownloadAccuracyTemplate.addEventListener('click', function() {
+        downloadActualsTemplate();
+      });
+    }
 
     if (btnModeLastN && btnModeSandbox) {
       btnModeLastN.addEventListener('click', function() {
@@ -3074,6 +3197,13 @@
       });
     }
 
+    if (btnLoadMultiSkill) {
+      btnLoadMultiSkill.addEventListener('click', function() {
+        loadHistory(SAMPLE_MULTI_SKILL_HISTORY);
+        ErlanglyUtils.showToast('Loaded multi-skill sample dataset (Customer Care, Tech Support, Billing)', 'success');
+      });
+    }
+
     if (btnClearHistory) {
       btnClearHistory.addEventListener('click', function() {
         loadHistory([]);
@@ -3090,7 +3220,16 @@
           var nextDate = ErlanglyUtils.addDays(last.period, 1);
           if (nextDate) nextPeriod = nextDate.isoDate;
         }
-        UIState.history.push({ period: nextPeriod, volume: 1500, aht: UIState.assumedAht });
+        var newRow = {
+          period: nextPeriod,
+          skill: UIState.selectedSkill === 'all' ? 'General' : UIState.selectedSkill,
+          volume: 1500,
+          aht: UIState.assumedAht
+        };
+        UIState.history.push(newRow);
+        if (UIState.multiSkillHistory.length > 0) {
+          UIState.multiSkillHistory.push(newRow);
+        }
         renderHistoryTable();
         runForecast();
       });
@@ -3197,7 +3336,7 @@
       });
     }
 
-    // Actuals CSV File Dropzone
+    // Actuals CSV File Dropzone (Multi-Skill Aware)
     if (accuracyDropzone && accuracyFileInput) {
       ErlanglyUtils.wireFileDrop(accuracyDropzone, accuracyFileInput, function(text, file) {
         var parsed = ErlanglyUtils.parseCSV(text);
@@ -3209,21 +3348,53 @@
         var baselineForecast = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : []);
         var forecastMap = {};
         baselineForecast.forEach(function(f) {
-          if (f.period) forecastMap[f.period.trim().toLowerCase()] = f.volume;
+          if (f.period) {
+            var kSimple = f.period.trim().toLowerCase();
+            forecastMap[kSimple] = f.volume;
+            if (f.skill) {
+              var kSkill = (f.period.trim() + ':::' + f.skill.trim()).toLowerCase();
+              forecastMap[kSkill] = f.volume;
+            }
+          }
         });
+
+        // Also index per-skill forecasts if available
+        if (UIState.perSkillForecasts) {
+          Object.keys(UIState.perSkillForecasts).forEach(function(sk) {
+            var sf = UIState.perSkillForecasts[sk];
+            if (sf && sf.forecast) {
+              sf.forecast.forEach(function(f) {
+                var kSkill = (f.period.trim() + ':::' + sk.trim()).toLowerCase();
+                forecastMap[kSkill] = f.volume;
+              });
+            }
+          });
+        }
 
         var pairs = [];
         var matchedCount = 0;
 
         parsed.rows.forEach(function(r, idx) {
           var p = (r.period || r.date || r.interval || r.day || ('Period ' + (idx + 1))).trim();
+          var sk = (r.skill || r.queue || r.channel || r.lob || '').trim();
           var act = parseFloat(r.actual || r.actual_volume || r.actuals || r.volume || r.calls || 0) || 0;
-          var key = p.toLowerCase();
-          var fc = forecastMap[key] !== undefined ? forecastMap[key] : (r.forecast ? parseFloat(r.forecast) : 0);
-          if (forecastMap[key] !== undefined) matchedCount++;
+          var keySimple = p.toLowerCase();
+          var keySkill = (p + ':::' + sk).toLowerCase();
+
+          var fc = 0;
+          if (sk && forecastMap[keySkill] !== undefined) {
+            fc = forecastMap[keySkill];
+            matchedCount++;
+          } else if (forecastMap[keySimple] !== undefined) {
+            fc = forecastMap[keySimple];
+            matchedCount++;
+          } else if (r.forecast) {
+            fc = parseFloat(r.forecast) || 0;
+          }
 
           pairs.push({
             period: p,
+            skill: sk || 'General',
             forecast: fc,
             actual: act
           });
@@ -3239,7 +3410,7 @@
       });
     }
 
-    // Merge Actuals into Historical Training Series
+    // Merge Actuals into Historical Training Series (Multi-Skill Aware)
     if (btnMergeActualsHistory) {
       btnMergeActualsHistory.addEventListener('click', function() {
         var validActuals = UIState.accuracyPairs.filter(function(p) { return p.actual > 0; });
@@ -3248,8 +3419,11 @@
           return;
         }
 
+        var targetList = UIState.multiSkillHistory.length > 0 ? UIState.multiSkillHistory : UIState.history;
         var historyMap = {};
-        UIState.history.forEach(function(h) {
+        targetList.forEach(function(h) {
+          var k = (h.period.trim() + ':::' + (h.skill || 'General')).toLowerCase();
+          historyMap[k] = h;
           historyMap[h.period.trim().toLowerCase()] = h;
         });
 
@@ -3257,33 +3431,30 @@
         var appendedCount = 0;
 
         validActuals.forEach(function(pair) {
-          var key = pair.period.trim().toLowerCase();
-          if (historyMap[key]) {
-            historyMap[key].volume = pair.actual;
+          var pairSkill = pair.skill || (UIState.selectedSkill === 'all' ? 'General' : UIState.selectedSkill);
+          var keySkill = (pair.period.trim() + ':::' + pairSkill).toLowerCase();
+          var keySimple = pair.period.trim().toLowerCase();
+
+          if (historyMap[keySkill]) {
+            historyMap[keySkill].volume = pair.actual;
+            updatedCount++;
+          } else if (historyMap[keySimple] && (!historyMap[keySimple].skill || historyMap[keySimple].skill === pairSkill)) {
+            historyMap[keySimple].volume = pair.actual;
             updatedCount++;
           } else {
             var newEntry = {
               period: pair.period.trim(),
+              skill: pairSkill,
               volume: pair.actual,
               aht: UIState.assumedAht
             };
-            UIState.history.push(newEntry);
-            historyMap[key] = newEntry;
+            targetList.push(newEntry);
+            historyMap[keySkill] = newEntry;
             appendedCount++;
           }
         });
 
-        // Chronological sort if dates are valid
-        UIState.history.sort(function(a, b) {
-          var dA = ErlanglyUtils.parseDate(a.period);
-          var dB = ErlanglyUtils.parseDate(b.period);
-          var tA = dA ? (dA.timestamp || (typeof dA.getTime === 'function' ? dA.getTime() : 0)) : 0;
-          var tB = dB ? (dB.timestamp || (typeof dB.getTime === 'function' ? dB.getTime() : 0)) : 0;
-          if (tA && tB) return tA - tB;
-          return 0;
-        });
-
-        loadHistory(UIState.history);
+        loadHistory(targetList);
         ErlanglyUtils.showToast('Merged ' + validActuals.length + ' actuals (' + appendedCount + ' new, ' + updatedCount + ' updated) into history and re-forecasted!', 'success');
       });
     }
@@ -3316,7 +3487,12 @@
           var nD = ErlanglyUtils.addDays(last.period, 1);
           if (nD) nextP = nD.isoDate;
         }
-        UIState.accuracyPairs.push({ period: nextP, forecast: 1600, actual: 1620 });
+        UIState.accuracyPairs.push({
+          period: nextP,
+          skill: UIState.selectedSkill === 'all' ? 'General' : UIState.selectedSkill,
+          forecast: 1600,
+          actual: 1620
+        });
         renderAccuracyTable();
         renderAccuracyDashboard();
       });
@@ -3324,18 +3500,39 @@
 
     if (btnPullFromForecast) {
       btnPullFromForecast.addEventListener('click', function() {
-        var source = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : null);
-        if (!source || source.length === 0) {
-          ErlanglyUtils.showToast('Generate or lock a forecast first to populate periods', 'warn');
-          return;
+        var pairs = [];
+        if (UIState.skills.length > 1 && UIState.perSkillForecasts && UIState.selectedSkill === 'all') {
+          // Pull from all skills
+          Object.keys(UIState.perSkillForecasts).forEach(function(sk) {
+            var sf = UIState.perSkillForecasts[sk];
+            if (sf && sf.forecast) {
+              sf.forecast.forEach(function(f) {
+                pairs.push({
+                  period: f.period,
+                  skill: sk,
+                  forecast: f.volume,
+                  actual: f.volume
+                });
+              });
+            }
+          });
+        } else {
+          var source = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : null);
+          if (!source || source.length === 0) {
+            ErlanglyUtils.showToast('Generate or lock a forecast first to populate periods', 'warn');
+            return;
+          }
+          pairs = source.map(function(f) {
+            return {
+              period: f.period,
+              skill: f.skill || (UIState.selectedSkill === 'all' ? 'Combined' : UIState.selectedSkill),
+              forecast: f.volume,
+              actual: f.volume
+            };
+          });
         }
-        UIState.accuracyPairs = source.map(function(f) {
-          return {
-            period: f.period,
-            forecast: f.volume,
-            actual: f.volume
-          };
-        });
+
+        UIState.accuracyPairs = pairs;
         renderAccuracyTable();
         renderAccuracyDashboard();
         var label = UIState.lockedForecast ? 'locked baseline forecast' : 'active forecast plan';
@@ -3375,10 +3572,27 @@
           ErlanglyUtils.showToast('No accuracy data to export', 'warn');
           return;
         }
-        var headers = ['Period', 'Forecast_Volume', 'Actual_Volume', 'Variance_Calls', 'Abs_Error_Calls', 'Error_Pct', 'Signed_Bias_Pct', 'Status'];
+        var hasSkills = UIState.accuracyPairs.some(function(p) { return p.skill && p.skill !== 'General'; });
+        var headers = hasSkills ?
+          ['Period', 'Skill', 'Forecast_Volume', 'Actual_Volume', 'Variance_Calls', 'Abs_Error_Calls', 'Error_Pct', 'Signed_Bias_Pct', 'Status'] :
+          ['Period', 'Forecast_Volume', 'Actual_Volume', 'Variance_Calls', 'Abs_Error_Calls', 'Error_Pct', 'Signed_Bias_Pct', 'Status'];
+
         var rows = UIState.lastAccuracyMetrics.details.map(function(d, i) {
           var pair = UIState.accuracyPairs[i] || {};
           var status = Math.abs(d.signedPct) <= 5.0 ? 'On Target' : (d.signedPct > 5.0 ? 'Over-Forecast' : 'Under-Forecast');
+          if (hasSkills) {
+            return [
+              pair.period || ('Period ' + (i + 1)),
+              pair.skill || 'General',
+              Math.round(d.forecast),
+              Math.round(d.actual),
+              Math.round(d.error),
+              Math.round(d.absError),
+              d.pctError.toFixed(2) + '%',
+              (d.signedPct >= 0 ? '+' : '') + d.signedPct.toFixed(2) + '%',
+              status
+            ];
+          }
           return [
             pair.period || ('Period ' + (i + 1)),
             Math.round(d.forecast),
@@ -3394,42 +3608,100 @@
       });
     }
 
-    // Export Forecast CSV
+    // Export Forecast CSV (Multi-Skill Aware)
     if (btnExportCSV) {
       btnExportCSV.addEventListener('click', function() {
         if (!UIState.lastForecast || UIState.lastForecast.forecast.length === 0) return;
-        var headers = ['Future_Period', 'Algorithm', 'Base_Model_Volume', 'Trend_Factor', 'Seasonality_Index', 'Trend_Profile_Factor', 'Holiday_Factor', 'Holiday_Name', 'Projected_Volume', 'Assumed_AHT_Sec', 'Est_Erlangs'];
-        var rows = UIState.lastForecast.forecast.map(function(r) {
-          var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, UIState.assumedAht, 3600 * 8) : (r.volume * UIState.assumedAht / 28800);
-          return [
-            r.period,
-            UIState.lastForecast.modelName,
-            Math.round(r.baseVolume),
-            r.trendFactor.toFixed(3),
-            r.seasonalityIndex.toFixed(3),
-            (r.trendProfileFactor || 1.0).toFixed(3),
-            r.holidayFactor.toFixed(2),
-            r.holidayName || 'None',
-            Math.round(r.volume),
-            UIState.assumedAht,
-            erlangs.toFixed(2)
-          ];
-        });
-        ErlanglyUtils.exportCSV('erlangly_forecast.csv', headers, rows);
+        var headers = ['Future_Period', 'Skill', 'Algorithm', 'Base_Model_Volume', 'Trend_Factor', 'Seasonality_Index', 'Trend_Profile_Factor', 'Holiday_Factor', 'Holiday_Name', 'Projected_Volume', 'Assumed_AHT_Sec', 'Est_Erlangs'];
+        var rows = [];
+
+        if (UIState.skills.length > 1 && UIState.perSkillForecasts && Object.keys(UIState.perSkillForecasts).length > 0) {
+          // Export all skills
+          UIState.skills.forEach(function(sk) {
+            var sf = UIState.perSkillForecasts[sk];
+            if (sf && sf.forecast) {
+              var skAht = sf.assumedAht || UIState.assumedAht;
+              sf.forecast.forEach(function(r) {
+                var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, skAht, 3600 * 8) : (r.volume * skAht / 28800);
+                rows.push([
+                  r.period,
+                  sk,
+                  sf.modelName || UIState.lastForecast.modelName,
+                  Math.round(r.baseVolume),
+                  r.trendFactor.toFixed(3),
+                  r.seasonalityIndex.toFixed(3),
+                  (r.trendProfileFactor || 1.0).toFixed(3),
+                  r.holidayFactor.toFixed(2),
+                  r.holidayName || 'None',
+                  Math.round(r.volume),
+                  skAht,
+                  erlangs.toFixed(2)
+                ]);
+              });
+            }
+          });
+
+          // Also export Combined projection
+          if (UIState.combinedForecast && UIState.combinedForecast.forecast) {
+            var combAht = UIState.combinedForecast.assumedAht || UIState.assumedAht;
+            UIState.combinedForecast.forecast.forEach(function(r) {
+              var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, combAht, 3600 * 8) : (r.volume * combAht / 28800);
+              rows.push([
+                r.period,
+                'Combined (All Skills)',
+                UIState.combinedForecast.modelName || UIState.lastForecast.modelName,
+                Math.round(r.baseVolume),
+                r.trendFactor.toFixed(3),
+                r.seasonalityIndex.toFixed(3),
+                (r.trendProfileFactor || 1.0).toFixed(3),
+                r.holidayFactor.toFixed(2),
+                r.holidayName || 'None',
+                Math.round(r.volume),
+                combAht,
+                erlangs.toFixed(2)
+              ]);
+            });
+          }
+        } else {
+          // Single skill
+          var activeSkill = UIState.selectedSkill === 'all' ? 'General' : UIState.selectedSkill;
+          UIState.lastForecast.forecast.forEach(function(r) {
+            var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, UIState.assumedAht, 3600 * 8) : (r.volume * UIState.assumedAht / 28800);
+            rows.push([
+              r.period,
+              r.skill || activeSkill,
+              UIState.lastForecast.modelName,
+              Math.round(r.baseVolume),
+              r.trendFactor.toFixed(3),
+              r.seasonalityIndex.toFixed(3),
+              (r.trendProfileFactor || 1.0).toFixed(3),
+              r.holidayFactor.toFixed(2),
+              r.holidayName || 'None',
+              Math.round(r.volume),
+              UIState.assumedAht,
+              erlangs.toFixed(2)
+            ]);
+          });
+        }
+
+        ErlanglyUtils.exportCSV('erlangly_multiskill_forecast.csv', headers, rows);
       });
     }
 
-    // Send to Capacity Planning
+    // Send to Capacity Planning (Multi-Skill Aware)
     if (btnSendCapacity) {
       btnSendCapacity.addEventListener('click', function() {
         if (!UIState.lastForecast || UIState.lastForecast.forecast.length === 0) return;
+        var activeSkillName = UIState.selectedSkill === 'all' ? 'Combined (All Skills)' : UIState.selectedSkill;
         var payload = {
           source: 'forecasting',
+          skill: activeSkillName,
           aht: UIState.assumedAht,
           modelName: UIState.lastForecast.modelName,
           intervals: UIState.lastForecast.forecast.map(function(r) {
             return {
               interval: r.period,
+              skill: r.skill || activeSkillName,
               volume: Math.round(r.volume),
               aht: UIState.assumedAht
             };
@@ -3446,6 +3718,9 @@
         if (typeof window.ErlanglyPlans !== 'undefined' && window.ErlanglyPlans.showSaveModal) {
           var inputs = {
             history: UIState.history,
+            multiSkillHistory: UIState.multiSkillHistory,
+            skills: UIState.skills,
+            selectedSkill: UIState.selectedSkill,
             holidays: UIState.holidays,
             modelId: UIState.modelId,
             modelParams: UIState.modelParams,
@@ -3486,6 +3761,9 @@
         if (typeof window.ErlanglyPlans !== 'undefined' && window.ErlanglyPlans.showShareModal) {
           var inputs = {
             history: UIState.history,
+            multiSkillHistory: UIState.multiSkillHistory,
+            skills: UIState.skills,
+            selectedSkill: UIState.selectedSkill,
             holidays: UIState.holidays,
             modelId: UIState.modelId,
             modelParams: UIState.modelParams,
@@ -3511,7 +3789,7 @@
       });
     }
 
-    // CSV File Dropzone
+    // CSV File Dropzone (Multi-Skill Supported)
     var dropzone = document.getElementById('forecast-dropzone');
     var fileInput = document.getElementById('forecast-file-input');
     var selectAgg = document.getElementById('select-csv-aggregate');
@@ -3539,14 +3817,18 @@
         } else {
           var parsed = ErlanglyUtils.parseCSV(text);
           if (parsed.rows && parsed.rows.length > 0) {
+            var skillsFound = {};
             var rows = parsed.rows.map(function(r, i) {
+              var sk = (r.skill || r.queue || r.channel || r.lob || r.service || 'General').trim();
+              if (sk && sk !== 'General') skillsFound[sk] = true;
               return {
                 period: r.period || r.date || r.interval || ('Row ' + (i + 1)),
+                skill: sk || 'General',
                 volume: parseFloat(r.volume || r.calls || 100) || 100,
                 aht: parseFloat(r.aht || 180) || 180
               };
             });
-            loadHistory(rows);
+            loadHistory(rows, Object.keys(skillsFound));
             ErlanglyUtils.showToast('Parsed ' + rows.length + ' history periods', 'success');
           }
         }
@@ -3581,8 +3863,9 @@
             }, 3000);
 
             if (msg.rows && msg.rows.length > 0) {
-              loadHistory(msg.rows);
-              ErlanglyUtils.showToast('Loaded ' + msg.rows.length + ' aggregated periods from ' + msg.totalParsed.toLocaleString() + ' rows', 'success');
+              loadHistory(msg.rows, msg.skills);
+              var skillMsg = msg.skills && msg.skills.length > 1 ? (' across ' + msg.skills.length + ' skills') : '';
+              ErlanglyUtils.showToast('Loaded ' + msg.rows.length + ' aggregated periods' + skillMsg + ' from ' + msg.totalParsed.toLocaleString() + ' rows', 'success');
             }
           } else if (msg.type === 'error') {
             if (sTxt) sTxt.textContent = 'Error: ' + msg.message;
@@ -3595,8 +3878,149 @@
     }
   }
 
-  function loadHistory(rows) {
+  function updateActiveSkillView() {
+    if (UIState.skills.length > 1) {
+      if (UIState.selectedSkill === 'all') {
+        var rollMap = {};
+        UIState.multiSkillHistory.forEach(function(r) {
+          var p = r.period;
+          if (!rollMap[p]) {
+            rollMap[p] = { period: p, skill: 'Combined', volume: 0, ahtSum: 0 };
+          }
+          rollMap[p].volume += r.volume;
+          rollMap[p].ahtSum += (r.aht || 180) * r.volume;
+        });
+
+        var combinedList = Object.keys(rollMap).map(function(p) {
+          var item = rollMap[p];
+          return {
+            period: item.period,
+            skill: 'Combined',
+            volume: Math.round(item.volume),
+            aht: item.volume > 0 ? Math.round(item.ahtSum / item.volume) : 180
+          };
+        });
+
+        combinedList.sort(function(a, b) {
+          var infoA = ErlanglyUtils.parseDate(a.period);
+          var infoB = ErlanglyUtils.parseDate(b.period);
+          if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+          return 0;
+        });
+
+        UIState.history = combinedList;
+      } else {
+        var filtered = UIState.multiSkillHistory.filter(function(r) {
+          return r.skill === UIState.selectedSkill;
+        });
+        filtered.sort(function(a, b) {
+          var infoA = ErlanglyUtils.parseDate(a.period);
+          var infoB = ErlanglyUtils.parseDate(b.period);
+          if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+          return 0;
+        });
+        UIState.history = filtered;
+      }
+    } else {
+      if (UIState.multiSkillHistory.length > 0) {
+        UIState.history = UIState.multiSkillHistory;
+      }
+    }
+  }
+
+  function setupSkillFilterUI() {
+    var sel = document.getElementById('select-skill-filter');
+    var badge = document.getElementById('badge-skill-mode');
+    var info = document.getElementById('lbl-skill-filter-info');
+    var thHistSkill = document.getElementById('th-history-skill');
+    var thFcSkill = document.getElementById('th-forecast-skill');
+    var countSpan = document.getElementById('lbl-active-skill-count');
+
+    if (!sel) return;
+
+    if (UIState.skills.length > 1) {
+      if (thHistSkill) thHistSkill.style.display = UIState.selectedSkill === 'all' ? 'none' : 'table-cell';
+      if (thFcSkill) thFcSkill.style.display = 'table-cell';
+
+      sel.innerHTML = '<option value="all">🌐 Combined (All Skills)</option>' +
+        UIState.skills.map(function(sk) {
+          return '<option value="' + sk + '" ' + (UIState.selectedSkill === sk ? 'selected' : '') + '>🏷️ ' + sk + '</option>';
+        }).join('');
+      sel.value = UIState.selectedSkill;
+
+      if (badge) {
+        if (UIState.selectedSkill === 'all') {
+          badge.textContent = '🌐 Blended Multi-Skill';
+          badge.className = 'badge badge-neutral';
+        } else {
+          badge.textContent = '🏷️ Skill: ' + UIState.selectedSkill;
+          badge.className = 'badge badge-accent';
+        }
+      }
+
+      if (countSpan) countSpan.textContent = UIState.skills.length;
+      if (info) {
+        if (UIState.selectedSkill === 'all') {
+          info.innerHTML = 'Viewing combined aggregate across all queues (<span class="mono text-accent">' + UIState.skills.length + '</span> queues)';
+        } else {
+          info.innerHTML = 'Viewing queue: <strong class="text-accent">' + UIState.selectedSkill + '</strong> (<a href="#" id="link-reset-skill" style="color: var(--accent); text-decoration: underline;">switch to combined</a>)';
+          var linkReset = document.getElementById('link-reset-skill');
+          if (linkReset) {
+            linkReset.addEventListener('click', function(e) {
+              e.preventDefault();
+              UIState.selectedSkill = 'all';
+              sel.value = 'all';
+              updateActiveSkillView();
+              renderHistoryTable();
+              setupSkillFilterUI();
+              runForecast();
+            });
+          }
+        }
+      }
+    } else {
+      if (thHistSkill) thHistSkill.style.display = 'none';
+      if (thFcSkill) thFcSkill.style.display = 'none';
+      sel.innerHTML = '<option value="all">🌐 Single Skill (General)</option>';
+      sel.value = 'all';
+      if (badge) {
+        badge.textContent = '🌐 Single Queue';
+        badge.className = 'badge badge-neutral';
+      }
+      if (info) info.textContent = 'Single queue mode';
+    }
+  }
+
+  function loadHistory(rows, detectedSkills) {
     var rawList = rows ? rows.slice() : [];
+
+    // Check if rows have skill attribute
+    var skillsMap = {};
+    rawList.forEach(function(r) {
+      if (r && r.skill && r.skill !== 'General' && r.skill !== 'Combined') {
+        skillsMap[r.skill] = true;
+      }
+    });
+
+    if (detectedSkills && Array.isArray(detectedSkills)) {
+      detectedSkills.forEach(function(s) {
+        if (s && s !== 'General' && s !== 'Combined') skillsMap[s] = true;
+      });
+    }
+
+    var distinctSkills = Object.keys(skillsMap);
+    if (distinctSkills.length > 1) {
+      UIState.skills = distinctSkills;
+      UIState.multiSkillHistory = rawList;
+      if (UIState.selectedSkill !== 'all' && distinctSkills.indexOf(UIState.selectedSkill) === -1) {
+        UIState.selectedSkill = 'all';
+      }
+    } else {
+      UIState.skills = [];
+      UIState.multiSkillHistory = [];
+      UIState.selectedSkill = 'all';
+    }
+
     var hasDates = false;
     for (var i = 0; i < Math.min(rawList.length, 20); i++) {
       if (rawList[i] && ErlanglyUtils.parseDate(rawList[i].period)) {
@@ -3609,9 +4033,10 @@
       rawList.sort(function(a, b) {
         var infoA = ErlanglyUtils.parseDate(a.period);
         var infoB = ErlanglyUtils.parseDate(b.period);
-        if (infoA && infoB) return infoA.timestamp - infoB.timestamp;
-        if (infoA) return -1;
-        if (infoB) return 1;
+        if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+        if (infoA && !infoB) return -1;
+        if (!infoA && infoB) return 1;
+        if (a.skill && b.skill && a.skill !== b.skill) return a.skill.localeCompare(b.skill);
         return 0;
       });
 
@@ -3621,24 +4046,34 @@
       });
     }
 
-    UIState.history = rawList;
+    updateActiveSkillView();
+    if (UIState.skills.length <= 1) {
+      UIState.history = rawList;
+    }
+
     renderHistoryTable();
     renderSandboxMonthChips();
     updateBacktestModeUI();
     setupModelSelector();
+    setupSkillFilterUI();
     runForecast();
   }
 
   function renderHistoryTable() {
     var tbody = document.getElementById('tbody-history-inputs');
     var countLbl = document.getElementById('lbl-history-count');
+    var thHistSkill = document.getElementById('th-history-skill');
     if (!tbody) return;
 
     tbody.innerHTML = '';
     if (countLbl) countLbl.textContent = UIState.history.length;
 
+    var showSkillCol = UIState.skills.length > 1;
+    if (thHistSkill) thHistSkill.style.display = showSkillCol ? 'table-cell' : 'none';
+
     if (UIState.history.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No historical data. Load sample or upload CSV.</td></tr>';
+      var colSpan = showSkillCol ? 4 : 3;
+      tbody.innerHTML = '<tr><td colspan="' + colSpan + '" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No historical data. Load sample or upload CSV.</td></tr>';
       return;
     }
 
@@ -3658,12 +4093,21 @@
         var info = ErlanglyUtils.parseDate(row.period);
         if (info) {
           row.period = info.isoDate;
-          loadHistory(UIState.history);
+          loadHistory(UIState.multiSkillHistory.length > 0 ? UIState.multiSkillHistory : UIState.history);
         } else {
           runForecast();
         }
       });
       tdPeriod.appendChild(inputPeriod);
+      tr.appendChild(tdPeriod);
+
+      if (showSkillCol) {
+        var tdSkill = document.createElement('td');
+        tdSkill.className = 'mono';
+        var skName = row.skill || (UIState.selectedSkill === 'all' ? 'Combined' : UIState.selectedSkill);
+        tdSkill.innerHTML = '<span class="badge ' + (skName === 'Combined' ? 'badge-neutral' : 'badge-accent') + '" style="font-size: 10px;">' + skName + '</span>';
+        tr.appendChild(tdSkill);
+      }
 
       var tdVol = document.createElement('td');
       var inputVol = document.createElement('input');
@@ -3677,6 +4121,7 @@
         runForecast();
       });
       tdVol.appendChild(inputVol);
+      tr.appendChild(tdVol);
 
       var tdAction = document.createElement('td');
       var btnDel = document.createElement('button');
@@ -3687,14 +4132,16 @@
       btnDel.title = 'Remove row';
       btnDel.addEventListener('click', function() {
         UIState.history.splice(idx, 1);
+        if (UIState.multiSkillHistory.length > 0) {
+          var mIdx = UIState.multiSkillHistory.indexOf(row);
+          if (mIdx !== -1) UIState.multiSkillHistory.splice(mIdx, 1);
+        }
         renderHistoryTable();
         runForecast();
       });
       tdAction.appendChild(btnDel);
-
-      tr.appendChild(tdPeriod);
-      tr.appendChild(tdVol);
       tr.appendChild(tdAction);
+
       tbody.appendChild(tr);
     });
   }
@@ -3973,8 +4420,79 @@
       trendProfileParams: UIState.trendProfileParams
     };
 
-    // 1. Run main active forecast
-    var result = executeForecast(UIState.history, UIState.modelId, UIState.modelParams, options);
+    // If multi-skill dataset exists, compute forecasts for all individual skills + combined
+    if (UIState.skills.length > 1 && UIState.multiSkillHistory.length > 0) {
+      UIState.perSkillForecasts = {};
+      UIState.skills.forEach(function(sk) {
+        var skHistory = UIState.multiSkillHistory.filter(function(r) { return r.skill === sk; });
+        skHistory.sort(function(a, b) {
+          var infoA = ErlanglyUtils.parseDate(a.period);
+          var infoB = ErlanglyUtils.parseDate(b.period);
+          if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+          return 0;
+        });
+
+        var skAht = skHistory.length > 0 && skHistory[0].aht ? skHistory[0].aht : UIState.assumedAht;
+        var skOptions = Object.assign({}, options, { assumedAht: skAht });
+        var skRes = executeForecast(skHistory, UIState.modelId, UIState.modelParams, skOptions);
+        skRes.forecast.forEach(function(f) {
+          f.skill = sk;
+          f.aht = skAht;
+        });
+        skRes.assumedAht = skAht;
+        UIState.perSkillForecasts[sk] = skRes;
+      });
+
+      // Compute combined blended series
+      var rollMap = {};
+      UIState.multiSkillHistory.forEach(function(r) {
+        var p = r.period;
+        if (!rollMap[p]) {
+          rollMap[p] = { period: p, skill: 'Combined', volume: 0, ahtSum: 0 };
+        }
+        rollMap[p].volume += r.volume;
+        rollMap[p].ahtSum += (r.aht || 180) * r.volume;
+      });
+      var combinedHistory = Object.keys(rollMap).map(function(p) {
+        var item = rollMap[p];
+        return {
+          period: item.period,
+          skill: 'Combined',
+          volume: Math.round(item.volume),
+          aht: item.volume > 0 ? Math.round(item.ahtSum / item.volume) : 180
+        };
+      });
+      combinedHistory.sort(function(a, b) {
+        var infoA = ErlanglyUtils.parseDate(a.period);
+        var infoB = ErlanglyUtils.parseDate(b.period);
+        if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+        return 0;
+      });
+
+      var avgCombinedAht = combinedHistory.length > 0 ? (combinedHistory.reduce(function(acc, row) { return acc + (row.aht * row.volume); }, 0) / Math.max(1, combinedHistory.reduce(function(acc, row) { return acc + row.volume; }, 0))) : UIState.assumedAht;
+      var combOptions = Object.assign({}, options, { assumedAht: Math.round(avgCombinedAht) });
+      var combRes = executeForecast(combinedHistory, UIState.modelId, UIState.modelParams, combOptions);
+      combRes.forecast.forEach(function(f) {
+        f.skill = 'Combined';
+        f.aht = Math.round(avgCombinedAht);
+      });
+      combRes.assumedAht = Math.round(avgCombinedAht);
+      UIState.combinedForecast = combRes;
+    }
+
+    // 1. Run main active forecast for UIState.history
+    var result;
+    if (UIState.skills.length > 1) {
+      if (UIState.selectedSkill === 'all' && UIState.combinedForecast) {
+        result = UIState.combinedForecast;
+      } else if (UIState.perSkillForecasts && UIState.perSkillForecasts[UIState.selectedSkill]) {
+        result = UIState.perSkillForecasts[UIState.selectedSkill];
+      } else {
+        result = executeForecast(UIState.history, UIState.modelId, UIState.modelParams, options);
+      }
+    } else {
+      result = executeForecast(UIState.history, UIState.modelId, UIState.modelParams, options);
+    }
     UIState.lastForecast = result;
 
     // Sync auto-optimized parameters back to UIState
@@ -4080,14 +4598,19 @@
   function renderForecastTable(result) {
     var tbody = document.getElementById('tbody-forecast-results');
     var countLbl = document.getElementById('lbl-forecast-table-count');
+    var thFcSkill = document.getElementById('th-forecast-skill');
     if (!tbody) return;
 
     tbody.innerHTML = '';
     if (countLbl) countLbl.textContent = result.forecast.length;
 
+    var showSkillCol = UIState.skills.length > 1;
+    if (thFcSkill) thFcSkill.style.display = showSkillCol ? 'table-cell' : 'none';
+
     result.forecast.forEach(function(r) {
       var tr = document.createElement('tr');
-      var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, UIState.assumedAht, 3600 * 8) : (r.volume * UIState.assumedAht / 28800);
+      var ahtToUse = (r.aht || UIState.assumedAht);
+      var erlangs = Erlangly ? Erlangly.trafficIntensity(r.volume, ahtToUse, 3600 * 8) : (r.volume * ahtToUse / 28800);
 
       var eventBadge = '';
       if (r.holidayName) {
@@ -4099,8 +4622,15 @@
       var tpfDisplay = (tpf === 1.0) ? '—' : ((tpfPct >= 0 ? '+' : '') + tpfPct.toFixed(0) + '%');
       var tpfClass = tpf > 1.05 ? 'text-accent' : (tpf < 0.95 ? 'text-warn' : '');
 
+      var skillTd = '';
+      if (showSkillCol) {
+        var skName = r.skill || (UIState.selectedSkill === 'all' ? 'Combined' : UIState.selectedSkill);
+        skillTd = '<td class="mono"><span class="badge ' + (skName === 'Combined' ? 'badge-neutral' : 'badge-accent') + '" style="font-size: 10px;">' + skName + '</span></td>';
+      }
+
       tr.innerHTML = 
         '<td class="mono"><strong>' + r.period + '</strong>' + eventBadge + '</td>' +
+        skillTd +
         '<td class="mono">' + Math.round(r.baseVolume).toLocaleString() + '</td>' +
         '<td class="mono">' + r.trendFactor.toFixed(2) + 'x</td>' +
         '<td class="mono ' + (r.seasonalityIndex > 1.1 ? 'text-accent' : (r.seasonalityIndex < 0.9 ? 'text-muted' : '')) + '">' + (r.seasonalityIndex * 100).toFixed(0) + '%</td>' +
@@ -4683,8 +5213,9 @@
       combinedLabels = histLabels;
     } else {
       // Standard or Last-N Comparison Mode
+      var skillSuffix = UIState.skills.length > 1 ? ' [' + (UIState.selectedSkill === 'all' ? 'Combined' : UIState.selectedSkill) + ']' : '';
       datasets.push({
-        label: 'Historical Actuals' + (granularity !== 'daily' ? ' (' + granularity + ' total)' : ''),
+        label: 'Historical Actuals' + skillSuffix + (granularity !== 'daily' ? ' (' + granularity + ' total)' : ''),
         data: paddedHist,
         borderColor: '#00d2d3',
         backgroundColor: 'rgba(0, 210, 211, 0.08)',
@@ -4697,7 +5228,7 @@
 
       if (result) {
         datasets.push({
-          label: result.modelName + ' (Active)',
+          label: result.modelName + skillSuffix + ' (Active)',
           data: createPaddedForecast(result.forecast),
           borderColor: '#10b981',
           backgroundColor: 'rgba(16, 185, 129, 0.12)',
@@ -4849,8 +5380,12 @@
     filterTimeSeriesByDate: filterTimeSeriesByDate,
     computeRangeBounds: computeRangeBounds,
     generateMultiYearHistory: generateMultiYearHistory,
+    generateMultiSkillHistory: generateMultiSkillHistory,
+    downloadHistoricalTemplate: downloadHistoricalTemplate,
+    downloadActualsTemplate: downloadActualsTemplate,
     SAMPLE_HISTORY: SAMPLE_HISTORY,
     SAMPLE_MULTI_YEAR_HISTORY: SAMPLE_MULTI_YEAR_HISTORY,
+    SAMPLE_MULTI_SKILL_HISTORY: SAMPLE_MULTI_SKILL_HISTORY,
     SAMPLE_ACCURACY_DATA: SAMPLE_ACCURACY_DATA,
     SAMPLE_HOLIDAYS: SAMPLE_HOLIDAYS
   };

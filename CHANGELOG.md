@@ -33,6 +33,41 @@ When a phase passes audit:
 
 ---
 
+## [Enhancement] — Multi-Skill Demand Forecasting & Standardized Templates — 2026-08-20
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Standardized RFC-4180 CSV Templates (`downloadHistoricalTemplate`, `downloadActualsTemplate`)**:
+  - Downloadable Historical Demand Template (`Date,Skill,Volume,AHT`) providing users a single pre-formatted structure that prevents upload formatting errors.
+  - Downloadable Actuals Tracking Template (`Date,Skill,Forecast,Actual,AHT`) for actuals volume tracking and accuracy evaluation.
+  - Quick-download action buttons integrated in both the Historical Training CSV dropzone (`#btn-download-forecast-template`) and the Actuals & Accuracy tracking dropzone (`#btn-download-accuracy-template`).
+- **Multi-Skill Demand Web Worker & Parser (`js/workers/csv-parser.js` & `js/forecasting.js`)**:
+  - Automatically identifies skill/queue columns (`Skill`, `Queue`, `Channel`, `LOB`, `Service`, `Skill_Group`, `Line_of_Business`).
+  - Supports large files up to 100k+ rows parsed in background Web Worker, aggregating demand by `(Date, Skill)` and computing volume-weighted AHTs.
+- **Combined + Per-Skill Dual Forecasting Engine (`runForecast` & `updateActiveSkillView`)**:
+  - Generates individual forecasts for each discrete skill queue in the uploaded dataset.
+  - Computes a blended, volume-weighted composite forecast across all queues ($\sum V_i$ volume and $\frac{\sum V_i \times \text{AHT}_i}{\sum V_i}$ blended AHT).
+- **Interactive Multi-Skill Filter Bar & UI (`forecasting.html`, `js/forecasting.js`, `css/styles.css`)**:
+  - Skill filter toolbar (`#box-skill-filter-bar`) with dropdown selector (`#select-skill-filter`) and mode badge (`#badge-skill-mode`).
+  - Seamlessly toggles between "🌐 Combined (All Skills)" and individual queues (e.g. `Customer Care`, `Technical Support`, `Billing & Inquiries`).
+  - Dynamically updates the historical training table, forecast projection table, and Chart.js visualization with queue-specific labels and metrics.
+- **Multi-Skill Actuals Matching & History Merge**:
+  - Auto-matches actuals CSV rows against baseline forecasts using compound keys `(Period, Skill)`.
+  - Merging actuals into historical series preserves per-skill breakdowns and updates existing records without duplication.
+- **Multi-Skill CSV Export & Capacity Planning Handoff**:
+  - "Export Forecast CSV" exports all individual queues plus the combined rollup with queue tags and Erlangs.
+  - "Send to Capacity" hands off active queue parameters to `capacity.html`.
+
+### Found & fixed during QA
+- Verified in `SAMPLE_MULTI_SKILL_HISTORY` that 28 days with 3 skills (84 records) parse with distinct AHTs (180s, 300s, 150s) and combine into a volume-weighted composite.
+- Verified in browser subagent that downloading templates generates valid RFC-4180 CSV files with expected headers and sample rows.
+- All 236 automated unit tests passed with 0 failures (`node test/run-tests.js`).
+
+### Deviations from spec (if any)
+- None.
+
+---
+
 ## [Phase 13] — Forecast Holdout Sandbox — 2026-08-20
 **QA sign-off:** erlangly-qa
 

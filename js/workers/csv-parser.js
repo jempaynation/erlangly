@@ -139,8 +139,9 @@ function parseFileInChunks(file, aggregateLevel) {
 
   var totalParsed = 0;
   var skippedCount = 0;
-  var aggregated = {}; // key -> { date, volume, count, totalAht, timestamp }
-  var rawSeries = [];  // if not aggregating: [ { period, volume, aht, timestamp } ]
+  var aggregated = {}; // key -> { date, skill, volume, count, totalAht, timestamp }
+  var rawSeries = [];  // if not aggregating: [ { period, skill, volume, aht, timestamp } ]
+  var skillsMap = {};
 
   var reader = new FileReaderSync();
 
@@ -172,18 +173,30 @@ function parseFileInChunks(file, aggregateLevel) {
         }
 
         totalParsed++;
+        if (record.skill) skillsMap[record.skill] = true;
 
         if (aggregateLevel === 'daily' && record.date) {
           var dateKey = record.date;
-          if (!aggregated[dateKey]) {
-            aggregated[dateKey] = { period: dateKey, volume: 0, count: 0, ahtSum: 0, timestamp: record.timestamp };
+          var skillKey = record.skill || 'General';
+          var aggKey = dateKey + ':::' + skillKey;
+          if (!aggregated[aggKey]) {
+            aggregated[aggKey] = {
+              period: dateKey,
+              date: dateKey,
+              skill: skillKey,
+              volume: 0,
+              count: 0,
+              ahtSum: 0,
+              timestamp: record.timestamp
+            };
           }
-          aggregated[dateKey].volume += record.volume;
-          aggregated[dateKey].count++;
-          aggregated[dateKey].ahtSum += (record.aht || 180) * record.volume;
+          aggregated[aggKey].volume += record.volume;
+          aggregated[aggKey].count++;
+          aggregated[aggKey].ahtSum += (record.aht || 180) * record.volume;
         } else {
           rawSeries.push({
             period: record.period || record.date || ('Row ' + totalParsed),
+            skill: record.skill || 'General',
             volume: record.volume,
             aht: record.aht || 180,
             timestamp: record.timestamp
@@ -208,15 +221,29 @@ function parseFileInChunks(file, aggregateLevel) {
       var lastRecord = parseLine(buffer.trim(), headerMap);
       if (lastRecord && !isNaN(lastRecord.volume)) {
         totalParsed++;
+        if (lastRecord.skill) skillsMap[lastRecord.skill] = true;
         if (aggregateLevel === 'daily' && lastRecord.date) {
           var k = lastRecord.date;
-          if (!aggregated[k]) aggregated[k] = { period: k, volume: 0, count: 0, ahtSum: 0, timestamp: lastRecord.timestamp };
-          aggregated[k].volume += lastRecord.volume;
-          aggregated[k].count++;
-          aggregated[k].ahtSum += (lastRecord.aht || 180) * lastRecord.volume;
+          var sk = lastRecord.skill || 'General';
+          var aggK = k + ':::' + sk;
+          if (!aggregated[aggK]) {
+            aggregated[aggK] = {
+              period: k,
+              date: k,
+              skill: sk,
+              volume: 0,
+              count: 0,
+              ahtSum: 0,
+              timestamp: lastRecord.timestamp
+            };
+          }
+          aggregated[aggK].volume += lastRecord.volume;
+          aggregated[aggK].count++;
+          aggregated[aggK].ahtSum += (lastRecord.aht || 180) * lastRecord.volume;
         } else {
           rawSeries.push({
             period: lastRecord.period || lastRecord.date || ('Row ' + totalParsed),
+            skill: lastRecord.skill || 'General',
             volume: lastRecord.volume,
             aht: lastRecord.aht || 180,
             timestamp: lastRecord.timestamp
@@ -229,20 +256,28 @@ function parseFileInChunks(file, aggregateLevel) {
 
     // Final result compilation sorted chronologically
     var finalRows = [];
+    var detectedSkills = Object.keys(skillsMap);
+
     if (aggregateLevel === 'daily' && Object.keys(aggregated).length > 0) {
       var keys = Object.keys(aggregated);
       keys.sort(function(a, b) {
-        var infoA = parseDateInfo(a);
-        var infoB = parseDateInfo(b);
-        if (infoA && infoB) return infoA.timestamp - infoB.timestamp;
-        if (infoA) return -1;
-        if (infoB) return 1;
+        var itemA = aggregated[a];
+        var itemB = aggregated[b];
+        var infoA = parseDateInfo(itemA.period);
+        var infoB = parseDateInfo(itemB.period);
+        if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+        if (infoA && !infoB) return -1;
+        if (!infoA && infoB) return 1;
+        if (itemA.skill && itemB.skill && itemA.skill !== itemB.skill) {
+          return itemA.skill.localeCompare(itemB.skill);
+        }
         return a.localeCompare(b);
       });
       keys.forEach(function(k) {
         var item = aggregated[k];
         finalRows.push({
           period: item.period,
+          skill: item.skill,
           volume: Math.round(item.volume),
           aht: item.volume > 0 ? Math.round(item.ahtSum / item.volume) : 180
         });
@@ -251,12 +286,14 @@ function parseFileInChunks(file, aggregateLevel) {
       rawSeries.sort(function(a, b) {
         var infoA = parseDateInfo(a.period);
         var infoB = parseDateInfo(b.period);
-        if (infoA && infoB) return infoA.timestamp - infoB.timestamp;
+        if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+        if (a.skill && b.skill && a.skill !== b.skill) return a.skill.localeCompare(b.skill);
         return 0;
       });
       finalRows = rawSeries.map(function(item) {
         return {
           period: item.period,
+          skill: item.skill,
           volume: item.volume,
           aht: item.aht
         };
@@ -266,6 +303,8 @@ function parseFileInChunks(file, aggregateLevel) {
     self.postMessage({
       type: 'complete',
       rows: finalRows,
+      skills: detectedSkills,
+      hasMultiSkill: detectedSkills.length > 1,
       totalParsed: totalParsed,
       skippedCount: skippedCount
     });
@@ -282,7 +321,7 @@ function parseTextDirectly(text, aggregateLevel) {
   try {
     var lines = text.split(/\r\n|\r|\n/);
     if (lines.length === 0) {
-      self.postMessage({ type: 'complete', rows: [], totalParsed: 0, skippedCount: 0 });
+      self.postMessage({ type: 'complete', rows: [], skills: [], hasMultiSkill: false, totalParsed: 0, skippedCount: 0 });
       return;
     }
 
@@ -291,6 +330,7 @@ function parseTextDirectly(text, aggregateLevel) {
     var rawSeries = [];
     var totalParsed = 0;
     var skippedCount = 0;
+    var skillsMap = {};
 
     for (var i = 1; i < lines.length; i++) {
       var line = lines[i].trim();
@@ -301,15 +341,30 @@ function parseTextDirectly(text, aggregateLevel) {
         continue;
       }
       totalParsed++;
+      if (record.skill) skillsMap[record.skill] = true;
+
       if (aggregateLevel === 'daily' && record.date) {
         var k = record.date;
-        if (!aggregated[k]) aggregated[k] = { period: k, volume: 0, count: 0, ahtSum: 0, timestamp: record.timestamp };
-        aggregated[k].volume += record.volume;
-        aggregated[k].count++;
-        aggregated[k].ahtSum += (record.aht || 180) * record.volume;
+        var sk = record.skill || 'General';
+        var aggK = k + ':::' + sk;
+        if (!aggregated[aggK]) {
+          aggregated[aggK] = {
+            period: k,
+            date: k,
+            skill: sk,
+            volume: 0,
+            count: 0,
+            ahtSum: 0,
+            timestamp: record.timestamp
+          };
+        }
+        aggregated[aggK].volume += record.volume;
+        aggregated[aggK].count++;
+        aggregated[aggK].ahtSum += (record.aht || 180) * record.volume;
       } else {
         rawSeries.push({
           period: record.period || record.date || ('Row ' + totalParsed),
+          skill: record.skill || 'General',
           volume: record.volume,
           aht: record.aht || 180,
           timestamp: record.timestamp
@@ -318,20 +373,28 @@ function parseTextDirectly(text, aggregateLevel) {
     }
 
     var finalRows = [];
+    var detectedSkills = Object.keys(skillsMap);
+
     if (aggregateLevel === 'daily' && Object.keys(aggregated).length > 0) {
       var keys = Object.keys(aggregated);
       keys.sort(function(a, b) {
-        var infoA = parseDateInfo(a);
-        var infoB = parseDateInfo(b);
-        if (infoA && infoB) return infoA.timestamp - infoB.timestamp;
-        if (infoA) return -1;
-        if (infoB) return 1;
+        var itemA = aggregated[a];
+        var itemB = aggregated[b];
+        var infoA = parseDateInfo(itemA.period);
+        var infoB = parseDateInfo(itemB.period);
+        if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+        if (infoA && !infoB) return -1;
+        if (!infoA && infoB) return 1;
+        if (itemA.skill && itemB.skill && itemA.skill !== itemB.skill) {
+          return itemA.skill.localeCompare(itemB.skill);
+        }
         return a.localeCompare(b);
       });
       keys.forEach(function(k) {
         var item = aggregated[k];
         finalRows.push({
           period: item.period,
+          skill: item.skill,
           volume: Math.round(item.volume),
           aht: item.volume > 0 ? Math.round(item.ahtSum / item.volume) : 180
         });
@@ -340,12 +403,14 @@ function parseTextDirectly(text, aggregateLevel) {
       rawSeries.sort(function(a, b) {
         var infoA = parseDateInfo(a.period);
         var infoB = parseDateInfo(b.period);
-        if (infoA && infoB) return infoA.timestamp - infoB.timestamp;
+        if (infoA && infoB && infoA.timestamp !== infoB.timestamp) return infoA.timestamp - infoB.timestamp;
+        if (a.skill && b.skill && a.skill !== b.skill) return a.skill.localeCompare(b.skill);
         return 0;
       });
       finalRows = rawSeries.map(function(item) {
         return {
           period: item.period,
+          skill: item.skill,
           volume: item.volume,
           aht: item.aht
         };
@@ -355,6 +420,8 @@ function parseTextDirectly(text, aggregateLevel) {
     self.postMessage({
       type: 'complete',
       rows: finalRows,
+      skills: detectedSkills,
+      hasMultiSkill: detectedSkills.length > 1,
       totalParsed: totalParsed,
       skippedCount: skippedCount
     });
@@ -372,7 +439,8 @@ function parseHeader(line) {
     dateIndex: -1,
     timeIndex: -1,
     volumeIndex: -1,
-    ahtIndex: -1
+    ahtIndex: -1,
+    skillIndex: -1
   };
 
   cols.forEach(function(col, idx) {
@@ -384,6 +452,8 @@ function parseHeader(line) {
       map.volumeIndex = idx;
     } else if (col === 'aht' || col === 'handletime' || col === 'duration' || col === 'avg_handle_time') {
       map.ahtIndex = idx;
+    } else if (col === 'skill' || col === 'queue' || col === 'channel' || col === 'lob' || col === 'service' || col === 'skill_group' || col === 'skillgroup' || col === 'line_of_business') {
+      map.skillIndex = idx;
     }
   });
 
@@ -414,6 +484,8 @@ function parseLine(line, headerMap) {
   var timeStr = headerMap.timeIndex !== -1 ? clean(parts[headerMap.timeIndex]) : '';
   var ahtStr = headerMap.ahtIndex !== -1 ? clean(parts[headerMap.ahtIndex]) : '180';
   var aht = parseFloat(ahtStr) || 180;
+  var skillStr = headerMap.skillIndex !== -1 ? clean(parts[headerMap.skillIndex]) : 'General';
+  if (!skillStr) skillStr = 'General';
 
   var dateInfo = parseDateInfo(dateStr || (!timeStr ? clean(parts[0]) : ''));
   var normalizedDate = dateInfo ? dateInfo.isoDate : (dateStr || clean(parts[0]));
@@ -429,6 +501,7 @@ function parseLine(line, headerMap) {
   return {
     date: normalizedDate,
     period: periodStr,
+    skill: skillStr,
     volume: vol,
     aht: aht,
     timestamp: dateInfo ? dateInfo.timestamp : 0
