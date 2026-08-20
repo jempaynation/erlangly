@@ -6,6 +6,11 @@
   <meta name="description" content="Sign In to Erlangly — Access your saved workforce capacity, forecasting, scheduling, and simulation plans.">
   <meta name="theme-color" content="#080c14">
   <title>Sign In — Erlangly</title>
+  <link rel="icon" type="image/x-icon" href="assets/icons/favicon.ico">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/erlangly-icon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="assets/icons/erlangly-icon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
+  <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
@@ -14,7 +19,7 @@
   <header class="site-nav">
     <div class="nav-container">
       <a href="index.html" class="brand-link" aria-label="Erlangly Home">
-        <div class="brand-icon">E</div>
+        <img src="assets/icons/erlangly-icon-64x64.png" alt="Erlangly Logo" class="brand-icon" width="32" height="32">
         <div class="brand-text">Erlang<span>ly</span></div>
         <span class="brand-tagline">WFM ENGINEERING</span>
       </a>
@@ -35,7 +40,7 @@
   <main class="page-container" style="display: flex; align-items: center; justify-content: center; min-height: 75vh;">
     <div class="panel" style="max-width: 440px; width: 100%; box-shadow: var(--shadow-lg);">
       <div class="panel-header" style="justify-content: center; flex-direction: column; text-align: center; gap: var(--space-1); padding: var(--space-6);">
-        <div class="brand-icon" style="margin: 0 auto var(--space-2);">E</div>
+        <img src="assets/icons/erlangly-icon-128x128.png" alt="Erlangly Logo" class="brand-icon brand-icon-lg" width="48" height="48" style="margin: 0 auto var(--space-2);">
         <h2 style="font-size: var(--text-2xl);" id="auth-title">Sign in to Erlangly</h2>
         <p style="font-size: var(--text-sm); color: var(--text-secondary);" id="auth-subtitle">
           Save, manage, and sync your contact center plans across devices.
