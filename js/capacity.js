@@ -51,6 +51,20 @@
       hourlyWage: 25.00,
       results: null,
       chart: null
+    },
+    mq: {
+      strategy: 'overflow', // 'siloed' | 'overflow' | 'skill' | 'blended'
+      queues: [
+        { id: 'q1', name: 'Inbound Support', volume: 400, aht: 240, targetSLA: 0.80, targetTime: 20 },
+        { id: 'q2', name: 'Billing & Accounts', volume: 250, aht: 180, targetSLA: 0.80, targetTime: 20 },
+        { id: 'q3', name: 'Tech Escalations', volume: 150, aht: 320, targetSLA: 0.80, targetTime: 20 }
+      ],
+      overflowThresholdSec: 30,
+      specialistSplit: 0.70,
+      intervalSeconds: 1800,
+      shrinkage: 0.30,
+      results: null,
+      chart: null
     }
   };
 
@@ -86,9 +100,39 @@
   var tabSingle = document.getElementById('tab-single');
   var tabBulk = document.getElementById('tab-bulk');
   var tabSim = document.getElementById('tab-sim');
+  var tabMultiqueue = document.getElementById('tab-multiqueue');
   var viewSingle = document.getElementById('view-single');
   var viewBulk = document.getElementById('view-bulk');
   var viewSim = document.getElementById('view-sim');
+  var viewMultiqueue = document.getElementById('view-multiqueue');
+
+  // Multi-Queue DOM (Phase 11)
+  var mqStrategyPills = document.querySelectorAll('#mq-strategy-pills button');
+  var tbodyMqQueues = document.getElementById('tbody-mq-queues');
+  var lblMqQueueCount = document.getElementById('lbl-mq-queue-count');
+  var btnAddMqQueue = document.getElementById('btn-add-mq-queue');
+  var btnResetMqQueues = document.getElementById('btn-reset-mq-queues');
+  var btnExportMqCSV = document.getElementById('btn-export-mq-csv');
+  var btnSaveMqPlan = document.getElementById('btn-save-mq-plan');
+
+  var lblStrategyLeverTitle = document.getElementById('lbl-strategy-lever-title');
+  var mqControlsOverflow = document.getElementById('mq-controls-overflow');
+  var mqControlsSkill = document.getElementById('mq-controls-skill');
+  var inputOverflowThreshold = document.getElementById('input-overflow-threshold');
+  var lblOverflowThreshold = document.getElementById('lbl-overflow-threshold');
+  var selectOverflowDest = document.getElementById('select-overflow-dest');
+  var inputSpecialistSplit = document.getElementById('input-specialist-split');
+  var lblSpecialistSplit = document.getElementById('lbl-specialist-split');
+  var selectMqInterval = document.getElementById('select-mq-interval');
+  var numMqShrinkage = document.getElementById('num-mq-shrinkage');
+
+  var lblMqTotalAgents = document.getElementById('lbl-mq-total-agents');
+  var lblMqSiloedAgents = document.getElementById('lbl-mq-siloed-agents');
+  var lblMqSavedAgents = document.getElementById('lbl-mq-saved-agents');
+  var lblMqShrinkageSaved = document.getElementById('lbl-mq-shrinkage-saved');
+  var lblMqEfficiencyGain = document.getElementById('lbl-mq-efficiency-gain');
+  var tbodyMqBreakdown = document.getElementById('tbody-mq-breakdown');
+  var chartMqComparisonCanvas = document.getElementById('chart-mq-comparison');
 
   // Single inputs
   var inputVol = document.getElementById('input-vol');
@@ -119,84 +163,55 @@
   var bulkDropzone = document.getElementById('bulk-dropzone');
   var bulkFileInput = document.getElementById('bulk-file-input');
   var btnSampleCSV = document.getElementById('btn-sample-csv');
-  var btnDownloadTemplate = document.getElementById('btn-download-template');
-  var bulkTargetSLA = document.getElementById('bulk-target-sla');
-  var bulkTargetTime = document.getElementById('bulk-target-time');
-  var bulkOccupancyCap = document.getElementById('bulk-occupancy-cap');
-  var bulkShrinkage = document.getElementById('bulk-shrinkage');
-  var bulkIntervalLen = document.getElementById('bulk-interval-len');
-
-  var bulkResultsSection = document.getElementById('bulk-results-section');
-  var bulkTotalVol = document.getElementById('bulk-total-vol');
-  var bulkAvgAht = document.getElementById('bulk-avg-aht');
-  var bulkPeakStaffed = document.getElementById('bulk-peak-staffed');
-  var bulkPeakTime = document.getElementById('bulk-peak-time');
-  var bulkTotalHours = document.getElementById('bulk-total-hours');
-  var bulkAvgSL = document.getElementById('bulk-avg-sl');
-  var bulkAvgOcc = document.getElementById('bulk-avg-occ');
-  var bulkIntervalCount = document.getElementById('bulk-interval-count');
-  var tbodyBulkResults = document.getElementById('tbody-bulk-results');
-
   var btnExportBulkCSV = document.getElementById('btn-export-bulk-csv');
+  var tbodyBulk = document.getElementById('tbody-bulk');
+  var bulkStatsBar = document.getElementById('bulk-stats-bar');
+  var bulkTotalVol = document.getElementById('bulk-total-vol');
+  var bulkWeightedAht = document.getElementById('bulk-weighted-aht');
+  var bulkTotalErlangs = document.getElementById('bulk-total-erlangs');
+  var bulkPeakAgents = document.getElementById('bulk-peak-agents');
+  var bulkAvgStaffed = document.getElementById('bulk-avg-staffed');
+  var bulkTotalHours = document.getElementById('bulk-total-hours');
+  var selectBulkInterval = document.getElementById('select-bulk-interval');
+  var numBulkSLA = document.getElementById('num-bulk-sla');
+  var numBulkThreshold = document.getElementById('num-bulk-threshold');
+  var numBulkOccupancy = document.getElementById('num-bulk-occupancy');
+  var numBulkShrinkage = document.getElementById('num-bulk-shrinkage');
   var btnSendBulkScheduling = document.getElementById('btn-send-bulk-scheduling');
-  var btnSendSingleScheduling = document.getElementById('btn-send-to-scheduling-single');
-  var btnResetSingle = document.getElementById('btn-reset-single');
+
+  // Global / Handoff DOM
   var handoffBanner = document.getElementById('handoff-banner');
   var handoffMessage = document.getElementById('handoff-message');
   var btnDismissHandoff = document.getElementById('btn-dismiss-handoff');
+  var btnResetSingle = document.getElementById('btn-reset-single');
+  var btnResetBulk = document.getElementById('btn-reset-bulk');
+  var btnSendScheduling = document.getElementById('btn-send-scheduling');
+  var btnExportSingleCSV = document.getElementById('btn-export-single-csv');
 
-  // Simulator DOM References
-  var btnGranularityDaily = document.getElementById('btn-granularity-daily');
-  var btnGranularityWeekly = document.getElementById('btn-granularity-weekly');
-  var btnGranularityMonthly = document.getElementById('btn-granularity-monthly');
-  var selectSimHorizon = document.getElementById('select-sim-horizon');
-  var btnResetSim = document.getElementById('btn-reset-sim');
-
-  var simLeversTitle = document.getElementById('sim-levers-title');
-  var lblSimVol = document.getElementById('lbl-sim-vol');
+  // Simulator DOM
+  var selectSimGranularity = document.getElementById('select-sim-granularity');
+  var numSimHorizon = document.getElementById('num-sim-horizon');
+  var lblSimHorizonUnit = document.getElementById('lbl-sim-horizon-unit');
   var numSimVol = document.getElementById('num-sim-vol');
-  var addonSimVol = document.getElementById('addon-sim-vol');
-  var hintSimVol = document.getElementById('hint-sim-vol');
   var numSimAht = document.getElementById('num-sim-aht');
-
-  var grpSimGrowth = document.getElementById('grp-sim-growth');
   var numSimGrowth = document.getElementById('num-sim-growth');
-  var numSimAhtDrift = document.getElementById('num-sim-aht-drift');
-  var addonSimGrowth = document.getElementById('addon-sim-growth');
-
-  var selectSimOpHours = document.getElementById('select-sim-ophours');
+  var numSimDrift = document.getElementById('num-sim-drift');
+  var selectSimOpHours = document.getElementById('select-sim-op-hours');
   var selectSimWorkweek = document.getElementById('select-sim-workweek');
-  var grpSimDistribution = document.getElementById('grp-sim-distribution');
   var selectSimDistribution = document.getElementById('select-sim-distribution');
-  var grpSimOpDays = document.getElementById('grp-sim-opdays');
-  var selectSimOpDays = document.getElementById('select-sim-opdays');
-
+  var selectSimWorkdays = document.getElementById('select-sim-workdays');
   var numSimSLA = document.getElementById('num-sim-sla');
   var numSimTargetTime = document.getElementById('num-sim-target-time');
   var numSimOccupancy = document.getElementById('num-sim-occupancy');
   var numSimShrinkage = document.getElementById('num-sim-shrinkage');
   var numSimWage = document.getElementById('num-sim-wage');
-  var btnSaveSimPlan = document.getElementById('btn-save-sim-plan');
-
-  var lblKpiStaffed = document.getElementById('lbl-kpi-staffed');
-  var simKpiPeakStaffed = document.getElementById('sim-kpi-peak-staffed');
-  var simKpiPeakStaffedSub = document.getElementById('sim-kpi-peak-staffed-sub');
-  var lblKpiFte = document.getElementById('lbl-kpi-fte');
-  var simKpiFte = document.getElementById('sim-kpi-fte');
-  var simKpiFteSub = document.getElementById('sim-kpi-fte-sub');
-  var simKpiHours = document.getElementById('sim-kpi-hours');
-  var simKpiHoursSub = document.getElementById('sim-kpi-hours-sub');
-  var simKpiCost = document.getElementById('sim-kpi-cost');
-  var simKpiCostSub = document.getElementById('sim-kpi-cost-sub');
-  var simKpiSL = document.getElementById('sim-kpi-sl');
-  var simKpiSLBadge = document.getElementById('sim-kpi-sl-badge');
-  var simKpiOcc = document.getElementById('sim-kpi-occ');
-  var simKpiOccSub = document.getElementById('sim-kpi-occ-sub');
-
-  var simChartTitle = document.getElementById('sim-chart-title');
-  var chartCanvas = document.getElementById('chart-sim-visualizer');
-  var simTableTitle = document.getElementById('sim-table-title');
-  var theadSimResults = document.getElementById('thead-sim-results');
+  var btnResetSim = document.getElementById('btn-reset-sim');
+  var simMetricTotalVol = document.getElementById('sim-metric-total-vol');
+  var simMetricPeakStaff = document.getElementById('sim-metric-peak-staff');
+  var simMetricAvgStaff = document.getElementById('sim-metric-avg-staff');
+  var simMetricTotalHours = document.getElementById('sim-metric-total-hours');
+  var simMetricTotalCost = document.getElementById('sim-metric-total-cost');
+  var simMetricAvgSL = document.getElementById('sim-metric-avg-sl');
   var tbodySimResults = document.getElementById('tbody-sim-results');
   var btnExportSimCSV = document.getElementById('btn-export-sim-csv');
   var btnSendSimScheduling = document.getElementById('btn-send-sim-scheduling');
@@ -207,6 +222,7 @@
     setupSingleEventListeners();
     setupBulkEventListeners();
     setupSimulatorEventListeners();
+    setupMultiQueueEventListeners();
     checkIncomingHandoff();
     calculateSingle();
   }
@@ -218,9 +234,11 @@
       tabSingle.className = 'btn btn-sm btn-primary';
       tabBulk.className = 'btn btn-sm btn-ghost';
       tabSim.className = 'btn btn-sm btn-ghost';
+      if (tabMultiqueue) tabMultiqueue.className = 'btn btn-sm btn-ghost';
       viewSingle.style.display = 'grid';
       viewBulk.style.display = 'none';
       viewSim.style.display = 'none';
+      if (viewMultiqueue) viewMultiqueue.style.display = 'none';
     });
 
     tabBulk.addEventListener('click', function() {
@@ -228,9 +246,11 @@
       tabBulk.className = 'btn btn-sm btn-primary';
       tabSingle.className = 'btn btn-sm btn-ghost';
       tabSim.className = 'btn btn-sm btn-ghost';
+      if (tabMultiqueue) tabMultiqueue.className = 'btn btn-sm btn-ghost';
       viewSingle.style.display = 'none';
       viewBulk.style.display = 'flex';
       viewSim.style.display = 'none';
+      if (viewMultiqueue) viewMultiqueue.style.display = 'none';
       if (state.bulk.rows.length === 0) {
         loadBulkData(SAMPLE_BULK_DATA);
       }
@@ -241,11 +261,29 @@
       tabSim.className = 'btn btn-sm btn-primary';
       tabSingle.className = 'btn btn-sm btn-ghost';
       tabBulk.className = 'btn btn-sm btn-ghost';
+      if (tabMultiqueue) tabMultiqueue.className = 'btn btn-sm btn-ghost';
       viewSingle.style.display = 'none';
       viewBulk.style.display = 'none';
       viewSim.style.display = 'flex';
+      if (viewMultiqueue) viewMultiqueue.style.display = 'none';
       runSimulation();
     });
+
+    if (tabMultiqueue) {
+      tabMultiqueue.addEventListener('click', function() {
+        state.mode = 'multiqueue';
+        tabMultiqueue.className = 'btn btn-sm btn-primary';
+        tabSingle.className = 'btn btn-sm btn-ghost';
+        tabBulk.className = 'btn btn-sm btn-ghost';
+        tabSim.className = 'btn btn-sm btn-ghost';
+        viewSingle.style.display = 'none';
+        viewBulk.style.display = 'none';
+        viewSim.style.display = 'none';
+        if (viewMultiqueue) viewMultiqueue.style.display = 'flex';
+        renderMultiQueueInputs();
+        calculateMultiQueue();
+      });
+    }
   }
 
   // --- Single Mode Event Listeners ---
@@ -1479,6 +1517,23 @@
       if (handoff.targetTimeSeconds) { numThreshold.value = handoff.targetTimeSeconds; }
       if (handoff.shrinkage !== undefined) { numShrinkage.value = Math.round(handoff.shrinkage * 100); }
       if (handoff.maxOccupancy !== undefined) { numOccupancy.value = Math.round(handoff.maxOccupancy * 100); }
+      // If multi-queue plan was saved
+      if (handoff.multiQueue && handoff.mqState) {
+        if (tabMultiqueue) tabMultiqueue.click();
+        var mqCfg = handoff.mqState;
+        if (mqCfg.strategy) state.mq.strategy = mqCfg.strategy;
+        if (mqCfg.queues) state.mq.queues = mqCfg.queues;
+        if (mqCfg.overflowThresholdSec !== undefined) state.mq.overflowThresholdSec = mqCfg.overflowThresholdSec;
+        if (mqCfg.specialistSplit !== undefined) state.mq.specialistSplit = mqCfg.specialistSplit;
+        if (mqCfg.intervalSeconds) state.mq.intervalSeconds = mqCfg.intervalSeconds;
+        if (mqCfg.shrinkage !== undefined) state.mq.shrinkage = mqCfg.shrinkage;
+        renderMultiQueueInputs();
+        calculateMultiQueue();
+        handoffMessage.textContent = 'Restored Multi-Queue plan from My Plans.';
+        handoffBanner.style.display = 'flex';
+        return;
+      }
+
       // If bulk intervals were saved, load them too
       if (handoff.intervals && handoff.intervals.length > 0) {
         tabBulk.click();
@@ -1495,6 +1550,518 @@
     });
   }
 
+  /* ==========================================================================
+     MULTI-QUEUE & SKILLS ROUTING ENGINE (Phase 11)
+     ========================================================================== */
+
+  function setupMultiQueueEventListeners() {
+    if (!tabMultiqueue) return;
+
+    // Strategy Pills
+    mqStrategyPills.forEach(function(pill) {
+      pill.addEventListener('click', function() {
+        mqStrategyPills.forEach(function(p) { p.className = 'btn btn-sm btn-ghost'; });
+        pill.className = 'btn btn-sm btn-primary';
+        state.mq.strategy = pill.getAttribute('data-strategy');
+
+        if (state.mq.strategy === 'overflow') {
+          lblStrategyLeverTitle.textContent = '⚡ Overflow Routing Parameters';
+          mqControlsOverflow.style.display = 'block';
+          mqControlsSkill.style.display = 'none';
+        } else if (state.mq.strategy === 'skill') {
+          lblStrategyLeverTitle.textContent = '🎯 Skill-Based Flex Allocation Parameters';
+          mqControlsOverflow.style.display = 'none';
+          mqControlsSkill.style.display = 'block';
+        } else if (state.mq.strategy === 'siloed') {
+          lblStrategyLeverTitle.textContent = '🔒 Siloed Dedicated Parameters';
+          mqControlsOverflow.style.display = 'none';
+          mqControlsSkill.style.display = 'none';
+        } else {
+          lblStrategyLeverTitle.textContent = '🌐 Full Blended Pool Parameters';
+          mqControlsOverflow.style.display = 'none';
+          mqControlsSkill.style.display = 'none';
+        }
+
+        calculateMultiQueue();
+      });
+    });
+
+    // Overflow threshold
+    if (inputOverflowThreshold) {
+      inputOverflowThreshold.addEventListener('input', function() {
+        state.mq.overflowThresholdSec = parseInt(inputOverflowThreshold.value, 10) || 0;
+        lblOverflowThreshold.textContent = state.mq.overflowThresholdSec + 's';
+        calculateMultiQueue();
+      });
+    }
+
+    // Specialist split
+    if (inputSpecialistSplit) {
+      inputSpecialistSplit.addEventListener('input', function() {
+        var pct = parseInt(inputSpecialistSplit.value, 10) || 70;
+        state.mq.specialistSplit = pct / 100;
+        lblSpecialistSplit.textContent = pct + '%';
+        calculateMultiQueue();
+      });
+    }
+
+    // Shared interval & shrinkage
+    if (selectMqInterval) {
+      selectMqInterval.addEventListener('change', function() {
+        state.mq.intervalSeconds = parseInt(selectMqInterval.value, 10) || 1800;
+        calculateMultiQueue();
+      });
+    }
+    if (numMqShrinkage) {
+      numMqShrinkage.addEventListener('input', function() {
+        state.mq.shrinkage = (parseFloat(numMqShrinkage.value) || 0) / 100;
+        calculateMultiQueue();
+      });
+    }
+
+    // Add Queue
+    if (btnAddMqQueue) {
+      btnAddMqQueue.addEventListener('click', function() {
+        var nextId = 'q' + (state.mq.queues.length + 1);
+        state.mq.queues.push({
+          id: nextId,
+          name: 'Queue ' + (state.mq.queues.length + 1),
+          volume: 200,
+          aht: 200,
+          targetSLA: 0.80,
+          targetTime: 20
+        });
+        renderMultiQueueInputs();
+        calculateMultiQueue();
+      });
+    }
+
+    // Reset Sample Queues
+    if (btnResetMqQueues) {
+      btnResetMqQueues.addEventListener('click', function() {
+        state.mq.queues = [
+          { id: 'q1', name: 'Inbound Support', volume: 400, aht: 240, targetSLA: 0.80, targetTime: 20 },
+          { id: 'q2', name: 'Billing & Accounts', volume: 250, aht: 180, targetSLA: 0.80, targetTime: 20 },
+          { id: 'q3', name: 'Tech Escalations', volume: 150, aht: 320, targetSLA: 0.80, targetTime: 20 }
+        ];
+        renderMultiQueueInputs();
+        calculateMultiQueue();
+      });
+    }
+
+    // Export CSV
+    if (btnExportMqCSV) {
+      btnExportMqCSV.addEventListener('click', exportMultiQueueCSV);
+    }
+
+    // Save Plan
+    if (btnSaveMqPlan) {
+      btnSaveMqPlan.addEventListener('click', saveMultiQueuePlan);
+    }
+  }
+
+  function renderMultiQueueInputs() {
+    if (!tbodyMqQueues) return;
+    lblMqQueueCount.textContent = state.mq.queues.length;
+    tbodyMqQueues.innerHTML = '';
+
+    // Populate destination selector
+    if (selectOverflowDest) {
+      selectOverflowDest.innerHTML = '';
+      state.mq.queues.forEach(function(q, i) {
+        var opt = document.createElement('option');
+        opt.value = q.id;
+        opt.textContent = q.name + (i === state.mq.queues.length - 1 ? ' (Default Backup)' : '');
+        if (i === state.mq.queues.length - 1) opt.selected = true;
+        selectOverflowDest.appendChild(opt);
+      });
+    }
+
+    state.mq.queues.forEach(function(q, idx) {
+      var tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid var(--border-subtle)';
+
+      tr.innerHTML = 
+        '<td style="padding: 4px 6px;">' +
+          '<input type="text" class="form-control mq-name" value="' + (q.name || '') + '" style="height: 28px; font-size: 11px; width: 100%;">' +
+        '</td>' +
+        '<td style="padding: 4px 6px;">' +
+          '<input type="number" class="form-control mono mq-vol" min="0" max="50000" value="' + q.volume + '" style="height: 28px; font-size: 11px; width: 70px;">' +
+        '</td>' +
+        '<td style="padding: 4px 6px;">' +
+          '<input type="number" class="form-control mono mq-aht" min="1" max="10000" value="' + q.aht + '" style="height: 28px; font-size: 11px; width: 65px;">' +
+        '</td>' +
+        '<td style="padding: 4px 6px;">' +
+          '<input type="number" class="form-control mono mq-sla" min="1" max="100" value="' + Math.round((q.targetSLA || 0.80) * 100) + '" style="height: 28px; font-size: 11px; width: 55px;">' +
+        '</td>' +
+        '<td style="padding: 4px 6px; text-align: center;">' +
+          (state.mq.queues.length > 1 ? 
+            '<button class="btn btn-ghost btn-sm btn-del-mq" style="color: var(--danger); padding: 0 4px; font-size: 12px;" title="Delete queue">✕</button>' : ''
+          ) +
+        '</td>';
+
+      var inName = tr.querySelector('.mq-name');
+      var inVol = tr.querySelector('.mq-vol');
+      var inAht = tr.querySelector('.mq-aht');
+      var inSla = tr.querySelector('.mq-sla');
+      var btnDel = tr.querySelector('.btn-del-mq');
+
+      inName.addEventListener('input', function() {
+        q.name = inName.value.trim() || ('Queue ' + (idx + 1));
+        calculateMultiQueue();
+      });
+      inVol.addEventListener('input', function() {
+        q.volume = Math.max(0, parseInt(inVol.value, 10) || 0);
+        calculateMultiQueue();
+      });
+      inAht.addEventListener('input', function() {
+        q.aht = Math.max(1, parseInt(inAht.value, 10) || 180);
+        calculateMultiQueue();
+      });
+      inSla.addEventListener('input', function() {
+        q.targetSLA = (parseInt(inSla.value, 10) || 80) / 100;
+        calculateMultiQueue();
+      });
+
+      if (btnDel) {
+        btnDel.addEventListener('click', function() {
+          state.mq.queues.splice(idx, 1);
+          renderMultiQueueInputs();
+          calculateMultiQueue();
+        });
+      }
+
+      tbodyMqQueues.appendChild(tr);
+    });
+  }
+
+  function calculateMultiQueue() {
+    if (!state.mq.queues || state.mq.queues.length === 0) return;
+
+    var sec = state.mq.intervalSeconds || 1800;
+    var shrinkage = state.mq.shrinkage || 0.30;
+    var strategy = state.mq.strategy || 'overflow';
+
+    var results = {
+      strategy: strategy,
+      totalAgents: 0,
+      siloedAgents: 0,
+      pooledAgents: 0,
+      headcountSaved: 0,
+      percentEfficiencyGain: 0,
+      breakdownRows: []
+    };
+
+    // 1. Compute Siloed Baseline
+    var sumSiloed = 0;
+    var siloedBreakdowns = [];
+    state.mq.queues.forEach(function(q) {
+      var solve = Erlangly.agentsRequired({
+        volume: q.volume,
+        aht: q.aht,
+        intervalSeconds: sec,
+        targetServiceLevel: q.targetSLA || 0.80,
+        targetTimeSeconds: q.targetTime || 20
+      });
+      sumSiloed += solve.baseAgents;
+      siloedBreakdowns.push({
+        name: q.name,
+        offeredVol: q.volume,
+        handledVol: q.volume,
+        overflowVol: 0,
+        erlangs: solve.trafficIntensity,
+        siloedAgents: solve.baseAgents,
+        allocatedAgents: solve.baseAgents,
+        serviceLevel: solve.serviceLevel,
+        asa: solve.averageSpeedOfAnswer,
+        occupancy: solve.occupancy
+      });
+    });
+
+    // 2. Compute Unified Pooled Baseline
+    var blendedWork = Erlangly.blendedWorkload(state.mq.queues, sec);
+    var pooledSolve = Erlangly.agentsRequired({
+      volume: blendedWork.totalVolume,
+      aht: blendedWork.weightedAHT,
+      intervalSeconds: sec,
+      targetServiceLevel: 0.80,
+      targetTimeSeconds: 20
+    });
+
+    results.siloedAgents = sumSiloed;
+    results.pooledAgents = pooledSolve.baseAgents;
+
+    // 3. Strategy Calculation
+    if (strategy === 'siloed') {
+      results.totalAgents = sumSiloed;
+      results.headcountSaved = 0;
+      results.percentEfficiencyGain = 0;
+      results.breakdownRows = siloedBreakdowns;
+    } else if (strategy === 'blended') {
+      results.totalAgents = pooledSolve.baseAgents;
+      results.headcountSaved = Math.max(0, sumSiloed - pooledSolve.baseAgents);
+      results.percentEfficiencyGain = sumSiloed > 0 ? (results.headcountSaved / sumSiloed) * 100 : 0;
+      results.breakdownRows = [{
+        name: 'Unified Cross-Trained Queue',
+        offeredVol: blendedWork.totalVolume,
+        handledVol: blendedWork.totalVolume,
+        overflowVol: 0,
+        erlangs: blendedWork.totalErlangs,
+        siloedAgents: sumSiloed,
+        allocatedAgents: pooledSolve.baseAgents,
+        serviceLevel: pooledSolve.serviceLevel,
+        asa: pooledSolve.averageSpeedOfAnswer,
+        occupancy: pooledSolve.occupancy
+      }];
+    } else if (strategy === 'overflow') {
+      var ofRes = Erlangly.overflowRouting(state.mq.queues, state.mq.overflowThresholdSec, sec);
+      results.totalAgents = ofRes.totalAgents;
+      results.headcountSaved = ofRes.headcountSaved;
+      results.percentEfficiencyGain = ofRes.percentEfficiencyGain;
+
+      var rows = [];
+      ofRes.primaryQueues.forEach(function(pq) {
+        rows.push({
+          name: pq.name + ' (Primary)',
+          offeredVol: pq.volume,
+          handledVol: Math.round(pq.handledVolume),
+          overflowVol: Math.round(pq.overflowVolume),
+          erlangs: pq.rawErlangs,
+          siloedAgents: pq.siloedAgents,
+          allocatedAgents: pq.primaryAgents,
+          serviceLevel: pq.primarySLA,
+          asa: pq.primaryASA,
+          occupancy: pq.primaryOccupancy
+        });
+      });
+
+      if (ofRes.secondaryQueue) {
+        var sq = ofRes.secondaryQueue;
+        rows.push({
+          name: sq.name + ' (Secondary / Backup)',
+          offeredVol: Math.round(sq.totalVolume),
+          handledVol: Math.round(sq.totalVolume),
+          overflowVol: 0,
+          erlangs: sq.totalErlangs,
+          siloedAgents: sq.siloedAgents,
+          allocatedAgents: sq.secondaryAgents,
+          serviceLevel: sq.secondarySLA,
+          asa: sq.secondaryASA,
+          occupancy: sq.secondaryOccupancy
+        });
+      }
+      results.breakdownRows = rows;
+    } else if (strategy === 'skill') {
+      var skRes = Erlangly.skillBasedRouting(state.mq.queues, state.mq.specialistSplit, sec);
+      results.totalAgents = skRes.totalAgents;
+      results.headcountSaved = skRes.headcountSaved;
+      results.percentEfficiencyGain = skRes.percentEfficiencyGain;
+
+      var sRows = [];
+      skRes.specialistGroups.forEach(function(sg) {
+        sRows.push({
+          name: sg.queueName + ' (Specialists)',
+          offeredVol: Math.round(sg.dedicatedVolume + sg.flexVolume),
+          handledVol: Math.round(sg.dedicatedVolume),
+          overflowVol: Math.round(sg.flexVolume),
+          erlangs: (sg.dedicatedVolume * sg.aht) / sec,
+          siloedAgents: sg.siloedAgents,
+          allocatedAgents: sg.specialistAgents,
+          serviceLevel: sg.serviceLevel,
+          asa: 15,
+          occupancy: sg.occupancy
+        });
+      });
+
+      if (skRes.flexGroup) {
+        var fg = skRes.flexGroup;
+        sRows.push({
+          name: fg.name,
+          offeredVol: Math.round(fg.totalFlexVolume),
+          handledVol: Math.round(fg.totalFlexVolume),
+          overflowVol: 0,
+          erlangs: fg.flexErlangs,
+          siloedAgents: 0,
+          allocatedAgents: fg.flexAgents,
+          serviceLevel: fg.serviceLevel,
+          asa: 12,
+          occupancy: fg.occupancy
+        });
+      }
+      results.breakdownRows = sRows;
+    }
+
+    state.mq.results = results;
+    renderMultiQueueResults(results);
+    renderMultiQueueChart(results);
+  }
+
+  function renderMultiQueueResults(res) {
+    if (!res) return;
+
+    var shrinkage = state.mq.shrinkage || 0.30;
+    var shrinkageStaffed = shrinkage < 1.0 ? Math.ceil(res.totalAgents / (1 - shrinkage)) : res.totalAgents;
+    var siloedStaffed = shrinkage < 1.0 ? Math.ceil(res.siloedAgents / (1 - shrinkage)) : res.siloedAgents;
+    var shrinkageSaved = Math.max(0, siloedStaffed - shrinkageStaffed);
+
+    lblMqTotalAgents.textContent = res.totalAgents;
+    lblMqSiloedAgents.textContent = res.siloedAgents;
+    lblMqSavedAgents.textContent = res.headcountSaved > 0 ? ('-' + res.headcountSaved + ' FTE') : '0';
+    lblMqShrinkageSaved.textContent = '+' + shrinkageSaved + ' saved with ' + Math.round(shrinkage * 100) + '% shrinkage';
+    lblMqEfficiencyGain.textContent = res.percentEfficiencyGain.toFixed(1) + '%';
+
+    if (tbodyMqBreakdown) {
+      tbodyMqBreakdown.innerHTML = '';
+      res.breakdownRows.forEach(function(row) {
+        var tr = document.createElement('tr');
+        var slaColor = (row.serviceLevel >= 0.80) ? 'var(--accent)' : 'var(--warn)';
+
+        tr.innerHTML = 
+          '<td style="font-weight: 600;">' + row.name + '</td>' +
+          '<td class="mono">' + row.offeredVol + '</td>' +
+          '<td class="mono">' + row.handledVol + '</td>' +
+          '<td class="mono" style="color: var(--text-muted);">' + row.overflowVol + '</td>' +
+          '<td class="mono">' + row.erlangs.toFixed(1) + '</td>' +
+          '<td class="mono" style="color: var(--text-muted);">' + (row.siloedAgents || '—') + '</td>' +
+          '<td class="mono" style="font-weight: 700; color: var(--accent);">' + row.allocatedAgents + '</td>' +
+          '<td class="mono" style="color: ' + slaColor + '; font-weight: 600;">' + (row.serviceLevel * 100).toFixed(1) + '%</td>' +
+          '<td class="mono">' + Math.round(row.asa) + 's</td>' +
+          '<td class="mono">' + (row.occupancy * 100).toFixed(1) + '%</td>';
+
+        tbodyMqBreakdown.appendChild(tr);
+      });
+    }
+  }
+
+  function renderMultiQueueChart(res) {
+    if (!chartMqComparisonCanvas || typeof Chart === 'undefined') return;
+
+    var ctx = chartMqComparisonCanvas.getContext('2d');
+    if (state.mq.chart) {
+      state.mq.chart.destroy();
+    }
+
+    var strategyLabels = {
+      siloed: 'Siloed Dedicated',
+      overflow: 'Overflow Routing',
+      skill: 'Skill-Based Routing',
+      blended: 'Full Blended Pool'
+    };
+
+    var currentStrategyLabel = strategyLabels[res.strategy] || 'Selected Strategy';
+
+    state.mq.chart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ['Siloed Dedicated Baseline', currentStrategyLabel, 'Unified Blended Pool'],
+        datasets: [{
+          label: 'Required Base Staffing (Agents)',
+          data: [res.siloedAgents, res.totalAgents, res.pooledAgents],
+          backgroundColor: [
+            'rgba(255, 107, 107, 0.45)',
+            'rgba(0, 210, 211, 0.75)',
+            'rgba(29, 209, 161, 0.45)'
+          ],
+          borderColor: [
+            '#ff6b6b',
+            '#00d2d3',
+            '#1dd1a1'
+          ],
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function(item) {
+                return ' ' + item.formattedValue + ' agents required';
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255,255,255,0.06)' },
+            ticks: { color: '#8395a7', font: { family: 'IBM Plex Mono', size: 11 } }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#c8d6e5', font: { size: 11 } }
+          }
+        }
+      }
+    });
+  }
+
+  function exportMultiQueueCSV() {
+    if (!state.mq.results) return;
+    var res = state.mq.results;
+    var rows = [
+      ['Routing Strategy', res.strategy.toUpperCase()],
+      ['Total Required Headcount', res.totalAgents],
+      ['Siloed Baseline Headcount', res.siloedAgents],
+      ['Headcount Saved', res.headcountSaved],
+      ['Pooling Efficiency Gain %', res.percentEfficiencyGain.toFixed(2) + '%'],
+      [],
+      ['Queue / Tier', 'Offered Volume', 'Handled Volume', 'Overflow Volume', 'Erlangs', 'Siloed Staff', 'Allocated Staff', 'SLA %', 'ASA (s)', 'Occupancy %']
+    ];
+
+    res.breakdownRows.forEach(function(r) {
+      rows.push([
+        r.name,
+        r.offeredVol,
+        r.handledVol,
+        r.overflowVol,
+        r.erlangs.toFixed(2),
+        r.siloedAgents,
+        r.allocatedAgents,
+        (r.serviceLevel * 100).toFixed(1) + '%',
+        Math.round(r.asa),
+        (r.occupancy * 100).toFixed(1) + '%'
+      ]);
+    });
+
+    var csv = rows.map(function(row) {
+      return row.map(function(cell) {
+        return '"' + String(cell).replace(/"/g, '""') + '"';
+      }).join(',');
+    }).join('\n');
+
+    ErlanglyUtils.exportCSV('erlangly-multiqueue-' + res.strategy + '.csv', csv);
+  }
+
+  function saveMultiQueuePlan() {
+    if (typeof root.ErlanglyPlans !== 'undefined' && root.ErlanglyPlans.showSaveModal) {
+      var inputs = {
+        multiQueue: true,
+        mqState: {
+          strategy: state.mq.strategy,
+          queues: state.mq.queues,
+          overflowThresholdSec: state.mq.overflowThresholdSec,
+          specialistSplit: state.mq.specialistSplit,
+          intervalSeconds: state.mq.intervalSeconds,
+          shrinkage: state.mq.shrinkage
+        }
+      };
+      var outputs = {
+        strategy: state.mq.strategy,
+        totalAgents: state.mq.results ? state.mq.results.totalAgents : 0,
+        siloedAgents: state.mq.results ? state.mq.results.siloedAgents : 0,
+        headcountSaved: state.mq.results ? state.mq.results.headcountSaved : 0,
+        percentEfficiencyGain: state.mq.results ? state.mq.results.percentEfficiencyGain : 0
+      };
+      root.ErlanglyPlans.showSaveModal('capacity', inputs, outputs, function(saved) {
+        ErlanglyUtils.showToast('Multi-Queue Plan saved successfully!', 'success');
+      });
+    }
+  }
+
   // Run on DOM load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
@@ -1502,3 +2069,4 @@
     init();
   }
 })();
+

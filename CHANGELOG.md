@@ -33,6 +33,51 @@ When a phase passes audit:
 
 ---
 
+## [Phase 11] — Collaboration & Multi-Skill Routing — 2026-08-21
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Database Schema & RLS Policies (`sql/schema.sql`)**:
+  - Updated `plans` table RLS policies allowing `SELECT` if owner or listed in `plan_collaborators`; `UPDATE` if owner or `'editor'` in `plan_collaborators`; `DELETE` restricted to owner.
+  - Created `public.plan_collaborators` join table (`id`, `plan_id`, `user_id`, `user_email`, `role`, `invited_by`, `invited_at`) with complete RLS access controls.
+  - Created `public.plan_versions` table (`id`, `plan_id`, `version_number`, `name`, `inputs`, `outputs`, `created_by`, `created_by_email`, `created_at`) for immutable version snapshots on every save/restore.
+- **Supabase Offline & Demo Persistence Engine (`js/supabaseClient.js`)**:
+  - Extended local fallback `mockClient` to support chained queries (`select`, `eq`, `in`, `order`, `insert`, `update`, `delete`) across `plans`, `plan_collaborators`, and `plan_versions` with `localStorage` persistence.
+- **Plans Persistence, Collaboration & Versioning (`js/plans.js`, `plans.html`)**:
+  - Three-tier permission model: **Owner** (full control, share, delete), **Editor** (modify and save), and **Viewer** (read-only inspect/export).
+  - Optimistic concurrency conflict detection using `expectedUpdatedAt` vs `updated_at`. If modified by a teammate, displays `showConflictModal` with 3 resolution options (Overwrite, Discard & Reload, Save as New).
+  - Automatic immutable version snapshotting on every save, creating version history milestones (`v1, v2, v3...`).
+  - Interactive Version History modal (`showVersionHistoryModal`) with timestamps, creator email, one-click version restoration, and visual parameter diffing.
+  - Side-by-side visual Diff modal (`showDiffModal`) displaying added, removed, and modified parameter deltas with color-coded comparison badges.
+  - Collaborator Management modal (`showCollaboratorsModal`) allowing owners to invite teammates by email, switch roles (`editor` / `viewer`), and remove access.
+  - Quick share link modal (`showShareModal`) generating direct copyable URL parameters.
+  - Plans Dashboard scope filters (`All Plans`, `👑 Created by Me`, `👥 Shared with Me`) and role badge indicators on plan cards.
+- **Multi-Queue Math Engine (`js/erlang.js`)**:
+  - `Erlangly.overflowRouting(queues, overflowThresholdSec, intervalSec)`: Pure function computing wait tail probability $P(W > t) = P_C \cdot e^{-(c\mu - \lambda)t}$, overflow Erlangs, primary queue allocation, secondary/backup queue absorption, and headcount savings vs siloed dedicated queues.
+  - `Erlangly.skillBasedRouting(queues, dedicatedSplit, intervalSec)`: Pure function solving dedicated specialist requirements and shared multi-skill flex pool with Erlang pooling gain.
+- **Capacity Planner Multi-Queue UI (`capacity.html`, `js/capacity.js`)**:
+  - Added 4th navigation tab `tab-multiqueue` ("Multi-Queue & Skills").
+  - Strategy selector supporting 4 models: `Siloed Dedicated`, `⚡ Overflow Routing`, `🎯 Skill-Based (Flex Tier)`, and `🌐 Full Blended Pool`.
+  - Dynamic queue definition editor (add/remove queues, adjust volume, AHT, and target SLAs).
+  - Interactive strategy lever controls (wait overflow threshold slider and specialist/flex split slider).
+  - Real-time KPI summary (Strategy Staffing, Siloed Baseline, Headcount Saved, Pooling Gain %).
+  - Queue performance breakdown table (Offered, Handled, Overflow, Erlangs, Staff, SLA, ASA, Occupancy).
+  - Interactive Chart.js comparative bar chart showing staffing distribution across queues and flex tiers.
+  - Multi-queue RFC-4180 CSV export and plan persistence.
+- **Simulator Queue Architecture & Pooling Lever (`simulator.html`, `js/simulator.js`)**:
+  - Added Queue Architecture & Pooling Gain lever in strategic scenario modeling (`Siloed: 0%`, `Overflow: 10%`, `Skill Flex: 15%`, `Full Pool: 20%`), automatically reducing required staffing by the active pooling gain across the simulation horizon.
+- **Automated Verification**:
+  - Added Test Suite 20 in `test/run-tests.js` covering overflow routing math, wait threshold monotonicity, skill-based flex pooling gain, parameter diffing engine, optimistic concurrency conflict detection, and collaborator persistence. Total passing tests: 322 (0 failures).
+
+### Found & fixed during QA
+- Refined `Erlangly.overflowRouting` and `Erlangly.skillBasedRouting` to correctly partition handled volume vs spillover traffic, avoiding double-counting primary capacity and guaranteeing pooling monotonicity ($N_{\text{pooled}} \le N_{\text{multi-queue}} \le N_{\text{siloed}}$).
+- Added CommonJS and standard global export support in `js/plans.js` and `js/supabaseClient.js` for standalone Node test runner execution without requiring DOM mocks.
+
+### Deviations from spec (if any)
+- None.
+
+---
+
 ## [Phase 10] — Enhanced Simulation & Real-Time — 2026-08-21
 **QA sign-off:** erlangly-qa
 

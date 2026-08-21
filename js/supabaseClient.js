@@ -74,7 +74,6 @@
         return Promise.resolve({ error: null });
       },
       onAuthStateChange: function(callback) {
-        // Simple mock subscriber
         return {
           data: {
             subscription: {
@@ -85,69 +84,119 @@
       }
     },
     from: function(table) {
-      return {
+      var storageKey = 'erlangly_mock_' + table;
+      var getRecords = function() {
+        return JSON.parse(localStorage.getItem(storageKey) || '[]');
+      };
+      var setRecords = function(recs) {
+        localStorage.setItem(storageKey, JSON.stringify(recs));
+      };
+
+      var queryBuilder = {
+        _filters: [],
+        _orderField: null,
+        _orderOpts: null,
+
         select: function(cols) {
-          return {
-            eq: function(field, val) {
-              return {
-                order: function(orderField, opts) {
-                  var plans = JSON.parse(localStorage.getItem('erlangly_mock_plans') || '[]');
-                  var filtered = plans.filter(function(p) { return p[field] === val; });
-                  return Promise.resolve({ data: filtered, error: null });
-                }
-              };
-            },
-            order: function(orderField, opts) {
-              var plans = JSON.parse(localStorage.getItem('erlangly_mock_plans') || '[]');
-              return Promise.resolve({ data: plans, error: null });
-            }
-          };
+          return this;
         },
-        insert: function(rows) {
-          var plans = JSON.parse(localStorage.getItem('erlangly_mock_plans') || '[]');
-          var inserted = rows.map(function(r) {
-            var item = Object.assign({}, r, {
-              id: 'pln_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4),
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
+
+        eq: function(field, val) {
+          this._filters.push(function(row) {
+            return row[field] === val;
+          });
+          return this;
+        },
+
+        in: function(field, valArray) {
+          this._filters.push(function(row) {
+            return Array.isArray(valArray) && valArray.indexOf(row[field]) !== -1;
+          });
+          return this;
+        },
+
+        order: function(field, opts) {
+          this._orderField = field;
+          this._orderOpts = opts || { ascending: true };
+          return this;
+        },
+
+        then: function(onFulfilled, onRejected) {
+          var items = getRecords();
+          for (var i = 0; i < this._filters.length; i++) {
+            items = items.filter(this._filters[i]);
+          }
+          if (this._orderField) {
+            var f = this._orderField;
+            var asc = this._orderOpts && this._orderOpts.ascending !== false;
+            items.sort(function(a, b) {
+              if (a[f] < b[f]) return asc ? -1 : 1;
+              if (a[f] > b[f]) return asc ? 1 : -1;
+              return 0;
             });
-            plans.unshift(item);
+          }
+          return Promise.resolve({ data: items, error: null }).then(onFulfilled, onRejected);
+        },
+
+        insert: function(rows) {
+          var items = getRecords();
+          var inserted = (rows || []).map(function(r) {
+            var item = Object.assign({}, r, {
+              id: r.id || ('rec_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5)),
+              created_at: r.created_at || new Date().toISOString()
+            });
+            if (table === 'plans') {
+              item.updated_at = item.updated_at || item.created_at;
+            }
+            items.unshift(item);
             return item;
           });
-          localStorage.setItem('erlangly_mock_plans', JSON.stringify(plans));
+          setRecords(items);
           return Promise.resolve({ data: inserted, error: null });
         },
+
         update: function(updates) {
+          var self = this;
           return {
             eq: function(field, val) {
-              var plans = JSON.parse(localStorage.getItem('erlangly_mock_plans') || '[]');
-              var updatedItem = null;
-              plans = plans.map(function(p) {
-                if (p[field] === val) {
-                  updatedItem = Object.assign({}, p, updates, { updated_at: new Date().toISOString() });
-                  return updatedItem;
+              var items = getRecords();
+              var updatedItems = [];
+              items = items.map(function(row) {
+                if (row[field] === val) {
+                  var updated = Object.assign({}, row, updates);
+                  if (table === 'plans') {
+                    updated.updated_at = new Date().toISOString();
+                  }
+                  updatedItems.push(updated);
+                  return updated;
                 }
-                return p;
+                return row;
               });
-              localStorage.setItem('erlangly_mock_plans', JSON.stringify(plans));
-              return Promise.resolve({ data: updatedItem ? [updatedItem] : [], error: null });
+              setRecords(items);
+              return Promise.resolve({ data: updatedItems, error: null });
             }
           };
         },
+
         delete: function() {
           return {
             eq: function(field, val) {
-              var plans = JSON.parse(localStorage.getItem('erlangly_mock_plans') || '[]');
-              plans = plans.filter(function(p) { return p[field] !== val; });
-              localStorage.setItem('erlangly_mock_plans', JSON.stringify(plans));
+              var items = getRecords();
+              var remaining = items.filter(function(row) { return row[field] !== val; });
+              setRecords(remaining);
               return Promise.resolve({ data: [], error: null });
             }
           };
         }
       };
+
+      return queryBuilder;
     }
   };
 
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = client || mockClient;
+  }
   root.ErlanglySupabase = client || mockClient;
 
-})(typeof self !== 'undefined' ? self : this);
+})(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));

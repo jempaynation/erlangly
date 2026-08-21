@@ -62,6 +62,7 @@
           <button id="tab-single" class="btn btn-sm btn-primary">Single Interval</button>
           <button id="tab-bulk" class="btn btn-sm btn-ghost">Bulk Interval CSV</button>
           <button id="tab-sim" class="btn btn-sm btn-ghost">Multi-Period Simulator</button>
+          <button id="tab-multiqueue" class="btn btn-sm btn-ghost">Multi-Queue &amp; Skills</button>
         </div>
       </div>
     </div>
@@ -646,6 +647,181 @@
                     <!-- Dynamic Headers based on Daily / Weekly / Monthly -->
                   </thead>
                   <tbody id="tbody-sim-results"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW 4: Multi-Queue & Skills Routing Analysis (Phase 11) -->
+    <div id="view-multiqueue" style="display: none; flex-direction: column; gap: var(--space-6);">
+      <!-- Strategy Selector & Actions Bar -->
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-4);">
+        <div style="display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+          <span style="font-size: var(--text-xs); color: var(--text-muted); font-family: var(--mono); text-transform: uppercase;">Routing Strategy:</span>
+          <div style="display: flex; gap: 2px; background: var(--bg-surface-elevated); padding: 2px; border-radius: var(--radius-md); border: 1px solid var(--border-default);" id="mq-strategy-pills">
+            <button class="btn btn-sm btn-ghost" data-strategy="siloed" style="font-size: var(--text-xs);">Siloed Dedicated</button>
+            <button class="btn btn-sm btn-primary" data-strategy="overflow" style="font-size: var(--text-xs);">⚡ Overflow Routing</button>
+            <button class="btn btn-sm btn-ghost" data-strategy="skill" style="font-size: var(--text-xs);">🎯 Skill-Based (Flex Tier)</button>
+            <button class="btn btn-sm btn-ghost" data-strategy="blended" style="font-size: var(--text-xs);">🌐 Full Blended Pool</button>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: var(--space-2); align-items: center;">
+          <button id="btn-add-mq-queue" class="btn btn-secondary btn-sm">+ Add Skill Queue</button>
+          <button id="btn-export-mq-csv" class="btn btn-ghost btn-sm">Export CSV</button>
+          <button id="btn-save-mq-plan" class="btn btn-primary btn-sm">💾 Save Plan</button>
+        </div>
+      </div>
+
+      <!-- Main Multi-Queue 2-Column Grid -->
+      <div class="tool-body" style="grid-template-columns: minmax(360px, 480px) 1fr;">
+        <!-- Left Column: Queue Definitions & Strategy Parameters -->
+        <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+          <!-- Queues Panel -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Defined Skill Queues (<span id="lbl-mq-queue-count">3</span>)</div>
+              <button id="btn-reset-mq-queues" class="btn btn-ghost btn-sm">Reset Sample</button>
+            </div>
+            <div class="panel-body" style="padding: var(--space-2) 0;">
+              <div class="table-container" style="border: none; max-height: 280px; overflow-y: auto;">
+                <table class="data-table" id="table-mq-queues">
+                  <thead>
+                    <tr>
+                      <th style="padding: 6px 8px;">Queue Name</th>
+                      <th style="padding: 6px 8px;">Volume</th>
+                      <th style="padding: 6px 8px;">AHT (s)</th>
+                      <th style="padding: 6px 8px;">SLA %</th>
+                      <th style="padding: 6px 8px; width: 32px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-mq-queues"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- Strategy Levers Panel -->
+          <div class="panel" id="panel-mq-strategy-levers">
+            <div class="panel-header">
+              <div class="panel-title" id="lbl-strategy-lever-title">⚡ Overflow Routing Parameters</div>
+            </div>
+            <div class="panel-body">
+              <!-- Overflow Controls -->
+              <div id="mq-controls-overflow">
+                <div class="form-group">
+                  <div class="form-label">
+                    <span>Overflow Wait Threshold</span>
+                    <span class="form-label-val" id="lbl-overflow-threshold">30s</span>
+                  </div>
+                  <input type="range" id="input-overflow-threshold" min="0" max="120" step="5" value="30">
+                  <span class="form-hint">Calls waiting in primary queues beyond this threshold overflow to the secondary queue.</span>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Overflow Destination Queue</label>
+                  <select id="select-overflow-dest" class="form-control mono">
+                    <!-- Populated dynamically with last queue -->
+                  </select>
+                </div>
+              </div>
+
+              <!-- Skill-Based Controls -->
+              <div id="mq-controls-skill" style="display: none;">
+                <div class="form-group">
+                  <div class="form-label">
+                    <span>Specialist Base Volume Share</span>
+                    <span class="form-label-val" id="lbl-specialist-split">70%</span>
+                  </div>
+                  <input type="range" id="input-specialist-split" min="30" max="95" step="5" value="70">
+                  <span class="form-hint">Fraction of queue volume served by dedicated specialists. The remaining 30% flex load is pooled across all skills.</span>
+                </div>
+              </div>
+
+              <!-- General Shared Interval & Shrinkage -->
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-3); border-top: 1px solid var(--border-subtle); padding-top: var(--space-3);">
+                <div class="form-group">
+                  <label class="form-label">Interval Length</label>
+                  <select id="select-mq-interval" class="form-control mono">
+                    <option value="900">15 min (900s)</option>
+                    <option value="1800" selected>30 min (1800s)</option>
+                    <option value="3600">60 min (3600s)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Shrinkage %</label>
+                  <div class="input-group">
+                    <input type="number" id="num-mq-shrinkage" class="form-control mono" min="0" max="90" value="30">
+                    <span class="input-addon">%</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right Column: Pooling Savings KPIs, Comparison Chart, Queue Breakdown Table -->
+        <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+          <!-- 4 KPI Cards -->
+          <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
+            <div class="kpi-card">
+              <span class="kpi-label">Strategy Staffing</span>
+              <span class="kpi-value text-accent" id="lbl-mq-total-agents">0</span>
+              <span class="kpi-sub">Total base agents required</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Siloed Baseline</span>
+              <span class="kpi-value" id="lbl-mq-siloed-agents">0</span>
+              <span class="kpi-sub">Pure dedicated queues</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Headcount Saved</span>
+              <span class="kpi-value text-success" id="lbl-mq-saved-agents">0</span>
+              <span class="kpi-sub" id="lbl-mq-shrinkage-saved">+0 with shrinkage</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">Pooling Gain</span>
+              <span class="kpi-value text-success" id="lbl-mq-efficiency-gain">0%</span>
+              <span class="kpi-sub">Efficiency vs siloed</span>
+            </div>
+          </div>
+
+          <!-- Strategy Comparison Chart -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Staffing Requirements by Routing Strategy</div>
+              <span style="font-size: var(--text-xs); color: var(--text-muted); font-family: var(--mono);">Erlang C Multi-Queue</span>
+            </div>
+            <div class="panel-body" style="height: 220px; position: relative;">
+              <canvas id="chart-mq-comparison"></canvas>
+            </div>
+          </div>
+
+          <!-- Queue Performance Breakdown Table -->
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Queue Performance Breakdown</div>
+            </div>
+            <div class="panel-body" style="padding: 0;">
+              <div class="table-container" style="border: none; max-height: 280px; overflow-y: auto;">
+                <table class="data-table" id="table-mq-breakdown">
+                  <thead>
+                    <tr>
+                      <th>Queue / Tier</th>
+                      <th>Offered Vol</th>
+                      <th>Handled Vol</th>
+                      <th>Overflow Vol</th>
+                      <th>Erlangs</th>
+                      <th>Siloed Staff</th>
+                      <th>Allocated Staff</th>
+                      <th>SLA %</th>
+                      <th>ASA</th>
+                      <th>Occupancy</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-mq-breakdown"></tbody>
                 </table>
               </div>
             </div>

@@ -1124,13 +1124,137 @@ const demoFeed = ErlanglyRealTime.generateSyntheticDemoFeed(ErlanglyRealTime.INT
 assert(demoFeed.length === ErlanglyRealTime.INTRADAY_DATA.length, 'Synthetic demo feed maintains full 24-interval daytime span');
 assert(demoFeed[0].actVol > 0 && demoFeed[0].actAht > 0, 'Synthetic demo feed produces positive volume and handle times');
 
+// ============================================================================
+// 20. PHASE 11: COLLABORATION, VERSIONING & MULTI-SKILL ROUTING
+// ============================================================================
 console.log('\n====================================================');
-console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
-console.log('====================================================');
+console.log('PHASE 11: MULTI-SKILL ROUTING & COLLABORATION VERIFICATION');
+console.log('====================================================\n');
 
-if (failed > 0) {
-  process.exit(1);
-}
+// 20a. Overflow Routing Math
+console.log('  [20a] Multi-Queue Overflow Routing Math:');
+const sampleQueues = [
+  { id: 'q1', name: 'Inbound Support', volume: 400, aht: 240, targetSLA: 0.80, targetTime: 20 },
+  { id: 'q2', name: 'Billing Inquiries', volume: 250, aht: 180, targetSLA: 0.80, targetTime: 20 },
+  { id: 'q3', name: 'Escalations / Secondary', volume: 150, aht: 320, targetSLA: 0.80, targetTime: 20 }
+];
+
+const of30s = Erlangly.overflowRouting(sampleQueues, 30, 1800);
+assert(of30s.totalAgents > 0, 'Computes positive total staffing for 3-queue overflow model');
+assert(of30s.siloedAgents >= of30s.totalAgents, `Overflow routing achieves equal or fewer agents than siloed (${of30s.totalAgents} <= ${of30s.siloedAgents})`);
+assert(of30s.primaryQueues.length === 2, 'Primary queues list contains first 2 queues');
+assert(of30s.secondaryQueue !== null, 'Secondary queue receives aggregate direct + overflow workload');
+assert(of30s.secondaryQueue.overflowVolumeReceived > 0, 'Secondary queue receives positive overflow volume');
+
+// Monotonicity of threshold: longer wait before overflow -> less overflow volume
+const of10s = Erlangly.overflowRouting(sampleQueues, 10, 1800);
+const of60s = Erlangly.overflowRouting(sampleQueues, 60, 1800);
+assert(of10s.secondaryQueue.overflowVolumeReceived >= of30s.secondaryQueue.overflowVolumeReceived, '10s threshold yields more or equal overflow volume than 30s threshold');
+assert(of30s.secondaryQueue.overflowVolumeReceived >= of60s.secondaryQueue.overflowVolumeReceived, '30s threshold yields more or equal overflow volume than 60s threshold');
+
+// Edge cases for overflow threshold
+const ofZero = Erlangly.overflowRouting(sampleQueues, 0, 1800);
+assert(ofZero.totalAgents > 0, 'Threshold 0s (instant overflow on delay) solves stably');
+const ofInfinite = Erlangly.overflowRouting(sampleQueues, 999999, 1800);
+assertClose(ofInfinite.secondaryQueue.overflowVolumeReceived, 0, 0.001, 'Threshold 999,999s yields zero overflow volume (pure siloed operation)');
+
+// 20b. Skill-Based Routing & Agent Allocation Math
+console.log('\n  [20b] Skill-Based Routing & Pooling Flex Tier:');
+const sk70 = Erlangly.skillBasedRouting(sampleQueues, 0.70, 1800);
+assert(sk70.specialistGroups.length === 3, 'Calculates 3 dedicated specialist tiers');
+assert(sk70.flexGroup !== null, 'Calculates cross-trained multi-skilled flex tier');
+assert(sk70.flexGroup.flexAgents > 0, 'Flex tier staffing is positive');
+assert(sk70.siloedAgents >= sk70.totalAgents, `Skill-based flex pooling yields headcount savings (${sk70.totalAgents} <= ${sk70.siloedAgents})`);
+assert(sk70.percentEfficiencyGain >= 0, 'Pooling efficiency gain is non-negative');
+
+// Sizing split sensitivity: more flex pooling -> higher efficiency gain
+const sk50 = Erlangly.skillBasedRouting(sampleQueues, 0.50, 1800);
+const sk90 = Erlangly.skillBasedRouting(sampleQueues, 0.90, 1800);
+assert(sk50.percentEfficiencyGain >= sk70.percentEfficiencyGain - 0.5, 'Higher flex share (50% dedicated) achieves higher/equal pooling efficiency');
+assert(sk70.percentEfficiencyGain >= sk90.percentEfficiencyGain - 0.5, 'Moderate flex share (70% dedicated) achieves higher/equal pooling gain than 90% dedicated');
+
+// 20c. Version Diffing & Snapshot Comparison Engine
+console.log('\n  [20c] Plan Version Diffing Engine:');
+// Mock global environment for plans.js
+global.localStorage = {
+  _store: {},
+  getItem: function(k) { return this._store[k] || null; },
+  setItem: function(k, v) { this._store[k] = String(v); },
+  removeItem: function(k) { delete this._store[k]; },
+  clear: function() { this._store = {}; }
+};
+global.ErlanglyAuth = {
+  getUser: function() { return Promise.resolve({ id: 'usr_test', email: 'analyst@erlangly.com' }); }
+};
+
+const ErlanglySupabase = require('../js/supabaseClient.js');
+global.ErlanglySupabase = ErlanglySupabase;
+const ErlanglyPlans = require('../js/plans.js');
+global.ErlanglyPlans = ErlanglyPlans;
+
+const v1 = {
+  version_number: 1,
+  inputs: { volume: 300, aht: 180, targetSLA: 0.80, targetTime: 20 },
+  outputs: { baseAgents: 35, staffedAgents: 50, serviceLevel: 0.84 }
+};
+const v2 = {
+  version_number: 2,
+  inputs: { volume: 450, aht: 180, targetSLA: 0.85, targetTime: 20, shrinkage: 0.35 },
+  outputs: { baseAgents: 52, staffedAgents: 80, serviceLevel: 0.87 }
+};
+
+const diffResult = ErlanglyPlans.diffPlanVersions(v1, v2);
+assert(diffResult.totalChanges > 0, 'Diff engine detects parameter modifications between v1 and v2');
+const modVol = diffResult.inputDiffs.find(d => d.key === 'volume');
+assert(modVol && modVol.type === 'modified' && modVol.oldVal === 300 && modVol.newVal === 450, 'Diff identifies modified volume parameter accurately');
+const addedShrinkage = diffResult.inputDiffs.find(d => d.key === 'shrinkage');
+assert(addedShrinkage && addedShrinkage.type === 'added' && addedShrinkage.newVal === 0.35, 'Diff identifies added parameter');
+
+// 20d. Optimistic Concurrency & Role Permissions
+console.log('\n  [20d] Optimistic Concurrency & Permission Model:');
+// Test savePlan conflict detection
+const mockExistingPlan = {
+  id: 'pln_concurrent_test',
+  user_id: 'usr_test',
+  tool: 'capacity',
+  name: 'Concurrent Plan',
+  inputs: { volume: 300 },
+  outputs: {},
+  updated_at: '2026-08-21T10:00:00.000Z'
+};
+global.localStorage.setItem('erlangly_mock_plans', JSON.stringify([mockExistingPlan]));
+
+// Client loaded plan at 09:00:00 (stale timestamp)
+ErlanglyPlans.savePlan('capacity', 'Concurrent Plan', { volume: 350 }, {}, 'pln_concurrent_test', '2026-08-21T09:00:00.000Z')
+  .then(res => {
+    assert(res && res.conflict === true, 'Optimistic concurrency detects concurrent update and returns conflict flag');
+
+    // 20e. Collaborator Invitation & Version Snapshot Storage
+    console.log('\n  [20e] Collaborator Role Permissions & Version Snapshot History:');
+    return ErlanglyPlans.addPlanCollaborator('pln_concurrent_test', 'teammate@erlangly.com', 'editor')
+      .then(collab => {
+        assert(collab && collab.role === 'editor', 'Invites collaborator with editor role');
+        return ErlanglyPlans.getPlanCollaborators('pln_concurrent_test');
+      })
+      .then(collabs => {
+        assert(collabs.length === 1 && collabs[0].user_email === 'teammate@erlangly.com', 'Collaborator retrieved from plan_collaborators store');
+        return ErlanglyPlans.getPlanVersions('pln_concurrent_test');
+      })
+      .then(versions => {
+        assert(Array.isArray(versions), 'Plan versions retrieved from plan_versions store');
+        console.log('\n====================================================');
+        console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
+        console.log('====================================================');
+
+        if (failed > 0) {
+          process.exit(1);
+        }
+      });
+  })
+  .catch(err => {
+    console.error('Async test error:', err);
+    process.exit(1);
+  });
 
 
 

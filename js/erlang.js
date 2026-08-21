@@ -398,6 +398,352 @@
   };
 
   /**
+   * Overflow Routing Analysis (Multi-Queue Erlang C)
+   * 
+   * Models two or more queues where calls waiting beyond `overflowThresholdSec`
+   * in primary queues cascade into a shared secondary / overflow queue.
+   * Computes the wait tail probability P(Wait > t_overflow) = P_C * e^(-(c*mu - lambda)*t),
+   * the carried and overflow Erlang workloads, and the resulting multi-queue staffing requirements.
+   *
+   * @param {Array<{name?: string, volume: number, aht: number, targetSLA?: number, targetTime?: number}>} queues
+   * @param {number} [overflowThresholdSec=30] - Wait threshold in seconds before calls overflow
+   * @param {number} [intervalSec=1800] - Interval length in seconds
+   * @returns {Object} Comprehensive overflow routing analysis and pooling savings
+   */
+  Erlangly.overflowRouting = function(queues, overflowThresholdSec, intervalSec) {
+    if (!Array.isArray(queues) || queues.length === 0) {
+      return {
+        primaryQueues: [],
+        secondaryQueue: null,
+        totalAgents: 0,
+        siloedAgents: 0,
+        pooledAgents: 0,
+        headcountSaved: 0,
+        percentEfficiencyGain: 0,
+        overflowThresholdSec: 30
+      };
+    }
+
+    var sec = typeof intervalSec === 'number' && intervalSec > 0 ? intervalSec : 1800;
+    var threshold = typeof overflowThresholdSec === 'number' && overflowThresholdSec >= 0 ? overflowThresholdSec : 30;
+
+    // Single queue fallback
+    if (queues.length === 1) {
+      var singleSolve = Erlangly.agentsRequired({
+        volume: queues[0].volume,
+        aht: queues[0].aht,
+        intervalSeconds: sec,
+        targetServiceLevel: queues[0].targetSLA || 0.80,
+        targetTimeSeconds: queues[0].targetTime || 20
+      });
+      return {
+        primaryQueues: [{
+          name: queues[0].name || 'Primary Queue',
+          volume: queues[0].volume || 0,
+          aht: queues[0].aht || 0,
+          rawErlangs: singleSolve.trafficIntensity,
+          overflowVolume: 0,
+          overflowFraction: 0,
+          handledVolume: queues[0].volume || 0,
+          primaryAgents: singleSolve.baseAgents,
+          siloedAgents: singleSolve.baseAgents,
+          primarySLA: singleSolve.serviceLevel,
+          primaryASA: singleSolve.averageSpeedOfAnswer,
+          primaryOccupancy: singleSolve.occupancy
+        }],
+        secondaryQueue: null,
+        totalAgents: singleSolve.baseAgents,
+        siloedAgents: singleSolve.baseAgents,
+        pooledAgents: singleSolve.baseAgents,
+        headcountSaved: 0,
+        percentEfficiencyGain: 0,
+        overflowThresholdSec: threshold
+      };
+    }
+
+    var primaryList = [];
+    var totalSiloed = 0;
+    var sumPrimaryAgents = 0;
+    var incomingOverflowVolume = 0;
+    var incomingOverflowWorkloadSec = 0;
+
+    // The last queue serves as the secondary / backup overflow receiver
+    var secQueueRaw = queues[queues.length - 1];
+
+    for (var i = 0; i < queues.length - 1; i++) {
+      var q = queues[i];
+      var qVol = Math.max(0, typeof q.volume === 'number' ? q.volume : 0);
+      var qAht = Math.max(1, typeof q.aht === 'number' ? q.aht : 180);
+      var qSla = typeof q.targetSLA === 'number' ? q.targetSLA : 0.80;
+      var qTime = typeof q.targetTime === 'number' ? q.targetTime : 20;
+
+      // Standalone siloed solve
+      var siloedSolve = Erlangly.agentsRequired({
+        volume: qVol,
+        aht: qAht,
+        intervalSeconds: sec,
+        targetServiceLevel: qSla,
+        targetTimeSeconds: qTime
+      });
+      totalSiloed += siloedSolve.baseAgents;
+
+      var rawErlangs = (qVol * qAht) / sec;
+
+      // Tail wait probability under standard primary capacity
+      var pDelay = Erlangly.erlangC(rawErlangs, siloedSolve.baseAgents);
+      var mu = 1 / qAht;
+      var lambda = qVol / sec;
+      var serviceRateDiff = Math.max(0.001, (siloedSolve.baseAgents * mu) - lambda);
+
+      var overflowFraction = 0;
+      if (threshold === 0) {
+        overflowFraction = Math.max(0.1, pDelay);
+      } else if (threshold >= 999999) {
+        overflowFraction = 0;
+      } else {
+        overflowFraction = pDelay * Math.exp(-serviceRateDiff * threshold);
+      }
+      overflowFraction = Math.max(0, Math.min(0.85, overflowFraction));
+
+      var overflowVol = qVol * overflowFraction;
+      var handledVol = Math.max(0, qVol - overflowVol);
+
+      // Primary agents sized for handled volume
+      var priSolve = Erlangly.agentsRequired({
+        volume: handledVol,
+        aht: qAht,
+        intervalSeconds: sec,
+        targetServiceLevel: qSla,
+        targetTimeSeconds: qTime
+      });
+
+      var priAgents = Math.min(siloedSolve.baseAgents, priSolve.baseAgents);
+      if (overflowFraction === 0) priAgents = siloedSolve.baseAgents;
+
+      incomingOverflowVolume += overflowVol;
+      incomingOverflowWorkloadSec += (overflowVol * qAht);
+      sumPrimaryAgents += priAgents;
+
+      primaryList.push({
+        name: q.name || ('Queue ' + (i + 1)),
+        volume: qVol,
+        aht: qAht,
+        rawErlangs: rawErlangs,
+        overflowVolume: overflowVol,
+        overflowFraction: overflowFraction,
+        handledVolume: handledVol,
+        primaryAgents: priAgents,
+        siloedAgents: siloedSolve.baseAgents,
+        primarySLA: priSolve.serviceLevel,
+        primaryASA: priSolve.averageSpeedOfAnswer,
+        primaryOccupancy: priSolve.occupancy
+      });
+    }
+
+    // Secondary Queue processing
+    var secDirectVol = Math.max(0, typeof secQueueRaw.volume === 'number' ? secQueueRaw.volume : 0);
+    var secDirectAht = Math.max(1, typeof secQueueRaw.aht === 'number' ? secQueueRaw.aht : 180);
+    var secSla = typeof secQueueRaw.targetSLA === 'number' ? secQueueRaw.targetSLA : 0.80;
+    var secTime = typeof secQueueRaw.targetTime === 'number' ? secQueueRaw.targetTime : 20;
+
+    var secSiloed = Erlangly.agentsRequired({
+      volume: secDirectVol,
+      aht: secDirectAht,
+      intervalSeconds: sec,
+      targetServiceLevel: secSla,
+      targetTimeSeconds: secTime
+    });
+    totalSiloed += secSiloed.baseAgents;
+
+    var secTotalVol = secDirectVol + incomingOverflowVolume;
+    var secTotalWorkload = (secDirectVol * secDirectAht) + incomingOverflowWorkloadSec;
+    var secWeightedAht = secTotalVol > 0 ? (secTotalWorkload / secTotalVol) : secDirectAht;
+    var secTotalErlangs = secTotalWorkload / sec;
+
+    var secSolve = Erlangly.agentsRequired({
+      volume: secTotalVol,
+      aht: secWeightedAht,
+      intervalSeconds: sec,
+      targetServiceLevel: secSla,
+      targetTimeSeconds: secTime
+    });
+
+    var totalOverflowStaff = sumPrimaryAgents + secSolve.baseAgents;
+    if (totalOverflowStaff > totalSiloed) {
+      totalOverflowStaff = totalSiloed;
+    }
+
+    // Pure blended pool comparison
+    var blendedWork = Erlangly.blendedWorkload(queues, sec);
+    var pooledSolve = Erlangly.agentsRequired({
+      volume: blendedWork.totalVolume,
+      aht: blendedWork.weightedAHT,
+      intervalSeconds: sec,
+      targetServiceLevel: 0.80,
+      targetTimeSeconds: 20
+    });
+
+    var saved = Math.max(0, totalSiloed - totalOverflowStaff);
+    var pctGain = totalSiloed > 0 ? (saved / totalSiloed) * 100 : 0;
+
+    return {
+      primaryQueues: primaryList,
+      secondaryQueue: {
+        name: secQueueRaw.name || 'Secondary / Overflow Pool',
+        directVolume: secDirectVol,
+        directAHT: secDirectAht,
+        overflowVolumeReceived: incomingOverflowVolume,
+        totalVolume: secTotalVol,
+        weightedAHT: secWeightedAht,
+        totalErlangs: secTotalErlangs,
+        secondaryAgents: secSolve.baseAgents,
+        siloedAgents: secSiloed.baseAgents,
+        secondarySLA: secSolve.serviceLevel,
+        secondaryASA: secSolve.averageSpeedOfAnswer,
+        secondaryOccupancy: secSolve.occupancy
+      },
+      totalAgents: totalOverflowStaff,
+      siloedAgents: totalSiloed,
+      pooledAgents: pooledSolve.baseAgents,
+      headcountSaved: saved,
+      percentEfficiencyGain: pctGain,
+      overflowThresholdSec: threshold
+    };
+  };
+
+  /**
+   * Skill-Based Routing & Agent Group Allocation (Multi-Skill Erlang C)
+   * 
+   * Models agent skill groups (Specialist Dedicated Tiers + Cross-Trained Multi-Skill Flex Tier).
+   * Allocates dedicated specialist staffing for base load per skill, and solves multi-skilled
+   * flex pool staffing for peak/variance coverage using Erlang pooling efficiency.
+   *
+   * @param {Array<{id?: string, name: string, volume: number, aht: number, targetSLA?: number, targetTime?: number, dedicatedFraction?: number}>} queues
+   * @param {number} [dedicatedSplit=0.70] - Fraction of volume handled by dedicated specialists (0.0 to 1.0)
+   * @param {number} [intervalSec=1800] - Interval length in seconds
+   * @returns {Object} Per-skill group staffing, queue performance, and pooling efficiency gain
+   */
+  Erlangly.skillBasedRouting = function(queues, dedicatedSplit, intervalSec) {
+    if (!Array.isArray(queues) || queues.length === 0) {
+      return {
+        specialistGroups: [],
+        flexGroup: null,
+        totalAgents: 0,
+        siloedAgents: 0,
+        pooledAgents: 0,
+        headcountSaved: 0,
+        percentEfficiencyGain: 0
+      };
+    }
+
+    var sec = typeof intervalSec === 'number' && intervalSec > 0 ? intervalSec : 1800;
+    var split = typeof dedicatedSplit === 'number' ? Math.max(0.1, Math.min(0.95, dedicatedSplit)) : 0.70;
+
+    var specialistGroups = [];
+    var flexWorkloads = [];
+    var totalSiloed = 0;
+    var totalSpecialistAgents = 0;
+
+    for (var i = 0; i < queues.length; i++) {
+      var q = queues[i];
+      var qVol = Math.max(0, typeof q.volume === 'number' ? q.volume : 0);
+      var qAht = Math.max(1, typeof q.aht === 'number' ? q.aht : 180);
+      var qSla = typeof q.targetSLA === 'number' ? q.targetSLA : 0.80;
+      var qTime = typeof q.targetTime === 'number' ? q.targetTime : 20;
+
+      // Standalone siloed requirement
+      var siloedSolve = Erlangly.agentsRequired({
+        volume: qVol,
+        aht: qAht,
+        intervalSeconds: sec,
+        targetServiceLevel: qSla,
+        targetTimeSeconds: qTime
+      });
+      totalSiloed += siloedSolve.baseAgents;
+
+      // Dedicated specialist allocation (split fraction of volume)
+      var dedVol = qVol * split;
+      var flexVol = qVol * (1 - split);
+
+      var dedSolve = Erlangly.agentsRequired({
+        volume: dedVol,
+        aht: qAht,
+        intervalSeconds: sec,
+        targetServiceLevel: qSla,
+        targetTimeSeconds: qTime
+      });
+
+      // Avoid double rounding penalty by bounding dedicated agents
+      var dedStaff = Math.min(siloedSolve.baseAgents, dedSolve.baseAgents);
+      totalSpecialistAgents += dedStaff;
+
+      specialistGroups.push({
+        queueId: q.id || ('q_' + (i + 1)),
+        queueName: q.name || ('Skill ' + (i + 1)),
+        dedicatedVolume: dedVol,
+        flexVolume: flexVol,
+        aht: qAht,
+        specialistAgents: dedStaff,
+        siloedAgents: siloedSolve.baseAgents,
+        serviceLevel: dedSolve.serviceLevel,
+        occupancy: dedSolve.occupancy
+      });
+
+      flexWorkloads.push({
+        volume: flexVol,
+        aht: qAht
+      });
+    }
+
+    // Cross-trained flex group pooling
+    var blendedFlex = Erlangly.blendedWorkload(flexWorkloads, sec);
+    var flexSolve = Erlangly.agentsRequired({
+      volume: blendedFlex.totalVolume,
+      aht: blendedFlex.weightedAHT,
+      intervalSeconds: sec,
+      targetServiceLevel: 0.80,
+      targetTimeSeconds: 20
+    });
+
+    var totalSkillAgents = totalSpecialistAgents + flexSolve.baseAgents;
+    if (totalSkillAgents > totalSiloed) {
+      totalSkillAgents = totalSiloed;
+    }
+
+    // Pure blended pool comparison
+    var blendedTotal = Erlangly.blendedWorkload(queues, sec);
+    var pooledSolve = Erlangly.agentsRequired({
+      volume: blendedTotal.totalVolume,
+      aht: blendedTotal.weightedAHT,
+      intervalSeconds: sec,
+      targetServiceLevel: 0.80,
+      targetTimeSeconds: 20
+    });
+
+    var saved = Math.max(0, totalSiloed - totalSkillAgents);
+    var pctGain = totalSiloed > 0 ? (saved / totalSiloed) * 100 : 0;
+
+    return {
+      specialistGroups: specialistGroups,
+      flexGroup: {
+        name: 'Cross-Trained Multi-Skill Flex Tier',
+        totalFlexVolume: blendedFlex.totalVolume,
+        weightedAHT: blendedFlex.weightedAHT,
+        flexErlangs: blendedFlex.totalErlangs,
+        flexAgents: flexSolve.baseAgents,
+        serviceLevel: flexSolve.serviceLevel,
+        occupancy: flexSolve.occupancy
+      },
+      totalAgents: totalSkillAgents,
+      siloedAgents: totalSiloed,
+      pooledAgents: pooledSolve.baseAgents,
+      headcountSaved: saved,
+      percentEfficiencyGain: pctGain,
+      dedicatedSplit: split
+    };
+  };
+
+  /**
    * Helper: Generate Normalized Diurnal Distribution Weights
    * @param {number} numIntervals - Total intervals in the operating day
    * @param {string|Array<number>} pattern - 'diurnal' | 'uniform' | 'morning' | 'evening' | custom weights

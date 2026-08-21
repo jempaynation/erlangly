@@ -33,7 +33,9 @@
       budgetCap: 380000,
       shrinkage: 0.30,
       targetSLA: 0.80,
-      targetTime: 20
+      targetTime: 20,
+      routingArch: 'siloed',
+      poolingGainPct: 0.0
     },
     {
       id: 1,
@@ -50,7 +52,9 @@
       budgetCap: 450000,
       shrinkage: 0.30,
       targetSLA: 0.80,
-      targetTime: 20
+      targetTime: 20,
+      routingArch: 'siloed',
+      poolingGainPct: 0.0
     },
     {
       id: 2,
@@ -67,7 +71,9 @@
       budgetCap: 340000,
       shrinkage: 0.30,
       targetSLA: 0.80,
-      targetTime: 20
+      targetTime: 20,
+      routingArch: 'siloed',
+      poolingGainPct: 0.0
     }
   ];
 
@@ -186,6 +192,9 @@
       });
 
       var requiredStaff = solve.staffedAgents;
+      if (sc.poolingGainPct && sc.poolingGainPct > 0) {
+        requiredStaff = Math.max(1, Math.round(requiredStaff * (1.0 - (sc.poolingGainPct / 100))));
+      }
 
       // Attrition on existing staff
       var retainedStaff = currentStaff * (1.0 - attritionFrac);
@@ -515,7 +524,7 @@
   var activeScenarioNameBadge, btnResetScenario, btnSimulate;
   var inputScenarioName, numBaseVol, numBaseAht, numVolGrowth, numAhtDrift;
   var numStartingHeadcount, numMonthlyAttrition, numMonthlyHires, selectNestingLag;
-  var numSimHourlyRate, numBudgetCap;
+  var numSimHourlyRate, numBudgetCap, selectRoutingArch, numPoolingGain;
   var numMcVolSigma, numMcAhtSigma, numMcAttritionSigma, numMcHiresSigma;
   var selectMcDist, selectMcIterations, btnResetMcConfig, btnRunMc;
   var lblScorecardBreach, simBreachText, simBreachSub;
@@ -553,6 +562,8 @@
     selectNestingLag = document.getElementById('select-nesting-lag');
     numSimHourlyRate = document.getElementById('num-sim-hourly-rate');
     numBudgetCap = document.getElementById('num-budget-cap');
+    selectRoutingArch = document.getElementById('select-routing-arch');
+    numPoolingGain = document.getElementById('num-pooling-gain');
 
     numMcVolSigma = document.getElementById('num-mc-vol-sigma');
     numMcAhtSigma = document.getElementById('num-mc-aht-sigma');
@@ -702,7 +713,7 @@
     var formInputs = [
       inputScenarioName, numBaseVol, numBaseAht, numVolGrowth, numAhtDrift,
       numStartingHeadcount, numMonthlyAttrition, numMonthlyHires,
-      selectNestingLag, numSimHourlyRate, numBudgetCap
+      selectNestingLag, numSimHourlyRate, numBudgetCap, selectRoutingArch, numPoolingGain
     ];
     formInputs.forEach(function(input) {
       if (!input) return;
@@ -715,6 +726,18 @@
         runAllSimulations();
       });
     });
+
+    if (selectRoutingArch) {
+      selectRoutingArch.addEventListener('change', function() {
+        var defaultGains = { siloed: 0.0, overflow: 10.0, skill: 15.0, blended: 20.0 };
+        var arch = selectRoutingArch.value || 'siloed';
+        if (numPoolingGain) {
+          numPoolingGain.value = (defaultGains[arch] !== undefined ? defaultGains[arch] : 0.0).toFixed(1);
+        }
+        syncFormToState();
+        runAllSimulations();
+      });
+    }
 
     if (btnSimulate) {
       btnSimulate.addEventListener('click', function() {
@@ -854,6 +877,8 @@
     if (selectNestingLag) selectNestingLag.value = String(sc.nestingLag);
     if (numSimHourlyRate) numSimHourlyRate.value = sc.hourlyRate.toFixed(2);
     if (numBudgetCap) numBudgetCap.value = sc.budgetCap;
+    if (selectRoutingArch) selectRoutingArch.value = sc.routingArch || 'siloed';
+    if (numPoolingGain) numPoolingGain.value = (sc.poolingGainPct || 0).toFixed(1);
 
     if (scenarioTabBar) {
       var tabBtn = scenarioTabBar.querySelector('button[data-scenario="' + idx + '"]');
@@ -888,6 +913,8 @@
     if (selectNestingLag) sc.nestingLag = parseInt(selectNestingLag.value, 10) || 1;
     if (numSimHourlyRate) sc.hourlyRate = Math.max(1, parseFloat(numSimHourlyRate.value) || 25.00);
     if (numBudgetCap) sc.budgetCap = Math.max(1000, parseFloat(numBudgetCap.value) || 380000);
+    if (selectRoutingArch) sc.routingArch = selectRoutingArch.value || 'siloed';
+    if (numPoolingGain) sc.poolingGainPct = Math.max(0, Math.min(50, parseFloat(numPoolingGain.value) || 0));
 
     if (scenarioTabBar) {
       var tabBtn = scenarioTabBar.querySelector('button[data-scenario="' + state.activeScenarioIdx + '"]');

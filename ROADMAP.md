@@ -168,24 +168,24 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` sign-off
 
 ## Phase 11 — Collaboration & Multi-Skill Routing
-**Status:** Not started
-- [ ] Shared / collaborative plans:
-  - [ ] Invite other users (by email) to view or edit a saved plan
-  - [ ] Permission model: owner (full control), editor (can modify), viewer (read-only)
-  - [ ] Supabase schema update: `plan_collaborators` join table (`plan_id, user_id, role, invited_at`) with RLS policies allowing users to see plans shared with them
-- [ ] Plan versioning:
-  - [ ] Automatic version snapshot on each save (append-only `plan_versions` table)
-  - [ ] Version history list with timestamps and author
-  - [ ] Diff view between any two versions (inputs/outputs JSON comparison)
-  - [ ] Restore a previous version (creates a new version from the restored snapshot)
-  - [ ] Supabase schema update: `plan_versions` table (`id, plan_id, version_number, inputs jsonb, outputs jsonb, created_by, created_at`) with RLS
-- [ ] Collaborative conflict handling: last-write-wins with a visual indicator when another editor has saved since you loaded (optimistic concurrency via `updated_at` check)
-- [ ] Multi-skill / multi-queue Erlang C routing:
-  - [ ] Extend beyond Phase 7's `blendedWorkload` proof-of-concept to model overflow routing (primary queue → overflow queue with configurable threshold, e.g. "overflow after 30s wait")
-  - [ ] Skill-based routing: agents tagged with skills, queues mapped to required skills, staffing computed per skill group
-  - [ ] New math functions in `js/erlang.js`: `Erlangly.overflowRouting()` and `Erlangly.skillBasedRouting()` — pure functions, iterative numerical methods for overflow probabilities
-  - [ ] Multi-queue UI mode: capacity planning and simulator pages get a "multi-queue mode" toggle to define 2+ queues with routing rules and see combined staffing requirements
-- [ ] `erlangly-qa` sign-off
+**Status:** Done (2026-08-21)
+- [x] Shared / collaborative plans:
+  - [x] Invite other users (by email) to view or edit a saved plan
+  - [x] Permission model: owner (full control), editor (can modify), viewer (read-only)
+  - [x] Supabase schema update: `plan_collaborators` join table (`plan_id, user_id, role, invited_at`) with RLS policies allowing users to see plans shared with them
+- [x] Plan versioning:
+  - [x] Automatic version snapshot on each save (append-only `plan_versions` table)
+  - [x] Version history list with timestamps and author
+  - [x] Diff view between any two versions (inputs/outputs JSON comparison)
+  - [x] Restore a previous version (creates a new version from the restored snapshot)
+  - [x] Supabase schema update: `plan_versions` table (`id, plan_id, version_number, inputs jsonb, outputs jsonb, created_by, created_at`) with RLS
+- [x] Collaborative conflict handling: last-write-wins with a visual indicator when another editor has saved since you loaded (optimistic concurrency via `updated_at` check)
+- [x] Multi-skill / multi-queue Erlang C routing:
+  - [x] Extend beyond Phase 7's `blendedWorkload` proof-of-concept to model overflow routing (primary queue → overflow queue with configurable threshold, e.g. "overflow after 30s wait")
+  - [x] Skill-based routing: agents tagged with skills, queues mapped to required skills, staffing computed per skill group
+  - [x] New math functions in `js/erlang.js`: `Erlangly.overflowRouting()` and `Erlangly.skillBasedRouting()` — pure functions, iterative numerical methods for overflow probabilities
+  - [x] Multi-queue UI mode: capacity planning and simulator pages get a "multi-queue mode" toggle to define 2+ queues with routing rules and see combined staffing requirements
+- [x] `erlangly-qa` sign-off
 
 ## Phase 12 — Forecasting Enhancements II
 **Status:** Done (2026-08-19) — *Note: Implemented first per explicit user directive; Phases 9–11 remain pending.*
