@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-**Status: v1 Complete (Phases 0–7). All 5 WFM tools, persistence, portfolio polish, and core suite fully built and signed off. Phase 8 (Advanced Forecasting Models), Phase 9 (Scheduling Labor Rules & Constraints), Phase 12 (Forecasting Enhancements II), and Phase 13 (Forecast Holdout Sandbox) complete. v2 Phase 10 (Enhanced Simulation & Real-Time) next. Phases 14–19 (Quick Wins, v3 AI & Intelligence, v4 Collaboration, v5 Enterprise, v6 Ecosystem) added below per the product strategy update — see "v3–v6 Product Strategy" section at the bottom for the full picture. These are planned/scoped only; no implementation has started on any of them.**
+**Status: v1 Complete (Phases 0–7) & v2 Complete (Phases 8–13). All 5 WFM tools, advanced forecasting models, labor rule scheduling, Monte Carlo simulation, mobile real-time & live feed, multi-user collaboration & versioning, multi-queue routing, forecast accuracy tracking, and holdout sandbox fully built and signed off with 322 automated tests passing. Next: Phase 14 (Quick Wins & Polish) and v3–v6 Product Strategy (Phases 15–19).**
 
 This file is the single source of truth for project progress. Any agentic coding tool
 (Claude Code, Cursor, or otherwise) picking up this project must read it before writing
@@ -188,7 +188,7 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` sign-off
 
 ## Phase 12 — Forecasting Enhancements II
-**Status:** Done (2026-08-19) — *Note: Implemented first per explicit user directive; Phases 9–11 remain pending.*
+**Status:** Done (2026-08-19)
 - [x] Year-over-Year Seasonal Trend Projection model: registers in the Phase 8 model
       registry; computes YoY growth off the matched calendar period one year prior,
       blended with existing day-of-week seasonal indices
@@ -213,7 +213,7 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` sign-off
 
 ## Phase 13 — Forecast Holdout Sandbox
-**Status:** Done (2026-08-20) — *Note: Implemented per explicit user directive; Phases 9–11 remain pending.*
+**Status:** Done (2026-08-20)
 - [x] Backtest mode toggle in the existing Phase 12 holdout config: "Last N periods" (existing) vs. "Pick specific month(s)" (new)
 - [x] Target month picker: multi-select of any calendar month(s) already present in the uploaded history
 - [x] Before-only training: for each target month, every model trains only on data strictly before it (no data leakage from after the target month, even if present in the uploaded set)
@@ -346,43 +346,20 @@ ideas and stretch goals go here until they're scoped and promoted into a numbere
 
 ## Suggested cadence
 
-**v1 (Phases 0–7) is complete.** For v2:
+**v1 (Phases 0–7) and v2 (Phases 8–13) are 100% complete and signed off.**
 
-- **Phase 8** (Advanced Forecasting) can start immediately — it extends an existing tool
-  with no schema changes and no new pages.
-- **Phase 9** (Scheduling Labor Rules) can start independently of Phase 8, or after it —
-  no dependency between them. However, improved forecasts from Phase 8 make scheduling
-  more realistic, so the ordering is recommended.
-- **Phase 10** (Enhanced Simulation & Real-Time) depends loosely on the existing tools
-  being stable. Monte Carlo simulation benefits from any forecasting improvements in
-  Phase 8, but doesn't strictly require them. The mobile real-time view and live data
-  feed are fully independent.
-- **Phase 11** (Collaboration & Multi-Skill Routing) should come last among the original
-  four. Shared plans require schema changes and new RLS complexity. Multi-skill routing
-  extends the math engine significantly. Both are best tackled after the simpler
-  enhancements are stable.
-- **Phase 12** (Forecasting Enhancements II) has no dependency on Phases 9–11 — it only
-  extends `forecasting.js` against the Phase 8 model interface, no schema changes and no
-  new pages. It can be built immediately after Phase 8, in parallel with Phase 9, or
-  slotted in whenever forecasting work is next picked up. Ordering here is a preference,
-  not a requirement.
-- **Phase 13** (Forecast Holdout Sandbox) depends on Phase 12's backtesting engine
-  (`backtestModel`/`runBacktestAll`) and metrics, which are already complete — so Phase 13
-  can start immediately. No dependency on Phases 9–11. It extends the same holdout config
-  UI Phase 12 introduced rather than replacing it, so it should follow Phase 12
-  conceptually even though both live in `forecasting.js` with no schema changes.
+All 14 phases across core tools, advanced forecasting algorithms, scheduling labor rules, Monte Carlo simulation, mobile real-time & live feed, collaboration & version diffing, and multi-queue routing are fully functional and covered by 322 automated tests.
+
+For subsequent work (**v3–v6 Product Strategy**):
+
 - **Phase 14** (Quick Wins & Polish) has no dependencies on anything — it can be picked up
-  at any point, including in parallel with Phases 9–11, since each item is small and
-  isolated to a single tool or the shared stylesheet.
+  at any point as near-term enhancements (dark/light theme toggle, inline tooltips, validation preview).
 - **Phase 15–16** (v3: AI Forecasting & Insights, Advanced Visualizations & Performance)
-  are the recommended next major track after the remaining v2 phases (9–11) are done.
-  Phase 15 needs `erlangly-ai-engineer` and a resolved answer on the client-side-only ML
-  question flagged inline in that phase. Phase 16 has no hard blockers.
-- **Phase 17** (v4: Team Collaboration) requires Phase 11 (plan-level sharing/versioning)
-  to be complete first — it's an extension of that data model, not a parallel track.
-- **Phase 18** (v5: Enterprise Readiness) is the highest-risk phase in the roadmap and
-  should be scoped last among 15–19, with its own dedicated planning session per the
-  ⚠️ note on that phase — don't let it get picked up "in order" without that step.
+  are the recommended next major track. Phase 15 needs `erlangly-ai-engineer` and a resolved answer on the client-side-only ML
+  question flagged inline in that phase. Phase 16 focuses on interactive drill-down dashboards and performance caching.
+- **Phase 17** (v4: Team Collaboration) builds directly on top of Phase 11 (plan-level sharing/versioning) to introduce multi-user workspaces and workspace-level roles.
+- **Phase 18** (v5: Enterprise Readiness) is the highest-risk phase in the roadmap (API, SSO, multi-tenancy) and
+  should be scoped with its own dedicated planning session per the ⚠️ note on that phase — don't let it get picked up without that step.
 - **Phase 19** (v6: Ecosystem & Integrations) follows Phase 18, since several of its items
   depend on the API access work scoped there.
 

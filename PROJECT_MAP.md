@@ -25,14 +25,12 @@ a working portfolio piece as much as a usable tool.
 
 ## Current status
 
-**v1 is complete (Phases 0–7).** All five WFM tools (Forecasting, Capacity Planning,
+**v1 is complete (Phases 0–7) and v2 is complete (Phases 8–13).** All five WFM tools (Forecasting, Capacity Planning,
 Scheduling, Real-Time/Intraday, Simulator), accounts & persistence (Supabase), shareable
-links, multi-skill pooling proof-of-concept, and portfolio polish are built and signed off.
-
-**v2 Phase 8 (Advanced Forecasting Models), Phase 9 (Scheduling Labor Rules & Constraints),
-Phase 12 (Forecasting Enhancements II), and Phase 13 (Forecast Holdout Sandbox) are complete.**
-Phase 10 (Enhanced Simulation & Real-Time) and Phase 11 (Collaboration & Multi-Skill Routing)
-remain queued for implementation.
+links, advanced forecasting algorithms (SES, Holt, Decomposition, Regression, YoY), scheduling labor rules & constraints,
+Monte Carlo simulation (500 iterations, confidence bands), mobile-optimized real-time command center, client-side live data feeds,
+collaborative plan sharing with 3-tier roles & optimistic concurrency, immutable version diffing & history, and multi-queue/overflow routing
+are fully built and signed off with 322 automated tests passing.
 
 **Phases 14–19 are planned but not started**, added by a product-strategy review covering
 near-term polish and a v3–v6 direction: Phase 14 (Quick Wins & Polish), Phase 15 (AI
@@ -63,35 +61,32 @@ happened, check `CHANGELOG.md`.
 
 ## File structure
 
-All v1 files exist. This is the current layout per `AGENTS.md`:
+All v1 and v2 files exist. This is the current layout per `AGENTS.md`:
 
 ```
 /index.html              landing page, live Erlang C hero demo
-/forecasting.html         Forecasting tool
-/capacity.html            Capacity planning tool
-/scheduling.html          Scheduling tool (includes Forecast → FTE converter)
-/realtime.html            Real-time / Intraday tool (includes VTO calculator)
-/simulator.html           Workforce Planning Simulator
-/plans.html               "My Plans" dashboard
+/forecasting.html         Forecasting tool (statistical models, backtesting, accuracy, sandbox)
+/capacity.html            Capacity planning tool (single/bulk Erlang C, multi-queue & skill routing)
+/scheduling.html          Scheduling tool (FTE converter + labor rules & shift optimizer)
+/realtime.html            Real-time / Intraday tool (mobile swipe, live data feeds, VTO calculator)
+/simulator.html           Workforce Planning Simulator (Monte Carlo, confidence bands, pooling levers)
+/plans.html               "My Plans" dashboard (role permissions, version history, visual diffs)
 /login.html               Sign up / log in
 /css/styles.css           shared design tokens + all styling
-/js/erlang.js             shared Erlang C math engine — single source of truth
+/js/erlang.js             shared Erlang C math engine (pure numerical library, overflow & skill routing)
 /js/main.js               shared nav/CSV/file-drop helpers
-/js/supabaseClient.js     Supabase client init
+/js/supabaseClient.js     Supabase client init (with offline localStorage mock engine)
 /js/auth.js               auth helpers
-/js/plans.js              save/load/list/delete against the `plans` table
-/js/<tool>.js             one per tool page (capacity.js, forecasting.js, etc.)
+/js/plans.js              persistence, collaboration, version snapshotting, and visual diffing
+/js/<tool>.js             one per tool page (capacity.js, forecasting.js, scheduling.js, realtime.js, simulator.js)
 /js/workers/csv-parser.js large-CSV Web Worker
-/sql/schema.sql           Postgres schema + RLS policies
-/test/run-tests.js        automated math verification suite (29 tests)
+/sql/schema.sql           Postgres schema + RLS policies (plans, plan_collaborators, plan_versions)
+/test/run-tests.js        automated math and functional verification suite (322 tests)
 ```
 
-v2 phases (8–13) don't add new HTML pages. Phase 11 adds new schema tables
-(`plan_collaborators`, `plan_versions`) to `sql/schema.sql`. Phases 8, 9, 10, 12, and 13
-extend existing JS files only. Phases 14–19 (v3–v6, planned) will likely add new schema
-(Phase 17 workspaces, Phase 18 multi-tenancy) and possibly new pages (Phase 17 dashboards,
-Phase 19 PWA shell) — see `ROADMAP.md` for the current thinking on each; nothing in that
-range is built yet.
+All v2 phases (8–13) are complete with zero build step dependencies. Phases 14–19 (v3–v6, planned) will introduce
+near-term polish (Phase 14), client-side ML forecasting (Phase 15), interactive drill-down dashboards (Phase 16),
+workspace tenancy (Phase 17), enterprise SSO/APIs (Phase 18), and ecosystem integrations (Phase 19).
 
 ## How data flows between tools
 

@@ -2,11 +2,11 @@
 
 [![Architecture: Zero Build Step](https://img.shields.io/badge/Architecture-Zero%20Build%20Step-00d2d3?style=flat-square)](#architecture)
 [![Math: Erlang C Numerical Engine](https://img.shields.io/badge/Math-Erlang%20C%20Engine-10b981?style=flat-square)](#the-queueing-theory-math-engine)
-[![Tests: 29/29 Passed](https://img.shields.io/badge/Tests-29%2F29%20Passed-10b981?style=flat-square)](#automated-test-suite)
+[![Tests: 322/322 Passed](https://img.shields.io/badge/Tests-322%2F322%20Passed-10b981?style=flat-square)](#automated-test-suite)
 [![Persistence: Supabase RLS](https://img.shields.io/badge/Persistence-Supabase%20Postgres%20%2B%20RLS-38bdf8?style=flat-square)](#persistence--accounts)
 [![UI: Dark Control Room](https://img.shields.io/badge/Theme-Dark%20Control%20Room-f59e0b?style=flat-square)](#design-system)
 
-**Erlangly** is a high-performance, static workforce management (WFM) engineering toolkit and portfolio suite for contact centers and operations teams. It packages five specialized WFM modules — **Demand Forecasting**, **Capacity Planning**, **Shift Scheduling & FTE Conversion**, **Real-Time Intraday Queue Control & VTO**, and a **Strategic Workforce Planning Simulator** — powered by a single pure queueing math engine and persistent cloud accounts.
+**Erlangly** is a high-performance, static workforce management (WFM) engineering toolkit and portfolio suite for contact centers and operations teams. It packages five specialized WFM modules — **Demand Forecasting**, **Capacity Planning**, **Shift Scheduling & FTE Conversion**, **Real-Time Intraday Queue Control & VTO**, and a **Strategic Workforce Planning Simulator** — powered by a single pure queueing math engine, persistent cloud accounts, multi-user collaboration, and probabilistic simulation.
 
 ---
 
@@ -14,41 +14,43 @@
 
 ### 1. ⚡ Capacity Planning (`capacity.html`)
 - **Single-Interval Erlang C Solver**: Dynamic range sliders and precision numeric inputs with real-time recalculation of base headcount, shrinkage-adjusted staffed agents, SLA %, ASA (s), and agent occupancy %.
+- **Multi-Queue & Skill Routing Engine**: Four routing strategies (`Siloed Dedicated`, `⚡ Overflow Routing`, `🎯 Skill-Based Flex Tier`, and `🌐 Full Blended Pool`) with wait overflow thresholds, specialist split levers, and pooling efficiency gain analysis.
 - **Headcount Sensitivity Table**: Interactive $\pm 3$ agents sensitivity analysis displaying queue metrics at adjacent staffing levels.
 - **Bulk CSV Interval Upload**: Multi-interval day/week upload supporting custom delimiters, quotes, error tolerance, and downloadable sample templates.
 - **Direct Scheduling Handoff**: 1-click export passing required interval staffing directly into the Scheduling module.
 
 ### 2. 📈 Demand Forecasting (`forecasting.html`)
-- **Forecasting Algorithms**: Weighted Moving Average (WMA), Simple Moving Average (SMA), and Linear Trend Projection (OLS).
-- **Day-of-Week Seasonality ($S_d$)**: Multiplicative seasonal indexing with customizable planning horizons and growth multipliers.
+- **Statistical Model Zoo**: Simple Exponential Smoothing (SES), Holt's Double Exponential Smoothing, Additive & Multiplicative Seasonal Decomposition, Linear Regression with detrending, and Year-over-Year (YoY) Seasonal Trend Projection.
+- **Out-of-Sample Backtesting & Accuracy Tracking**: Walk-forward holdout validation computing MAPE, volume-weighted WAPE %, and signed bias % across multiple forecast runs.
+- **Interactive Holdout Sandbox**: Test algorithms against specific historical months with strict before-only training windows (no future data leakage) and 1-click winning model carryover.
+- **Holiday & Event Flagging**: Multiplicative demand adjustments for known calendar spikes and events.
 - **Large Dataset Streaming Web Worker (`js/workers/csv-parser.js`)**: Non-blocking chunked Web Worker parsing capable of aggregating 200,000+ interval rows in under 100ms.
-- **Interactive Dual-Curve Chart**: Visualizes historical volume against projected forecasts with Chart.js.
 
 ### 3. 🗓️ Scheduling & FTE Converter (`scheduling.html`)
 - **Forecast $\to$ Required FTE Converter**: Translates interval workload into net/gross staff-hours, calculates required FTE based on configurable standard work weeks (e.g. 40.0h or 37.5h), and accounts for part-time staffing mix % and shrinkage.
-- **Daily Staffing Breakdown**: Day-of-week demand distributions with CSV export.
-- **Shift Pattern Allocator**: Configurable shift lengths, unpaid meal break placement, and net paid hours.
-- **Integer Greedy Coverage Optimizer**: Optimizes shift headcount allocation to eliminate understaffing gaps while minimizing surplus waste.
-- **Coverage Visualizer**: Stepped demand curve vs. scheduled headcount area with gap analysis.
+- **Labor Rules & Constraint Engine**: Max daily hours (10h), max weekly hours (40h), minimum rest period between shifts ($\ge 11$h anti-clopening guard), and variable-length break schedules (4h, 6h, 8.5h, 10h).
+- **Multi-Day Constraint-Aware Shift Optimizer**: Integer greedy coverage optimizer balancing coverage requirements against hard labor rules and agent availability preferences.
+- **Schedule Audit & Infeasibility Diagnostics**: Live audit engine highlighting rule breaches on manual overrides and pinpointing staffing bottlenecks.
 
 ### 4. ⏱️ Real-Time / Intraday & VTO Calculator (`realtime.html`)
+- **Mobile-Optimized Command Center**: Responsive single-column layout with touch swipe gesture navigation and collapsible day-to-date scorecard.
+- **Client-Side Live Data Feed Connector**: Automatic polling of external JSON/CSV feeds with stale-data detection, connection diagnostics, and built-in synthetic demo streams.
 - **"Simulate the Day" Shift Stepper**: Step through 24 intraday intervals with Play/Pause auto-advance, step forward/back, and jump controls.
-- **Live Queue Command Console**: Real-time tracking of actual SLA %, ASA wait times, occupancy %, volume variances, and staffing adherence %.
-- **Day-to-Date Performance Scorecard**: Cumulative volume variance, weighted SLA %, average ASA, and adherence alerts.
 - **Guarded VTO Calculator**: Identifies surplus intervals and computes maximum safe Voluntary Time Off allocations with configurable SLA protection buffers, occupancy ceilings, and per-interval caps.
 - **Inline VTO Approval**: Interactive "+1 Approve" / "-1 Revoke" controls that live-recalculate projected SLA and track daily labor cost savings.
 
 ### 5. 🎯 Workforce Planning Simulator (`simulator.html`)
-- **Multi-Period What-If Strategic Simulation**: 6, 12, and 24-month horizon simulations driven by the shared Erlang C engine.
+- **Monte Carlo Probabilistic Simulation**: 500-iteration stochastic engine executing client-side in $<30$ms using Box-Muller Normal and Uniform distributions across volume, AHT, attrition, and hiring variability.
+- **Confidence Band Visualizer**: Shaded $P10\text{–}P90$ and $P25\text{–}P75$ confidence intervals with $P50$ median trajectory and worst-case SLA breach markers.
+- **Queue Architecture & Pooling Gain Levers**: Incorporates multi-skill flex gains directly into multi-year strategic hiring and budget models.
 - **Strategic Workforce Levers**: Volume growth %, AHT drift %, monthly attrition %, new-hire batch sizing, time-to-productivity nesting lag (0, 1, or 2 months), hourly loaded labor rate, and budget ceilings.
-- **Multi-Scenario Comparative Visualizer**: Compares Scenario A (Status Quo), Scenario B (Aggressive Hiring), and Scenario C (Budget Capped) simultaneously.
-- **Automated Breach Detection**: Pinpoints the exact month where a scenario drops below the 80% SLA threshold or exceeds monthly budget caps.
 - **Executive Narrative Generator**: Automatically generates plain-language business-case prose for leadership presentations.
 
-### 6. 💾 Accounts, Persistence & Sharing (`plans.html`, `login.html`)
-- **Persistent Plans Dashboard**: Save, list, rename, delete, and re-open workforce models across all five tools.
-- **1-Click Shareable Read-Only Links**: Generate standalone preview links (`?shared=1&data=...`) allowing stakeholders to view plans without logging in.
-- **Row Level Security (RLS)**: Client-side Supabase authentication and database integration with strict per-user data isolation.
+### 6. 💾 Accounts, Persistence & Collaboration (`plans.html`, `login.html`)
+- **Three-Tier Role Permission Model**: **Owner** (full control, share, delete), **Editor** (modify and save), and **Viewer** (read-only inspect/export) backed by Supabase Postgres Row Level Security (RLS).
+- **Optimistic Concurrency Conflict Resolution**: Detects concurrent teammate saves via `updated_at` timestamps with interactive conflict resolution (*Overwrite*, *Discard & Reload*, *Save as New*).
+- **Immutable Version History & Visual Diffing**: Automatic version snapshots on save (`v1, v2, v3...`) with side-by-side color-coded parameter diffing and 1-click rollback.
+- **Team Invitations & Quick Share Links**: Invite collaborators by email or generate instant preview URLs.
 
 ---
 
@@ -60,7 +62,6 @@ All calculations across Erlangly call into a single, pure mathematical engine in
 $$A = \frac{\text{Volume} \times \text{AHT}}{\text{Interval Seconds}}$$
 
 ### 2. Numerically Stable Erlang B Loss Probability
-Traditional Erlang formulas involve factorials ($m!$) which overflow standard 64-bit floating point numbers when $m > 170$. Erlangly utilizes the numerically stable continuous downward recursion:
 $$B(0, A) = 1.0$$
 $$B(k, A) = \frac{A \cdot B(k-1, A)}{k + A \cdot B(k-1, A)} \quad \text{for } k = 1, 2, \dots, m$$
 
@@ -73,11 +74,9 @@ $$\text{SL}(m, A, \text{AHT}, T) = 1 - P_w \cdot e^{-(m - A) \cdot \frac{T}{\tex
 ### 5. Average Speed of Answer (ASA)
 $$\text{ASA} = \frac{P_w \cdot \text{AHT}}{m - A}$$
 
-### 6. Agent Occupancy
-$$\text{Occ} = \frac{A}{m}$$
-
-### 7. Shrinkage Scaling (Gross Headcount)
-$$\text{Staffed Agents} = \left\lceil \frac{\text{Base Agents}}{1 - \text{Shrinkage Fraction}} \right\rceil$$
+### 6. Multi-Queue Overflow & Skill-Based Routing
+- **Overflow Tail Probability**: $P(W > t) = P_C \cdot e^{-(c\mu - \lambda)t}$
+- **Pooling Monotonicity**: $N_{\text{pooled}} \le N_{\text{multi-queue}} \le N_{\text{siloed}}$
 
 ---
 
@@ -85,23 +84,23 @@ $$\text{Staffed Agents} = \left\lceil \frac{\text{Base Agents}}{1 - \text{Shrink
 
 ```
 /index.html              Landing page with interactive Erlang C mini-calculator hero
-/capacity.html           Capacity planning tool (single-interval + bulk CSV)
-/forecasting.html        Demand forecasting tool (WMA, SMA, Trend, Seasonality)
-/scheduling.html         Scheduling tool (FTE converter + shift coverage optimizer)
-/realtime.html           Real-time intraday monitoring & guarded VTO calculator
-/simulator.html          Workforce planning simulator (what-if scenarios & nesting lag)
-/plans.html              "My Plans" saved data dashboard & shareable link creator
-/login.html              Sign up / Sign in authentication page
-/css/styles.css          Unified dark "control room" design system and CSS tokens
-/js/erlang.js            Core queueing math engine (Erlang B/C, SLA, ASA, Multi-skill)
-/js/main.js              Shared utilities (nav, RFC-4180 CSV, file drop, toasts, handoff)
-/js/supabaseClient.js    Supabase client init with public anon key & mock sandbox
-/js/auth.js              Client-side authentication & session helpers
-/js/plans.js             Plan persistence (save, list, load, rename, delete, share modal)
-/js/workers/csv-parser.js Web Worker for chunked streaming of 100k+ row CSVs
-/sql/schema.sql          PostgreSQL schema & Row Level Security (RLS) policies
-/test/run-tests.js       Automated math & queueing verification suite (29 tests)
-/test/test-large-csv.js  Performance test verifying 200k-row Web Worker parser
+/forecasting.html         Forecasting tool (statistical models, backtesting, accuracy, sandbox)
+/capacity.html            Capacity planning tool (single/bulk Erlang C, multi-queue & skill routing)
+/scheduling.html          Scheduling tool (FTE converter + labor rules & shift optimizer)
+/realtime.html            Real-time / Intraday tool (mobile swipe, live data feeds, VTO calculator)
+/simulator.html           Workforce Planning Simulator (Monte Carlo, confidence bands, pooling levers)
+/plans.html               "My Plans" dashboard (role permissions, version history, visual diffs)
+/login.html               Sign up / log in
+/css/styles.css           shared design tokens + all styling
+/js/erlang.js             shared Erlang C math engine (pure numerical library, overflow & skill routing)
+/js/main.js               shared nav/CSV/file-drop helpers
+/js/supabaseClient.js     Supabase client init (with offline localStorage mock engine)
+/js/auth.js               auth helpers
+/js/plans.js              persistence, collaboration, version snapshotting, and visual diffing
+/js/<tool>.js             one per tool page (capacity.js, forecasting.js, scheduling.js, realtime.js, simulator.js)
+/js/workers/csv-parser.js large-CSV Web Worker
+/sql/schema.sql           Postgres schema + RLS policies (plans, plan_collaborators, plan_versions)
+/test/run-tests.js        automated math and functional verification suite (322 tests)
 /PROJECT_MAP.md          Project orientation & navigation guide
 /FEATURES.md             Feature specifications
 /ROADMAP.md              Roadmap status and phase tracker
@@ -136,35 +135,46 @@ Run the automated mathematical and functional test suite with Node.js:
 node test/run-tests.js
 ```
 
-### Test Suite Coverage:
+### Test Suite Coverage (322 Tests Passing):
 - **Traffic Intensity Calculations**: Accurate Erlangs conversion, zero volume, zero AHT, and negative edge cases.
 - **Reference Table Point Verification**: $A=100, m=110, \text{AHT}=180\text{s}, T=20\text{s} \implies B=0.0275, P_w=0.2370, \text{ASA}=4.27\text{s}, \text{SL}=92.2\%$.
-- **Strict Monotonicity**: Verifies that increasing server count strictly increases SLA %, strictly decreases ASA, and strictly decreases occupancy across all operational ranges.
-- **Boundary & Overload States**: Graceful degradation under unstable queues ($m \le A$), zero volume, and extreme shrinkage ($\ge 100\%$).
-- **Multi-Constraint Solver (`agentsRequired`)**: Multi-variable constraint solver meeting both SLA and Occupancy thresholds simultaneously.
-- **Multi-Skill Pooling Efficiency**: Verifies Erlang staffing savings when consolidating siloed queues into unified multi-skilled pools.
+- **Strict Monotonicity & Robustness**: Monotonicity of SLA, ASA, and Occupancy across all staffing counts and boundary conditions.
+- **Advanced Forecasting Models**: SES, Holt's, Additive/Multiplicative decomposition, regression, YoY projection, out-of-sample backtesting, and accuracy metrics (MAPE, WAPE, bias).
+- **Scheduling Labor Rules**: Break schedules, anti-clopening 11h rest checks, max hours, and constraint optimizer.
+- **Monte Carlo Probability Engine**: Sampling distributions, 500-iteration benchmark ($<30$ms), and monotonic confidence bands ($P10 \le P25 \le P50 \le P75 \le P90$).
+- **Multi-Queue Routing**: Overflow routing math, threshold monotonicity, skill-based flex pooling gain, and parameter diffing.
+- **Collaboration & Security**: 3-tier role permissions, optimistic locking conflict detection, and immutable version snapshots.
 
 ---
 
 ## 🔒 Security & Persistence Architecture
 
 - **Client-Side Only Supabase Integration**: Only the public Supabase `anon` key ever ships to the client. The administrative `service_role` key never exists in this repository.
-- **Row Level Security (RLS)**: Enabled on all tables (`sql/schema.sql`). Policies enforce `auth.uid() = user_id` for SELECT, INSERT, UPDATE, and DELETE.
+- **Row Level Security (RLS)**: Enabled on all tables (`sql/schema.sql`). Policies enforce `auth.uid() = user_id` for personal plans and join-table checks for shared collaborators.
 - **Guest / Sandbox Mode**: Erlangly provides a local sandbox fallback so that all calculator features, shift optimizers, and saved plan dashboards work offline and out-of-the-box even without a configured live Supabase project.
 
 ---
 
-## 🗺️ What's Next (v2 Roadmap)
+## 🗺️ Roadmap Status (v1 & v2 Complete)
 
-v1 (Phases 0–7) is complete. Four new phases are planned — see [`ROADMAP.md`](ROADMAP.md) for detailed task lists and status:
+Both **v1 (Phases 0–7)** and **v2 (Phases 8–13)** are 100% complete and signed off:
 
-| Phase | Name | Highlights |
-|---|---|---|
-| **8** | Advanced Forecasting Models | Pluggable model architecture, seasonal decomposition, exponential smoothing (SES, Holt), holiday/event flags, model comparison view with fit metrics |
-| **9** | Scheduling Labor Rules | Max hours/rest constraints, agent availability & preferences, part-time shift patterns, constraint-aware allocator with violation highlighting |
-| **10** | Enhanced Simulation & Real-Time | Monte Carlo confidence intervals (P10–P90 bands), mobile-optimized real-time view with swipeable cards, optional live data feed polling |
-| **11** | Collaboration & Multi-Skill Routing | Shared plans with invite/permissions, plan versioning with diff view, overflow & skill-based queue routing math |
-| **12** | Forecasting Enhancements II | Year-over-year seasonal trend projection, out-of-sample backtesting, forecast accuracy tracking tool (MAPE/WAPE/bias), optional model ensembling |
+| Phase | Name | Status | Highlights |
+|---|---|---|---|
+| **0–7** | **v1 Core WFM Suite** | ✅ Complete | 5 core tools, shared Erlang C engine, Supabase accounts, portfolio polish |
+| **8** | Advanced Forecasting Models | ✅ Complete | Pluggable model architecture, seasonal decomposition, SES, Holt's, holiday flags |
+| **9** | Scheduling Labor Rules | ✅ Complete | Max hours, rest periods, anti-clopening, variable breaks, constraint optimizer |
+| **10** | Enhanced Simulation & Real-Time | ✅ Complete | Monte Carlo 500 iterations, confidence bands, mobile real-time view, live data feed |
+| **11** | Collaboration & Multi-Skill Routing | ✅ Complete | Shared plans with roles, optimistic locking, version diffing, overflow & skill routing |
+| **12** | Forecasting Enhancements II | ✅ Complete | YoY seasonal trend model, walk-forward backtesting, forecast accuracy tracker |
+| **13** | Forecast Holdout Sandbox | ✅ Complete | Target month picker, before-only training window, winning model carry-over |
+
+**Upcoming Tracks (v3–v6 Product Strategy)**:
+- **Phase 14**: Quick Wins & Polish (Dark/light theme toggle, inline tooltips, validation preview)
+- **Phases 15–16 (v3)**: AI Forecasting & Insights, Advanced Visualizations & Performance
+- **Phase 17 (v4)**: Team Collaboration & Workspaces
+- **Phase 18 (v5)**: Enterprise Readiness (API, SSO, Multi-tenancy)
+- **Phase 19 (v6)**: Ecosystem & Integrations (Third-party connectors, BI export, PWA)
 
 ---
 
