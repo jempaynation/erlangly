@@ -1,0 +1,18 @@
+# Supabase credentials & local config
+js/config.js
+js/config.local.js
+.env
+.env.local
+.env.*.local
+
+# Supabase CLI runtime & temporary files
+supabase/.temp/
+supabase/.branches/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Logs & temp
+*.log
+scratch/

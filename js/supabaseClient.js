@@ -10,13 +10,16 @@
 (function(root) {
   'use strict';
 
-  // Public Supabase Configuration
-  // Users can override via localStorage or environment config
-  var SUPABASE_URL = localStorage.getItem('erlangly_supabase_url') || 'https://demo.supabase.co';
-  var SUPABASE_ANON_KEY = localStorage.getItem('erlangly_supabase_anon_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.demo';
+  // Configuration resolution:
+  // 1. window.ERLANGLY_CONFIG (loaded from git-ignored js/config.js)
+  // 2. localStorage override ('erlangly_supabase_url', 'erlangly_supabase_anon_key')
+  // 3. Fallback demo sandbox
+  var envConfig = (root.ERLANGLY_CONFIG || {});
+  var SUPABASE_URL = envConfig.SUPABASE_URL || localStorage.getItem('erlangly_supabase_url') || 'https://demo.supabase.co';
+  var SUPABASE_ANON_KEY = envConfig.SUPABASE_ANON_KEY || localStorage.getItem('erlangly_supabase_anon_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJpYXQiOjE2MDAwMDAwMDAsImV4cCI6MTkwMDAwMDAwMH0.demo';
 
   var client = null;
-  var isDemoMode = SUPABASE_URL === 'https://demo.supabase.co';
+  var isDemoMode = SUPABASE_URL === 'https://demo.supabase.co' || !SUPABASE_URL;
 
   if (typeof root.supabase !== 'undefined' && root.supabase.createClient && !isDemoMode) {
     try {
@@ -152,7 +155,15 @@
             return item;
           });
           setRecords(items);
-          return Promise.resolve({ data: inserted, error: null });
+          var res = { data: inserted, error: null };
+          return {
+            select: function() {
+              return Promise.resolve(res);
+            },
+            then: function(onFulfilled, onRejected) {
+              return Promise.resolve(res).then(onFulfilled, onRejected);
+            }
+          };
         },
 
         update: function(updates) {
@@ -173,7 +184,15 @@
                 return row;
               });
               setRecords(items);
-              return Promise.resolve({ data: updatedItems, error: null });
+              var res = { data: updatedItems, error: null };
+              return {
+                select: function() {
+                  return Promise.resolve(res);
+                },
+                then: function(onFulfilled, onRejected) {
+                  return Promise.resolve(res).then(onFulfilled, onRejected);
+                }
+              };
             }
           };
         },
@@ -198,5 +217,25 @@
     module.exports = client || mockClient;
   }
   root.ErlanglySupabase = client || mockClient;
+
+  root.ErlanglySupabaseConfig = {
+    setCredentials: function(url, anonKey) {
+      if (url) localStorage.setItem('erlangly_supabase_url', url.trim());
+      if (anonKey) localStorage.setItem('erlangly_supabase_anon_key', anonKey.trim());
+      if (typeof window !== 'undefined') window.location.reload();
+    },
+    clearCredentials: function() {
+      localStorage.removeItem('erlangly_supabase_url');
+      localStorage.removeItem('erlangly_supabase_anon_key');
+      if (typeof window !== 'undefined') window.location.reload();
+    },
+    getCredentials: function() {
+      return {
+        url: SUPABASE_URL,
+        anonKey: SUPABASE_ANON_KEY,
+        isConfigured: !isDemoMode
+      };
+    }
+  };
 
 })(typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : this));

@@ -111,6 +111,7 @@
               .from('plans')
               .update(record)
               .eq('id', planId)
+              .select()
               .then(function(upRes) {
                 if (upRes.error) throw upRes.error;
                 var updatedPlan = upRes.data && upRes.data[0] ? upRes.data[0] : Object.assign({ id: planId }, record);
@@ -138,6 +139,7 @@
         return root.ErlanglySupabase
           .from('plans')
           .insert([newRecord])
+          .select()
           .then(function(insRes) {
             if (insRes.error) throw insRes.error;
             var createdPlan = insRes.data && insRes.data[0] ? insRes.data[0] : newRecord;
@@ -181,6 +183,7 @@
         return root.ErlanglySupabase
           .from('plan_versions')
           .insert([versionRecord])
+          .select()
           .then(function(vRes) {
             if (vRes.error) console.warn('Could not record version snapshot:', vRes.error);
             return vRes.data && vRes.data[0] ? vRes.data[0] : versionRecord;
@@ -370,6 +373,7 @@
       return root.ErlanglySupabase
         .from('plan_collaborators')
         .insert([record])
+        .select()
         .then(function(res) {
           if (res.error) throw res.error;
           return res.data && res.data[0] ? res.data[0] : record;
@@ -400,6 +404,7 @@
       .from('plan_collaborators')
       .update({ role: validRole })
       .eq('id', collaboratorId)
+      .select()
       .then(function(res) {
         if (res.error) throw res.error;
         return true;
