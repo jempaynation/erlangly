@@ -26,6 +26,43 @@
   <!-- Chart.js CDN for History & Forecast Charts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
+<style>
+  /*
+   * Forecasting page: dynamic chart height layout
+   * The chart panel (flex:1) fills all space between the KPI cards + model panel
+   * and the fixed-height forecast breakdown table.
+   * The right column height is anchored to the viewport via a CSS custom property
+   * (--fc-right-h) that is set by JS once the nav/header heights are known.
+   */
+  .forecasting-tool-body {
+    align-items: stretch;   /* grid rows stretch both columns to equal height */
+  }
+
+  #forecast-right-col {
+    min-height: var(--fc-right-min-h, 700px);
+  }
+
+  /* Chart panel: flex column that fills its parent */
+  #panel-chart-forecast {
+    display: flex;
+    flex-direction: column;
+    flex: 1;               /* absorb remaining space in the right col */
+    min-height: 320px;     /* never collapses below a readable height */
+    min-width: 0;
+  }
+
+  /* Chart canvas body: fills the flexible space in the panel */
+  #chart-forecast-body {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* Forecast breakdown table: fixed scrollable height, never grows */
+  #panel-forecast-table {
+    flex-shrink: 0;
+  }
+</style>
 <body>
   <!-- Navigation Header -->
   <header class="site-nav">
@@ -103,7 +140,7 @@
     </div>
 
     <!-- Main 2-Column Grid -->
-    <div class="tool-body" style="grid-template-columns: 420px minmax(0, 1fr);">
+    <div class="tool-body forecasting-tool-body" style="grid-template-columns: 420px minmax(0, 1fr);">
       <!-- Left Column: Input & Model Config Panels -->
       <div style="display: flex; flex-direction: column; gap: var(--space-6);">
         
@@ -335,7 +372,7 @@
       </div>
 
       <!-- Right Column: Visualization & Results Tables -->
-      <div style="display: flex; flex-direction: column; gap: var(--space-6);">
+      <div id="forecast-right-col" style="display: flex; flex-direction: column; gap: var(--space-6); min-height: 0;">
         
         <!-- Summary KPI & Fit Stats -->
         <div class="stat-grid">
@@ -612,7 +649,7 @@
         </div>
 
         <!-- Chart.js History vs Forecast Visualizer -->
-        <div class="panel">
+        <div class="panel" id="panel-chart-forecast" style="display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0;">
           <div class="panel-header" style="flex-wrap: wrap; gap: var(--space-2);">
             <div class="panel-title" style="display: flex; align-items: center; gap: var(--space-2);">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
@@ -676,13 +713,13 @@
             </div>
           </div>
 
-          <div class="panel-body" style="height: 340px; position: relative; width: 100%; min-width: 0; overflow: hidden;">
+          <div class="panel-body" id="chart-forecast-body" style="flex: 1; min-height: 0; position: relative; width: 100%; min-width: 0; overflow: hidden;">
             <canvas id="chart-forecast" style="width: 100%; height: 100%;"></canvas>
           </div>
         </div>
 
         <!-- Forecast Breakdown Table -->
-        <div class="panel">
+        <div class="panel" id="panel-forecast-table" style="flex-shrink: 0;">
           <div class="panel-header">
             <div class="panel-title">
               <span>Forecast Breakdown Table (<span id="lbl-forecast-table-count">0</span> periods)</span>

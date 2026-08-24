@@ -5581,6 +5581,46 @@
     }
   }
 
+  // ── Dynamic chart height wiring ──────────────────────────────────────────
+  // Sets --fc-right-min-h so the right column fills the viewport below
+  // the nav + tool-header. Runs once on load, then on resize.
+  // A ResizeObserver on #chart-forecast-body tells Chart.js to resize
+  // whenever the panel height changes (e.g. model comparison panel toggled).
+  if (typeof window !== 'undefined' && typeof ResizeObserver !== 'undefined') {
+    function computeRightColHeight() {
+      var nav = document.querySelector('.site-nav');
+      var toolHeader = document.querySelector('.tool-header');
+      var footer = document.querySelector('.site-footer');
+      var navH = nav ? nav.getBoundingClientRect().height : 64;
+      var headerH = toolHeader ? toolHeader.getBoundingClientRect().height : 0;
+      var footerH = footer ? footer.getBoundingClientRect().height : 0;
+      var mainPaddingY = 64; // matches site-main padding-top + padding-bottom
+      var gapY = 24;         // gap between tool-header and tool-body
+      var minH = window.innerHeight - navH - headerH - footerH - mainPaddingY - gapY;
+      document.documentElement.style.setProperty('--fc-right-min-h', Math.max(700, minH) + 'px');
+    }
+
+    // Wire up ResizeObserver on the chart body so Chart.js gets notified
+    var chartBodyEl = document.getElementById('chart-forecast-body');
+    if (chartBodyEl) {
+      var chartResizeObserver = new ResizeObserver(function() {
+        if (UIState.chart) {
+          UIState.chart.resize();
+        }
+      });
+      chartResizeObserver.observe(chartBodyEl);
+    }
+
+    // Compute once after paint, then keep in sync
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', computeRightColHeight);
+    } else {
+      // rAF ensures layout has settled
+      requestAnimationFrame(computeRightColHeight);
+    }
+    window.addEventListener('resize', computeRightColHeight);
+  }
+
   // Export module for testing and programmatic execution
   return {
     models: MODEL_REGISTRY,
