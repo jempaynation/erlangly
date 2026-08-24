@@ -12,6 +12,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('erlangly_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+          document.documentElement.style.colorScheme = saved;
+        }
+      } catch(e) {}
+    })();
+  </script>
   <!-- Chart.js for Coverage Visualization -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -40,6 +51,7 @@
       </ul>
 
       <div class="nav-actions">
+        <button type="button" class="theme-toggle-btn" id="btn-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">☀️</button>
         <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
       </div>
     </div>
@@ -90,7 +102,10 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4);">
               <!-- Standard Work Week Hours -->
               <div class="form-group">
-                <label for="num-work-week" class="form-label">Full-Time Standard Week</label>
+                <label for="num-work-week" class="form-label">
+                  Full-Time Standard Week
+                  <button type="button" class="help-tip" data-help-title="Full-Time Standard Work Week" data-help-text="Contracted weekly paid hours for a full-time agent before shrinkage." data-help-example="US standard: 40.0h, UK: 37.5h" aria-label="Standard week help">?</button>
+                </label>
                 <div class="input-group">
                   <input type="number" id="num-work-week" class="form-control mono" min="20" max="60" step="0.5" value="40.0">
                   <span class="input-addon">hrs/wk</span>
@@ -100,7 +115,10 @@
 
               <!-- Part-Time Mix % -->
               <div class="form-group">
-                <label for="num-pt-mix" class="form-label">Part-Time Mix</label>
+                <label for="num-pt-mix" class="form-label">
+                  Part-Time Mix
+                  <button type="button" class="help-tip" data-help-title="Part-Time Mix Percentage" data-help-text="Target percentage of headcount allocated to part-time or flexible shifts." data-help-example="Industry average: 15% to 30%" aria-label="PT mix help">?</button>
+                </label>
                 <div class="input-group">
                   <input type="number" id="num-pt-mix" class="form-control mono" min="0" max="100" value="20">
                   <span class="input-addon">%</span>
@@ -110,7 +128,10 @@
 
               <!-- Part-Time Hours -->
               <div class="form-group">
-                <label for="num-pt-hours" class="form-label">Part-Time Work Week</label>
+                <label for="num-pt-hours" class="form-label">
+                  Part-Time Work Week
+                  <button type="button" class="help-tip" data-help-title="Part-Time Hours per Week" data-help-text="Average weekly scheduled paid hours per part-time agent." data-help-example="Typical PT contracts: 20 to 25 hrs/wk" aria-label="PT hours help">?</button>
+                </label>
                 <div class="input-group">
                   <input type="number" id="num-pt-hours" class="form-control mono" min="5" max="35" step="0.5" value="20.0">
                   <span class="input-addon">hrs/wk</span>
@@ -120,7 +141,10 @@
 
               <!-- Shrinkage % -->
               <div class="form-group">
-                <label for="num-fte-shrinkage" class="form-label">Shrinkage %</label>
+                <label for="num-fte-shrinkage" class="form-label">
+                  Shrinkage %
+                  <button type="button" class="help-tip" data-help-title="Workforce Shrinkage" data-help-text="Percentage of paid agent time lost to breaks, PTO, training, meetings, and absenteeism." data-help-example="Industry typical: 28% to 35%" aria-label="Shrinkage help">?</button>
+                </label>
                 <div class="input-group">
                   <input type="number" id="num-fte-shrinkage" class="form-control mono" min="0" max="99" value="30">
                   <span class="input-addon">%</span>
@@ -130,7 +154,10 @@
 
               <!-- Days Open per Week -->
               <div class="form-group">
-                <label for="select-operating-days" class="form-label">Operating Schedule</label>
+                <label for="select-operating-days" class="form-label">
+                  Operating Schedule
+                  <button type="button" class="help-tip" data-help-title="Queue Operating Schedule" data-help-text="Number of operating days per week the queue handles incoming contacts." data-help-example="7 days for 24/7 or retail customer support" aria-label="Operating days help">?</button>
+                </label>
                 <select id="select-operating-days" class="form-control mono">
                   <option value="5">5 Days / Week (Mon-Fri)</option>
                   <option value="6">6 Days / Week (Mon-Sat)</option>

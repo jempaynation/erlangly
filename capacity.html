@@ -12,6 +12,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('erlangly_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+          document.documentElement.style.colorScheme = saved;
+        }
+      } catch(e) {}
+    })();
+  </script>
   <!-- Chart.js for Simulation Curve Visualizer -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -40,6 +51,7 @@
       </ul>
 
       <div class="nav-actions">
+        <button type="button" class="theme-toggle-btn" id="btn-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">☀️</button>
         <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
       </div>
     </div>
@@ -91,7 +103,10 @@
           <!-- Volume -->
           <div class="form-group">
             <div class="form-label">
-              <span>Call Volume</span>
+              <span>
+                Call Volume
+                <button type="button" class="help-tip" data-help-title="Interval Call Volume" data-help-text="Total incoming customer contacts offered within this planning interval." data-help-example="300 calls / 30 min = 600 calls/hr" aria-label="Volume help">?</button>
+              </span>
               <span class="form-label-val" id="lbl-vol">300</span>
             </div>
             <input type="range" id="input-vol" min="0" max="3000" step="10" value="300">
@@ -104,7 +119,10 @@
           <!-- AHT -->
           <div class="form-group">
             <div class="form-label">
-              <span>Average Handle Time (AHT)</span>
+              <span>
+                Average Handle Time (AHT)
+                <button type="button" class="help-tip" data-help-title="Average Handle Time (AHT)" data-help-text="Total customer talk time + hold time + after-call work (ACW) duration in seconds." data-help-example="180 seconds = 3.0 minutes" aria-label="AHT help">?</button>
+              </span>
               <span class="form-label-val" id="lbl-aht">180s</span>
             </div>
             <input type="range" id="input-aht" min="10" max="1200" step="5" value="180">
@@ -116,7 +134,10 @@
 
           <!-- Interval Length -->
           <div class="form-group">
-            <label for="select-interval" class="form-label">Interval Duration</label>
+            <label for="select-interval" class="form-label">
+              Interval Duration
+              <button type="button" class="help-tip" data-help-title="Interval Duration" data-help-text="Reporting bucket length. 15 or 30 minutes are standard across modern ACD/WFM suites." data-help-example="30 mins = 48 intervals/day" aria-label="Interval length help">?</button>
+            </label>
             <select id="select-interval" class="form-control mono">
               <option value="900">15 Minutes (900s)</option>
               <option value="1800" selected>30 Minutes (1,800s)</option>
@@ -127,7 +148,10 @@
           <!-- Target SLA & Threshold -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             <div class="form-group">
-              <label for="num-sla" class="form-label">Target SLA %</label>
+              <label for="num-sla" class="form-label">
+                Target SLA %
+                <button type="button" class="help-tip" data-help-title="Service Level Target" data-help-text="Target percentage of offered calls answered within the threshold time." data-help-example="80% answered in 20s standard" aria-label="SLA help">?</button>
+              </label>
               <div class="input-group">
                 <input type="number" id="num-sla" class="form-control mono" min="1" max="100" value="80">
                 <span class="input-addon">%</span>
@@ -135,7 +159,10 @@
             </div>
 
             <div class="form-group">
-              <label for="num-threshold" class="form-label">Target Time</label>
+              <label for="num-threshold" class="form-label">
+                Target Time
+                <button type="button" class="help-tip" data-help-title="Answer Threshold" data-help-text="Maximum acceptable queue wait time (seconds) to qualify as in-SLA." data-help-example="20 seconds standard for voice" aria-label="Threshold help">?</button>
+              </label>
               <div class="input-group">
                 <input type="number" id="num-threshold" class="form-control mono" min="1" max="600" value="20">
                 <span class="input-addon">sec</span>
@@ -146,7 +173,10 @@
           <!-- Max Occupancy & Shrinkage -->
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3);">
             <div class="form-group">
-              <label for="num-occupancy" class="form-label">Max Occupancy</label>
+              <label for="num-occupancy" class="form-label">
+                Max Occupancy
+                <button type="button" class="help-tip" data-help-title="Maximum Occupancy Ceiling" data-help-text="Percentage of logged-in time agents spend handling calls. Above 88-90% causes burnout." data-help-example="Industry safe range: 82% to 88%" aria-label="Occupancy help">?</button>
+              </label>
               <div class="input-group">
                 <input type="number" id="num-occupancy" class="form-control mono" min="50" max="100" value="85">
                 <span class="input-addon">%</span>
@@ -155,7 +185,10 @@
             </div>
 
             <div class="form-group">
-              <label for="num-shrinkage" class="form-label">Shrinkage %</label>
+              <label for="num-shrinkage" class="form-label">
+                Shrinkage %
+                <button type="button" class="help-tip" data-help-title="Workforce Shrinkage" data-help-text="Percentage of paid agent time lost to breaks, PTO, training, meetings, and absenteeism." data-help-example="Contact center typical: 28% to 35%" aria-label="Shrinkage help">?</button>
+              </label>
               <div class="input-group">
                 <input type="number" id="num-shrinkage" class="form-control mono" min="0" max="99" value="30">
                 <span class="input-addon">%</span>

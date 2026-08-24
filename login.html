@@ -12,6 +12,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('erlangly_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+          document.documentElement.style.colorScheme = saved;
+        }
+      } catch(e) {}
+    })();
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -33,6 +44,10 @@
         <li><a href="simulator.html" class="nav-link">Simulator</a></li>
         <li><a href="plans.html" class="nav-link">My Plans</a></li>
       </ul>
+
+      <div class="nav-actions">
+        <button type="button" class="theme-toggle-btn" id="btn-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">☀️</button>
+      </div>
     </div>
   </header>
 

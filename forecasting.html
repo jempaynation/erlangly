@@ -12,6 +12,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('erlangly_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+          document.documentElement.style.colorScheme = saved;
+        }
+      } catch(e) {}
+    })();
+  </script>
   <!-- Chart.js CDN for History & Forecast Charts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -40,6 +51,7 @@
       </ul>
 
       <div class="nav-actions">
+        <button type="button" class="theme-toggle-btn" id="btn-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">☀️</button>
         <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
       </div>
     </div>
@@ -116,12 +128,12 @@
               </div>
 
               <div class="table-container" style="max-height: 220px; overflow-y: auto;">
-                <table class="data-table" id="table-history-inputs">
+                <table class="data-table" id="table-history-inputs" style="table-layout: fixed; min-width: 240px;">
                   <thead>
                     <tr>
-                      <th>Period / Date</th>
-                      <th id="th-history-skill" style="display: none;">Skill</th>
-                      <th>Volume</th>
+                      <th style="min-width: 90px;">Period / Date</th>
+                      <th id="th-history-skill" style="display: none; white-space: nowrap; min-width: 120px;">Skill / Queue</th>
+                      <th style="min-width: 80px;">Volume</th>
                       <th style="width: 36px;"></th>
                     </tr>
                   </thead>
@@ -640,6 +652,19 @@
                 <button type="button" class="segmented-btn" id="btn-range-1m" data-range="1m">1 Mo</button>
                 <button type="button" class="segmented-btn" id="btn-range-fc" data-range="forecast">Forecast</button>
               </div>
+            </div>
+
+            <!-- Confidence Interval Band Selector -->
+            <div style="display: flex; align-items: center; gap: var(--space-2);">
+              <span class="form-hint" style="font-weight: 600; font-size: 11px; color: var(--text-secondary); margin: 0;">
+                CI Band:
+                <button type="button" class="help-tip" data-help-title="Forecast Confidence Interval" data-help-text="Statistical uncertainty interval (80% or 95%) around future point projections based on in-sample residual variance (RMSE) and horizon dispersion." data-help-example="95% CI: Range containing 95% of expected future outcomes" aria-label="Confidence interval help">?</button>
+              </span>
+              <select id="select-chart-ci" class="form-control mono" style="height: 26px; font-size: 11px; padding: 2px 6px; width: auto;" title="Select confidence interval band">
+                <option value="none">None (Point)</option>
+                <option value="80">80% CI Band</option>
+                <option value="95">95% CI Band</option>
+              </select>
             </div>
 
             <!-- Custom Date Range Pickers & Reset -->

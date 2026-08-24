@@ -12,6 +12,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('erlangly_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+          document.documentElement.style.colorScheme = saved;
+        }
+      } catch(e) {}
+    })();
+  </script>
   <!-- Chart.js for Intraday Trend -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
@@ -40,6 +51,7 @@
       </ul>
 
       <div class="nav-actions">
+        <button type="button" class="theme-toggle-btn" id="btn-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">☀️</button>
         <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
       </div>
     </div>

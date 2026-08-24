@@ -2354,16 +2354,63 @@
     lastAccuracyMetrics: null,
     lockedForecast: null,
 
-    // Chart Interactive Controls (Granularity & Date Range Zoom)
+    // Chart Interactive Controls (Granularity & Date Range Zoom & CI)
     chartGranularity: 'daily', // 'daily' | 'weekly' | 'monthly'
     chartRangePreset: 'all',   // 'all' | '1y' | '6m' | '3m' | '1m' | 'forecast' | 'custom'
     chartStartDate: null,
     chartEndDate: null,
+    confidenceInterval: 'none', // 'none' | '80' | '95'
     lastComparisonResults: [],
 
     chart: null,
     worker: null
   };
+
+  /**
+   * Compute Statistical Forecast Confidence Bounds (80% / 95% CI)
+   */
+  function computeForecastConfidenceBounds(forecastPoints, modelMetrics, historyLength, ciLevel) {
+    if (!forecastPoints || forecastPoints.length === 0 || ciLevel === 'none') {
+      return null;
+    }
+    var z = ciLevel === '95' ? 1.95996 : 1.28155; // 95% or 80%
+    var baseRmse = (modelMetrics && modelMetrics.rmse > 0) ? modelMetrics.rmse : 0;
+
+    if (baseRmse === 0) {
+      if (modelMetrics && modelMetrics.mae > 0) {
+        baseRmse = modelMetrics.mae * 1.2533; // Normal distribution approximation
+      } else if (UIState.history && UIState.history.length > 1) {
+        var mean = UIState.history.reduce(function(a, b) { return a + b.volume; }, 0) / UIState.history.length;
+        var variance = UIState.history.reduce(function(a, b) { return a + Math.pow(b.volume - mean, 2); }, 0) / (UIState.history.length - 1);
+        baseRmse = Math.sqrt(variance) * 0.15;
+      } else {
+        baseRmse = 50;
+      }
+    }
+
+    var k = Math.max(1, historyLength || (UIState.history ? UIState.history.length : 28));
+    var upper = [];
+    var lower = [];
+
+    forecastPoints.forEach(function(fp, hIdx) {
+      var h = hIdx + 1;
+      // Dispersion expands across forecast horizon
+      var se_h = baseRmse * Math.sqrt(1 + (h - 1) / k);
+      var margin = z * se_h;
+      var uVal = Math.round(fp.volume + margin);
+      var lVal = Math.max(0, Math.round(fp.volume - margin));
+      upper.push({ period: fp.period, volume: uVal, label: fp.label, skill: fp.skill });
+      lower.push({ period: fp.period, volume: lVal, label: fp.label, skill: fp.skill });
+    });
+
+    return {
+      upper: upper,
+      lower: lower,
+      level: ciLevel,
+      z: z,
+      rmse: baseRmse
+    };
+  }
 
   function renderLockedForecastUI() {
     var btnLock = document.getElementById('btn-lock-forecast');
@@ -3149,6 +3196,28 @@
     var inpChartStart = document.getElementById('input-chart-start-date');
     var inpChartEnd = document.getElementById('input-chart-end-date');
     var btnChartReset = document.getElementById('btn-chart-reset-range');
+    var selectChartCI = document.getElementById('select-chart-ci');
+
+    if (selectChartCI) {
+      selectChartCI.value = UIState.confidenceInterval || 'none';
+      selectChartCI.addEventListener('change', function() {
+        UIState.confidenceInterval = selectChartCI.value;
+        renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+        if (UIState.lastForecast) {
+          renderForecastTable(UIState.lastForecast);
+        }
+      });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('erlangly:themechange', function() {
+        // Do NOT destroy the chart — destroying causes the canvas to lose its
+        // constrained size and the replacement chart renders taller than intended.
+        // The renderChart() in-place update path (lines ~5435-5449) already
+        // updates all theme-sensitive colors without a full rebuild.
+        renderChart(UIState.lastForecast, UIState.lastComparisonResults);
+      });
+    }
 
     if (inpChartStart) {
       inpChartStart.addEventListener('change', function() {
@@ -3220,9 +3289,19 @@
           var nextDate = ErlanglyUtils.addDays(last.period, 1);
           if (nextDate) nextPeriod = nextDate.isoDate;
         }
+
+        // In multi-skill mode default to the first known skill (not 'General')
+        // so the new row appears in a real queue and is editable via the skill dropdown.
+        var defaultSkill;
+        if (UIState.skills.length > 1) {
+          defaultSkill = UIState.selectedSkill !== 'all' ? UIState.selectedSkill : UIState.skills[0];
+        } else {
+          defaultSkill = UIState.selectedSkill === 'all' ? 'General' : UIState.selectedSkill;
+        }
+
         var newRow = {
           period: nextPeriod,
-          skill: UIState.selectedSkill === 'all' ? 'General' : UIState.selectedSkill,
+          skill: defaultSkill,
           volume: 1500,
           aht: UIState.assumedAht
         };
@@ -3336,78 +3415,102 @@
       });
     }
 
-    // Actuals CSV File Dropzone (Multi-Skill Aware)
+    // Actuals CSV File Dropzone (Multi-Skill Aware with Preview Modal)
     if (accuracyDropzone && accuracyFileInput) {
       ErlanglyUtils.wireFileDrop(accuracyDropzone, accuracyFileInput, function(text, file) {
+        if (typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.showCSVPreviewModal === 'function') {
+          ErlanglyUtils.showCSVPreviewModal({
+            title: 'Actuals Demand CSV Preview',
+            file: file,
+            filename: file ? file.name : 'actuals.csv',
+            text: text,
+            requiredHeaders: ['period'],
+            optionalHeaders: ['actual', 'volume', 'calls', 'forecast', 'skill', 'queue'],
+            rowValidator: function(row) {
+              var p = (row.period || row.date || row.interval || row.day);
+              if (!p) return { valid: false, error: 'Missing period / date column value' };
+              var act = parseFloat(row.actual || row.actual_volume || row.actuals || row.volume || row.calls);
+              if (isNaN(act) || act < 0) return { valid: false, error: 'Actual volume must be a valid non-negative number' };
+              return { valid: true };
+            },
+            onConfirm: function(parsedResult) {
+              processActualsRows(parsedResult.rows, file ? file.name : 'actuals.csv');
+            }
+          });
+          return;
+        }
+
         var parsed = ErlanglyUtils.parseCSV(text);
         if (!parsed.rows || parsed.rows.length === 0) {
           ErlanglyUtils.showToast('No valid data rows found in CSV', 'warn');
           return;
         }
+        processActualsRows(parsed.rows, file ? file.name : 'actuals.csv');
+      });
+    }
 
-        var baselineForecast = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : []);
-        var forecastMap = {};
-        baselineForecast.forEach(function(f) {
-          if (f.period) {
-            var kSimple = f.period.trim().toLowerCase();
-            forecastMap[kSimple] = f.volume;
-            if (f.skill) {
-              var kSkill = (f.period.trim() + ':::' + f.skill.trim()).toLowerCase();
-              forecastMap[kSkill] = f.volume;
-            }
+    function processActualsRows(rows, filename) {
+      var baselineForecast = UIState.lockedForecast ? UIState.lockedForecast.forecast : (UIState.lastForecast ? UIState.lastForecast.forecast : []);
+      var forecastMap = {};
+      baselineForecast.forEach(function(f) {
+        if (f.period) {
+          var kSimple = f.period.trim().toLowerCase();
+          forecastMap[kSimple] = f.volume;
+          if (f.skill) {
+            var kSkill = (f.period.trim() + ':::' + f.skill.trim()).toLowerCase();
+            forecastMap[kSkill] = f.volume;
           }
-        });
-
-        // Also index per-skill forecasts if available
-        if (UIState.perSkillForecasts) {
-          Object.keys(UIState.perSkillForecasts).forEach(function(sk) {
-            var sf = UIState.perSkillForecasts[sk];
-            if (sf && sf.forecast) {
-              sf.forecast.forEach(function(f) {
-                var kSkill = (f.period.trim() + ':::' + sk.trim()).toLowerCase();
-                forecastMap[kSkill] = f.volume;
-              });
-            }
-          });
-        }
-
-        var pairs = [];
-        var matchedCount = 0;
-
-        parsed.rows.forEach(function(r, idx) {
-          var p = (r.period || r.date || r.interval || r.day || ('Period ' + (idx + 1))).trim();
-          var sk = (r.skill || r.queue || r.channel || r.lob || '').trim();
-          var act = parseFloat(r.actual || r.actual_volume || r.actuals || r.volume || r.calls || 0) || 0;
-          var keySimple = p.toLowerCase();
-          var keySkill = (p + ':::' + sk).toLowerCase();
-
-          var fc = 0;
-          if (sk && forecastMap[keySkill] !== undefined) {
-            fc = forecastMap[keySkill];
-            matchedCount++;
-          } else if (forecastMap[keySimple] !== undefined) {
-            fc = forecastMap[keySimple];
-            matchedCount++;
-          } else if (r.forecast) {
-            fc = parseFloat(r.forecast) || 0;
-          }
-
-          pairs.push({
-            period: p,
-            skill: sk || 'General',
-            forecast: fc,
-            actual: act
-          });
-        });
-
-        if (pairs.length > 0) {
-          UIState.accuracyPairs = pairs;
-          renderAccuracyTable();
-          renderAccuracyDashboard();
-          var matchMsg = matchedCount > 0 ? (' (' + matchedCount + ' auto-matched to forecast)') : '';
-          ErlanglyUtils.showToast('Uploaded ' + pairs.length + ' actuals from ' + (file ? file.name : 'CSV') + matchMsg, 'success');
         }
       });
+
+      if (UIState.perSkillForecasts) {
+        Object.keys(UIState.perSkillForecasts).forEach(function(sk) {
+          var sf = UIState.perSkillForecasts[sk];
+          if (sf && sf.forecast) {
+            sf.forecast.forEach(function(f) {
+              var kSkill = (f.period.trim() + ':::' + sk.trim()).toLowerCase();
+              forecastMap[kSkill] = f.volume;
+            });
+          }
+        });
+      }
+
+      var pairs = [];
+      var matchedCount = 0;
+
+      rows.forEach(function(r, idx) {
+        var p = (r.period || r.date || r.interval || r.day || ('Period ' + (idx + 1))).trim();
+        var sk = (r.skill || r.queue || r.channel || r.lob || '').trim();
+        var act = parseFloat(r.actual || r.actual_volume || r.actuals || r.volume || r.calls || 0) || 0;
+        var keySimple = p.toLowerCase();
+        var keySkill = (p + ':::' + sk).toLowerCase();
+
+        var fc = 0;
+        if (sk && forecastMap[keySkill] !== undefined) {
+          fc = forecastMap[keySkill];
+          matchedCount++;
+        } else if (forecastMap[keySimple] !== undefined) {
+          fc = forecastMap[keySimple];
+          matchedCount++;
+        } else if (r.forecast) {
+          fc = parseFloat(r.forecast) || 0;
+        }
+
+        pairs.push({
+          period: p,
+          skill: sk || 'General',
+          forecast: fc,
+          actual: act
+        });
+      });
+
+      if (pairs.length > 0) {
+        UIState.accuracyPairs = pairs;
+        renderAccuracyTable();
+        renderAccuracyDashboard();
+        var matchMsg = matchedCount > 0 ? (' (' + matchedCount + ' auto-matched to forecast)') : '';
+        ErlanglyUtils.showToast('Uploaded ' + pairs.length + ' actuals from ' + filename + matchMsg, 'success');
+      }
     }
 
     // Merge Actuals into Historical Training Series (Multi-Skill Aware)
@@ -3789,14 +3892,14 @@
       });
     }
 
-    // CSV File Dropzone (Multi-Skill Supported)
+    // CSV File Dropzone (Multi-Skill Supported with Preview Modal)
     var dropzone = document.getElementById('forecast-dropzone');
     var fileInput = document.getElementById('forecast-file-input');
     var selectAgg = document.getElementById('select-csv-aggregate');
 
     if (dropzone && fileInput) {
       ErlanglyUtils.wireFileDrop(dropzone, fileInput, function(text, file) {
-        if (file && UIState.worker) {
+        if (file && file.size > 2 * 1024 * 1024 && UIState.worker) {
           var pBox = document.getElementById('worker-progress-box');
           var sTxt = document.getElementById('worker-status-text');
           var pBar = document.getElementById('worker-progress-bar');
@@ -3813,6 +3916,37 @@
             type: 'parse_file',
             file: file,
             aggregateLevel: selectAgg ? selectAgg.value : 'daily'
+          });
+        } else if (typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.showCSVPreviewModal === 'function') {
+          ErlanglyUtils.showCSVPreviewModal({
+            title: 'Historical Demand Series CSV Preview',
+            file: file,
+            filename: file ? file.name : 'history.csv',
+            text: text,
+            requiredHeaders: ['period'],
+            optionalHeaders: ['volume', 'calls', 'aht', 'skill', 'queue', 'channel'],
+            rowValidator: function(row) {
+              var p = (row.period || row.date || row.interval || row.day);
+              if (!p) return { valid: false, error: 'Missing period / date column value' };
+              var vol = parseFloat(row.volume || row.calls || 100);
+              if (isNaN(vol) || vol < 0) return { valid: false, error: 'Volume must be a non-negative number' };
+              return { valid: true };
+            },
+            onConfirm: function(parsedResult) {
+              var skillsFound = {};
+              var rows = parsedResult.rows.map(function(r, i) {
+                var sk = (r.skill || r.queue || r.channel || r.lob || r.service || 'General').trim();
+                if (sk && sk !== 'General') skillsFound[sk] = true;
+                return {
+                  period: r.period || r.date || r.interval || ('Row ' + (i + 1)),
+                  skill: sk || 'General',
+                  volume: parseFloat(r.volume || r.calls || 100) || 100,
+                  aht: parseFloat(r.aht || 180) || 180
+                };
+              });
+              loadHistory(rows, Object.keys(skillsFound));
+              ErlanglyUtils.showToast('Loaded ' + rows.length + ' history periods from ' + (file ? file.name : 'CSV'), 'success');
+            }
           });
         } else {
           var parsed = ErlanglyUtils.parseCSV(text);
@@ -4081,11 +4215,14 @@
       var tr = document.createElement('tr');
 
       var tdPeriod = document.createElement('td');
+      tdPeriod.style.minWidth = '90px';
       var inputPeriod = document.createElement('input');
       inputPeriod.type = 'text';
       inputPeriod.className = 'form-control mono';
       inputPeriod.style.height = '28px';
       inputPeriod.style.fontSize = 'var(--text-xs)';
+      inputPeriod.style.width = '100%';
+      inputPeriod.style.minWidth = '80px';
       inputPeriod.value = row.period;
       inputPeriod.addEventListener('input', function() { row.period = inputPeriod.value; });
       inputPeriod.addEventListener('change', function() {
@@ -4104,17 +4241,50 @@
       if (showSkillCol) {
         var tdSkill = document.createElement('td');
         tdSkill.className = 'mono';
-        var skName = row.skill || (UIState.selectedSkill === 'all' ? 'Combined' : UIState.selectedSkill);
-        tdSkill.innerHTML = '<span class="badge ' + (skName === 'Combined' ? 'badge-neutral' : 'badge-accent') + '" style="font-size: 10px;">' + skName + '</span>';
+        tdSkill.style.whiteSpace = 'nowrap';
+
+        // Build a select with every known skill so the user can re-assign the row
+        var selSkill = document.createElement('select');
+        selSkill.className = 'form-control mono';
+        selSkill.style.height = '28px';
+        selSkill.style.fontSize = 'var(--text-xs)';
+        selSkill.style.minWidth = '110px';
+        selSkill.style.cursor = 'pointer';
+        selSkill.setAttribute('aria-label', 'Queue / Skill for this row');
+
+        // Populate options from the known skills list
+        UIState.skills.forEach(function(sk) {
+          var opt = document.createElement('option');
+          opt.value = sk;
+          opt.textContent = sk;
+          selSkill.appendChild(opt);
+        });
+
+        // Set current value
+        var currentSkill = row.skill || UIState.skills[0];
+        selSkill.value = UIState.skills.indexOf(currentSkill) !== -1 ? currentSkill : UIState.skills[0];
+        // Keep row.skill in sync immediately (covers initial assignment)
+        row.skill = selSkill.value;
+
+        selSkill.addEventListener('change', function() {
+          row.skill = selSkill.value;
+          // Re-run the full load so skill-based aggregation updates correctly
+          loadHistory(UIState.multiSkillHistory.length > 0 ? UIState.multiSkillHistory : UIState.history);
+        });
+
+        tdSkill.appendChild(selSkill);
         tr.appendChild(tdSkill);
       }
 
       var tdVol = document.createElement('td');
+      tdVol.style.minWidth = '80px';
       var inputVol = document.createElement('input');
       inputVol.type = 'number';
       inputVol.className = 'form-control mono';
       inputVol.style.height = '28px';
       inputVol.style.fontSize = 'var(--text-xs)';
+      inputVol.style.width = '100%';
+      inputVol.style.minWidth = '70px';
       inputVol.value = Math.round(row.volume);
       inputVol.addEventListener('input', function() {
         row.volume = Math.max(0, parseFloat(inputVol.value) || 0);
@@ -5227,6 +5397,39 @@
       });
 
       if (result) {
+        var isLight = typeof ErlanglyUtils !== 'undefined' && ErlanglyUtils.getTheme() === 'light';
+        var ciLevel = UIState.confidenceInterval || 'none';
+        var ciBounds = (!UIState.compareMode && ciLevel !== 'none') ? computeForecastConfidenceBounds(result.forecast, result.metrics, UIState.history.length, ciLevel) : null;
+
+        if (ciBounds && ciBounds.upper && ciBounds.lower) {
+          // Upper CI bound dataset
+          datasets.push({
+            label: 'Upper ' + ciLevel + '% CI',
+            data: createPaddedForecast(ciBounds.upper),
+            borderColor: isLight ? 'rgba(15, 118, 110, 0.45)' : 'rgba(0, 210, 211, 0.45)',
+            borderWidth: 1.5,
+            borderDash: [3, 3],
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            fill: false,
+            tension: 0.2
+          });
+
+          // Lower CI bound dataset with translucent area fill between upper and lower
+          datasets.push({
+            label: 'Lower ' + ciLevel + '% CI',
+            data: createPaddedForecast(ciBounds.lower),
+            borderColor: isLight ? 'rgba(15, 118, 110, 0.45)' : 'rgba(0, 210, 211, 0.45)',
+            borderWidth: 1.5,
+            borderDash: [3, 3],
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            fill: '-1',
+            backgroundColor: isLight ? 'rgba(15, 118, 110, 0.12)' : 'rgba(0, 210, 211, 0.14)',
+            tension: 0.2
+          });
+        }
+
         datasets.push({
           label: result.modelName + skillSuffix + ' (Active)',
           data: createPaddedForecast(result.forecast),
@@ -5237,7 +5440,7 @@
           pointRadius: combinedLabels.length > 50 ? 0 : 4,
           pointHoverRadius: 6,
           pointBackgroundColor: '#10b981',
-          fill: !UIState.compareMode,
+          fill: (!UIState.compareMode && ciLevel === 'none'),
           tension: 0.2
         });
       }
@@ -5266,9 +5469,28 @@
       }
     }
 
+    var isLight = typeof ErlanglyUtils !== 'undefined' && ErlanglyUtils.getTheme() === 'light';
+    var legendColor = isLight ? '#475569' : '#94a3b8';
+    var tooltipBg = isLight ? '#ffffff' : '#0f172a';
+    var tooltipBorder = isLight ? '#cbd5e1' : '#2b3954';
+    var tooltipText = isLight ? '#0f172a' : '#f8fafc';
+    var gridXColor = isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.04)';
+    var gridYColor = isLight ? 'rgba(0, 0, 0, 0.07)' : 'rgba(255, 255, 255, 0.06)';
+    var tickColor = isLight ? '#64748b' : '#94a3b8';
+
     if (UIState.chart) {
       UIState.chart.data.labels = combinedLabels;
       UIState.chart.data.datasets = datasets;
+      UIState.chart.options.plugins.legend.display = UIState.compareMode || (UIState.confidenceInterval && UIState.confidenceInterval !== 'none');
+      UIState.chart.options.plugins.legend.labels.color = legendColor;
+      UIState.chart.options.plugins.tooltip.backgroundColor = tooltipBg;
+      UIState.chart.options.plugins.tooltip.borderColor = tooltipBorder;
+      UIState.chart.options.plugins.tooltip.titleColor = tooltipText;
+      UIState.chart.options.plugins.tooltip.bodyColor = tooltipText;
+      UIState.chart.options.scales.x.grid.color = gridXColor;
+      UIState.chart.options.scales.x.ticks.color = tickColor;
+      UIState.chart.options.scales.y.grid.color = gridYColor;
+      UIState.chart.options.scales.y.ticks.color = tickColor;
       UIState.chart.update();
       return;
     }
@@ -5289,17 +5511,19 @@
         },
         plugins: {
           legend: {
-            display: UIState.compareMode,
+            display: UIState.compareMode || (UIState.confidenceInterval && UIState.confidenceInterval !== 'none'),
             labels: {
-              color: '#94a3b8',
+              color: legendColor,
               font: { family: 'IBM Plex Mono', size: 11 },
               boxWidth: 12
             }
           },
           tooltip: {
-            backgroundColor: '#0f172a',
-            borderColor: '#2b3954',
+            backgroundColor: tooltipBg,
+            borderColor: tooltipBorder,
             borderWidth: 1,
+            titleColor: tooltipText,
+            bodyColor: tooltipText,
             titleFont: { family: 'IBM Plex Mono', size: 12 },
             bodyFont: { family: 'IBM Plex Mono', size: 12 },
             callbacks: {
@@ -5313,17 +5537,17 @@
         },
         scales: {
           x: {
-            grid: { color: 'rgba(255, 255, 255, 0.04)' },
+            grid: { color: gridXColor },
             ticks: {
-              color: '#64748b',
+              color: tickColor,
               font: { family: 'IBM Plex Mono', size: 10 },
               maxTicksLimit: 14
             }
           },
           y: {
-            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+            grid: { color: gridYColor },
             ticks: {
-              color: '#94a3b8',
+              color: tickColor,
               font: { family: 'IBM Plex Mono', size: 11 },
               callback: function(val) { return Number(val).toLocaleString(); }
             }

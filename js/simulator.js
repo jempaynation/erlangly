@@ -693,6 +693,17 @@
       });
     }
 
+    // Theme change listener for Chart.js re-rendering
+    if (typeof window !== 'undefined') {
+      window.addEventListener('erlangly:themechange', function() {
+        if (state.chart) {
+          state.chart.destroy();
+          state.chart = null;
+        }
+        renderComparisonChart();
+      });
+    }
+
     // Table view mode buttons
     if (btnTableViewPoints && btnTableViewPercentiles) {
       btnTableViewPoints.addEventListener('click', function() {

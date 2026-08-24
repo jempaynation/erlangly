@@ -227,16 +227,16 @@ it's promoted into a numbered phase.
 - [x] `erlangly-qa` sign-off
 
 ## Phase 14 — Quick Wins & Polish
-**Status:** Not started
+**Status:** Done (2026-08-25)
 *Near-term (30–60 day) improvements identified in the product strategy review. These are
 small, independent, high-value items that don't require new skills or architecture
 changes — good candidates to pick up in any order, ahead of the larger v3–v6 phases below.*
-- [ ] Dark/light theme toggle (keep dark as default; extend the existing token system in `css/styles.css` rather than introducing a second stylesheet)
-- [ ] Expand inline help & examples: contextual tooltips/examples on inputs across all five tools
-- [ ] Confidence intervals on forecast charts (visual band around the forecast line — precursor to the fuller Monte Carlo confidence bands in Phase 10)
-- [ ] Improve mobile responsiveness beyond the Phase 7 pass and the Phase 10 real-time-specific mobile view (general pass across remaining tools)
-- [ ] Data validation preview before import: show a preview/summary of parsed CSV rows (including malformed-row counts) before committing an upload, across all CSV-upload entry points
-- [ ] `erlangly-qa` sign-off
+- [x] Dark/light theme toggle (keep dark as default; extend the existing token system in `css/styles.css` rather than introducing a second stylesheet)
+- [x] Expand inline help & examples: contextual tooltips/examples on inputs across all five tools
+- [x] Confidence intervals on forecast charts (visual band around the forecast line — precursor to the fuller Monte Carlo confidence bands in Phase 10)
+- [x] Improve mobile responsiveness beyond the Phase 7 pass and the Phase 10 real-time-specific mobile view (general pass across remaining tools)
+- [x] Data validation preview before import: show a preview/summary of parsed CSV rows (including malformed-row counts) before committing an upload, across all CSV-upload entry points
+- [x] `erlangly-qa` sign-off
 
 ## Phase 15 — AI Forecasting & Insights (v3)
 **Status:** Not started — **requires new skill: `erlangly-ai-engineer`** (see `AGENTS.md`)

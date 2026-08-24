@@ -33,6 +33,41 @@ When a phase passes audit:
 
 ---
 
+## [Phase 14] — Quick Wins & Polish — 2026-08-25
+**QA sign-off:** erlangly-qa
+
+### Built
+- **Dark/Light Theme Toggle System (`css/styles.css`, `js/main.js`, all 8 HTML files)**:
+  - Extended CSS token design system in `css/styles.css` with `:root[data-theme="light"]` and `[data-theme="light"]` custom property overrides (near-white background, crisp borders, legible high-contrast text, surface cards, and adapted chart colors).
+  - Implemented `ErlanglyUtils.getTheme()`, `setTheme(theme)`, `toggleTheme()`, and `initTheme()` in `js/main.js` with `localStorage` persistence (`erlangly_theme`) and `erlangly:themechange` event dispatch.
+  - Added anti-FOUC inline head script and `.theme-toggle-btn` navigation button with dynamic emoji icon (`☀️` / `🌙`) and hover/focus states across `index.html`, `forecasting.html`, `capacity.html`, `scheduling.html`, `realtime.html`, `simulator.html`, `plans.html`, and `login.html`.
+  - Added theme change event listeners across Chart.js visualizers in `forecasting.js`, `capacity.js`, `scheduling.js`, and `simulator.js` to update gridlines, text, and axes colors.
+- **Contextual Inline Help & WFM Domain Examples (`css/styles.css`, `js/main.js`, all tools)**:
+  - Created `.tooltip-container`, `.help-tip`, `.tooltip-bubble`, `.tooltip-title`, `.tooltip-example`, and positional classes (`.tip-left`, `.tip-right`) in `css/styles.css` with backdrop blur, subtle borders, and smooth micro-animations.
+  - Added `ErlanglyUtils.initTooltips(container)` in `js/main.js` with viewport boundary collision detection, keyboard navigation (`focus`/`blur`/`escape`), hover support, and ARIA attributes (`role="tooltip"`, `aria-describedby`).
+  - Added contextual `.help-tip` elements with realistic WFM domain definitions and numerical examples to inputs on Hero mini-calc, Capacity, Forecasting, Scheduling, Real-time, and Simulator.
+- **Statistical Confidence Intervals on Forecast Charts (`forecasting.html`, `js/forecasting.js`)**:
+  - Implemented `computeForecastConfidenceBounds(points, metrics, k, level)` in `js/forecasting.js` supporting Point Forecast, 80% CI ($z = 1.282$), and 95% CI ($z = 1.960$) with horizon standard error dispersion $\sigma_h = \text{RMSE} \cdot \sqrt{1 + \frac{h-1}{k}}$.
+  - Added Confidence Interval selector dropdown control in the forecast chart toolbar.
+  - Rendered upper bound line (`borderDash: [3, 3]`) and lower bound line with translucent area fill (`fill: '-1'`) on Chart.js.
+  - Added rich Chart.js hover tooltips displaying point forecast alongside confidence intervals.
+- **Universal Data Validation Preview Modal (`css/styles.css`, `js/main.js`, all tool dropzones)**:
+  - Built modal dialog `ErlanglyUtils.showCSVPreviewModal(options)` displaying file metadata, valid row count, skipped/error row count, diagnostic line-by-line error alerts, and a scrollable 7-row parsed table preview before committing an upload.
+  - Connected preview modal to CSV dropzones in Capacity Planning (`capacity.js`), Forecasting history & actuals (`forecasting.js`), and Shift Scheduling agent roster (`scheduling.js`).
+- **Comprehensive Mobile Responsiveness Pass (`css/styles.css`)**:
+  - Added touch target padding ($\ge 44\text{px}$) for mobile controls, `.table-responsive` horizontal scrolling containers, flexible stacked panels for $\le 860\text{px}$, $\le 640\text{px}$, and $\le 480\text{px}$ viewports.
+  - Verified navigation drawer toggle, panel stacking, and layout readability on 375px mobile viewports.
+
+### Found & fixed during QA
+- Guarded optional button and input DOM references in `js/capacity.js` (`btnSendSingleScheduling`, `btnSampleCSV`, `btnDownloadTemplate`, `btnExportBulkCSV`, `btnSendBulkScheduling`) to prevent null reference warnings.
+- Fixed `parseCSV` in `js/main.js` to skip completely empty all-blank cell lines (e.g. `,,`), preventing phantom empty rows.
+- Added Test Suite 21 to `test/run-tests.js` verifying theme switching, CI calculations, horizon error expansion, and CSV validation (336 total tests passing).
+
+### Deviations from spec (if any)
+- None.
+
+---
+
 ## [Phase 11] — Collaboration & Multi-Skill Routing — 2026-08-21
 **QA sign-off:** erlangly-qa
 

@@ -342,27 +342,29 @@
     }
 
     // Send single requirement to Scheduling
-    btnSendSingleScheduling.addEventListener('click', function() {
-      var res = Erlangly.agentsRequired(getSingleParams());
-      var handoffPayload = {
-        source: 'capacity_single',
-        intervalLength: state.single.intervalSeconds,
-        targetSLA: state.single.targetServiceLevel,
-        shrinkage: state.single.shrinkage,
-        intervals: [
-          {
-            interval: '09:00',
-            volume: state.single.volume,
-            aht: state.single.aht,
-            erlangs: res.trafficIntensity,
-            requiredAgents: res.baseAgents,
-            staffedAgents: res.staffedAgents
-          }
-        ]
-      };
-      ErlanglyUtils.setHandoff('scheduling', handoffPayload);
-      window.location.href = 'scheduling.html?from=capacity';
-    });
+    if (btnSendSingleScheduling) {
+      btnSendSingleScheduling.addEventListener('click', function() {
+        var res = Erlangly.agentsRequired(getSingleParams());
+        var handoffPayload = {
+          source: 'capacity_single',
+          intervalLength: state.single.intervalSeconds,
+          targetSLA: state.single.targetServiceLevel,
+          shrinkage: state.single.shrinkage,
+          intervals: [
+            {
+              interval: '09:00',
+              volume: state.single.volume,
+              aht: state.single.aht,
+              erlangs: res.trafficIntensity,
+              requiredAgents: res.baseAgents,
+              staffedAgents: res.staffedAgents
+            }
+          ]
+        };
+        ErlanglyUtils.setHandoff('scheduling', handoffPayload);
+        window.location.href = 'scheduling.html?from=capacity';
+      });
+    }
   }
 
   function getSingleParams() {
@@ -473,80 +475,144 @@
   function setupBulkEventListeners() {
     // Dropzone wiring
     ErlanglyUtils.wireFileDrop(bulkDropzone, bulkFileInput, function(text, file) {
-      parseBulkCSV(text, file.name);
+      parseBulkCSV(text, file ? file.name : 'bulk_intervals.csv', file);
     });
 
     // Sample data button
-    btnSampleCSV.addEventListener('click', function() {
-      loadBulkData(SAMPLE_BULK_DATA);
-      ErlanglyUtils.showToast('Loaded 24 sample daytime intervals (08:00 - 20:00)', 'success');
-    });
+    if (btnSampleCSV) {
+      btnSampleCSV.addEventListener('click', function() {
+        loadBulkData(SAMPLE_BULK_DATA);
+        ErlanglyUtils.showToast('Loaded 24 sample daytime intervals (08:00 - 20:00)', 'success');
+      });
+    }
 
     // Download template CSV
-    btnDownloadTemplate.addEventListener('click', function() {
-      var headers = ['interval', 'volume', 'aht'];
-      var rows = [
-        ['08:00', 120, 180],
-        ['08:30', 250, 180],
-        ['09:00', 400, 190],
-        ['09:30', 450, 200]
-      ];
-      ErlanglyUtils.exportCSV('capacity_template.csv', headers, rows);
-    });
+    if (btnDownloadTemplate) {
+      btnDownloadTemplate.addEventListener('click', function() {
+        var headers = ['interval', 'volume', 'aht'];
+        var rows = [
+          ['08:00', 120, 180],
+          ['08:30', 250, 180],
+          ['09:00', 400, 190],
+          ['09:30', 450, 200]
+        ];
+        ErlanglyUtils.exportCSV('capacity_template.csv', headers, rows);
+      });
+    }
 
     // Global constraints
     [bulkTargetSLA, bulkTargetTime, bulkOccupancyCap, bulkShrinkage, bulkIntervalLen].forEach(function(el) {
-      el.addEventListener('input', processBulkData);
-      el.addEventListener('change', processBulkData);
+      if (el) {
+        el.addEventListener('input', processBulkData);
+        el.addEventListener('change', processBulkData);
+      }
     });
 
     // Export Bulk Plan as CSV
-    btnExportBulkCSV.addEventListener('click', function() {
-      if (!state.bulk.results || state.bulk.results.length === 0) return;
-      var headers = ['Interval', 'Volume', 'AHT_Seconds', 'Traffic_Erlangs', 'Base_Agents', 'Staffed_Agents', 'Service_Level_Pct', 'ASA_Seconds', 'Occupancy_Pct', 'Status'];
-      var rows = state.bulk.results.map(function(r) {
-        return [
-          r.interval,
-          r.volume,
-          r.aht,
-          r.trafficIntensity.toFixed(2),
-          r.baseAgents,
-          r.staffedAgents,
-          (r.serviceLevel * 100).toFixed(1) + '%',
-          r.asa.toFixed(1),
-          (r.occupancy * 100).toFixed(1) + '%',
-          r.serviceLevel >= state.bulk.targetServiceLevel ? 'ON_TARGET' : 'BREACH'
-        ];
+    if (btnExportBulkCSV) {
+      btnExportBulkCSV.addEventListener('click', function() {
+        if (!state.bulk.results || state.bulk.results.length === 0) return;
+        var headers = ['Interval', 'Volume', 'AHT_Seconds', 'Traffic_Erlangs', 'Base_Agents', 'Staffed_Agents', 'Service_Level_Pct', 'ASA_Seconds', 'Occupancy_Pct', 'Status'];
+        var rows = state.bulk.results.map(function(r) {
+          return [
+            r.interval,
+            r.volume,
+            r.aht,
+            r.trafficIntensity.toFixed(2),
+            r.baseAgents,
+            r.staffedAgents,
+            (r.serviceLevel * 100).toFixed(1) + '%',
+            r.asa.toFixed(1),
+            (r.occupancy * 100).toFixed(1) + '%',
+            r.serviceLevel >= state.bulk.targetServiceLevel ? 'ON_TARGET' : 'BREACH'
+          ];
+        });
+        ErlanglyUtils.exportCSV('interval_capacity_plan.csv', headers, rows);
       });
-      ErlanglyUtils.exportCSV('interval_capacity_plan.csv', headers, rows);
-    });
+    }
 
     // Send Bulk Plan to Scheduling
-    btnSendBulkScheduling.addEventListener('click', function() {
-      if (!state.bulk.results || state.bulk.results.length === 0) return;
-      var handoffPayload = {
-        source: 'capacity_bulk',
-        intervalLength: state.bulk.intervalSeconds,
-        targetSLA: state.bulk.targetServiceLevel,
-        shrinkage: state.bulk.shrinkage,
-        intervals: state.bulk.results.map(function(r) {
-          return {
-            interval: r.interval,
-            volume: r.volume,
-            aht: r.aht,
-            erlangs: r.trafficIntensity,
-            requiredAgents: r.baseAgents,
-            staffedAgents: r.staffedAgents
-          };
-        })
-      };
-      ErlanglyUtils.setHandoff('scheduling', handoffPayload);
-      window.location.href = 'scheduling.html?from=capacity';
-    });
+    if (btnSendBulkScheduling) {
+      btnSendBulkScheduling.addEventListener('click', function() {
+        if (!state.bulk.results || state.bulk.results.length === 0) return;
+        var handoffPayload = {
+          source: 'capacity_bulk',
+          intervalLength: state.bulk.intervalSeconds,
+          targetSLA: state.bulk.targetServiceLevel,
+          shrinkage: state.bulk.shrinkage,
+          intervals: state.bulk.results.map(function(r) {
+            return {
+              interval: r.interval,
+              volume: r.volume,
+              aht: r.aht,
+              erlangs: r.trafficIntensity,
+              requiredAgents: r.baseAgents,
+              staffedAgents: r.staffedAgents
+            };
+          })
+        };
+        ErlanglyUtils.setHandoff('scheduling', handoffPayload);
+        window.location.href = 'scheduling.html?from=capacity';
+      });
+    }
+
+    // Theme change listener for Chart.js re-rendering
+    if (typeof window !== 'undefined') {
+      window.addEventListener('erlangly:themechange', function() {
+        if (state.sim && state.sim.results) {
+          runSimulation();
+        }
+        if (state.mq && state.mq.results) {
+          renderMultiQueueChart(state.mq.results);
+        }
+      });
+    }
   }
 
-  // --- Bulk CSV Parser ---
-  function parseBulkCSV(text, filename) {
+  // --- Bulk CSV Parser with Validation Preview ---
+  function parseBulkCSV(text, filename, fileObj) {
+    if (typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.showCSVPreviewModal === 'function') {
+      ErlanglyUtils.showCSVPreviewModal({
+        title: 'Bulk Intervals CSV Preview',
+        file: fileObj,
+        filename: filename,
+        text: text,
+        requiredHeaders: ['interval', 'volume'],
+        optionalHeaders: ['aht', 'target_sl', 'shrinkage'],
+        rowValidator: function(row, lineNum) {
+          var volVal = parseFloat(row.volume || row.calls || row.interactions || row.count);
+          if (isNaN(volVal) || volVal < 0) {
+            return { valid: false, error: 'Volume must be a non-negative number' };
+          }
+          if (row.aht !== undefined && row.aht !== '') {
+            var ahtVal = parseFloat(row.aht || row.handletime || row.duration);
+            if (isNaN(ahtVal) || ahtVal <= 0) {
+              return { valid: false, error: 'AHT must be a positive number of seconds' };
+            }
+          }
+          return { valid: true };
+        },
+        onConfirm: function(parsedResult) {
+          var rows = [];
+          parsedResult.rows.forEach(function(row, idx) {
+            var intervalVal = row.interval || row.time || row.period || row.hour || ('Interval ' + (idx + 1));
+            var volVal = parseFloat(row.volume || row.calls || row.interactions || row.count || 0);
+            var ahtVal = parseFloat(row.aht || row.handletime || row.duration || row.avg_handle_time || 180);
+            rows.push({
+              interval: intervalVal,
+              volume: Math.max(0, volVal),
+              aht: Math.max(1, ahtVal)
+            });
+          });
+          if (rows.length > 0) {
+            loadBulkData(rows);
+            ErlanglyUtils.showToast('Imported ' + rows.length + ' intervals from ' + filename, 'success');
+          }
+        }
+      });
+      return;
+    }
+
     var parsed = ErlanglyUtils.parseCSV(text);
     if (!parsed.rows || parsed.rows.length === 0) {
       ErlanglyUtils.showToast('CSV contains no data rows.', 'error');

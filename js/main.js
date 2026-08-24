@@ -108,6 +108,15 @@
     for (var r = 1; r < lines.length; r++) {
       var line = lines[r];
       if (line.length === 0 || (line.length === 1 && line[0] === '')) continue;
+      var isAllEmpty = true;
+      for (var c = 0; c < line.length; c++) {
+        if (line[c].trim() !== '') {
+          isAllEmpty = false;
+          break;
+        }
+      }
+      if (isAllEmpty) continue;
+
       var obj = {};
       for (var h = 0; h < headers.length; h++) {
         var key = headers[h] || ('col_' + h);
@@ -533,22 +542,420 @@
     }
   };
 
+  /**
+   * Theme Management (Dark / Light Theme Toggle & Persistence)
+   */
+  ErlanglyUtils.getTheme = function() {
+    if (typeof localStorage !== 'undefined') {
+      var saved = localStorage.getItem('erlangly_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    }
+    if (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) {
+      return document.documentElement.getAttribute('data-theme');
+    }
+    return 'dark';
+  };
+
+  ErlanglyUtils.setTheme = function(theme) {
+    theme = theme === 'light' ? 'light' : 'dark';
+    if (typeof document !== 'undefined') {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.style.colorScheme = theme;
+
+      // Update all toggle buttons on page
+      var btns = document.querySelectorAll('.theme-toggle-btn');
+      btns.forEach(function(btn) {
+        btn.setAttribute('aria-label', theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme');
+        btn.setAttribute('title', theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme');
+        btn.innerHTML = theme === 'dark' ? '☀️' : '🌙';
+      });
+    }
+
+    if (typeof localStorage !== 'undefined') {
+      try {
+        localStorage.setItem('erlangly_theme', theme);
+      } catch (e) {
+        console.warn('Failed to save theme in localStorage:', e);
+      }
+    }
+
+    // Dispatch global event for Chart.js and other visualizers
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      var evt;
+      try {
+        evt = new CustomEvent('erlangly:themechange', { detail: { theme: theme } });
+      } catch (e) {
+        evt = document.createEvent('CustomEvent');
+        evt.initCustomEvent('erlangly:themechange', true, true, { theme: theme });
+      }
+      window.dispatchEvent(evt);
+    }
+    return theme;
+  };
+
+  ErlanglyUtils.toggleTheme = function() {
+    var current = ErlanglyUtils.getTheme();
+    var next = current === 'dark' ? 'light' : 'dark';
+    return ErlanglyUtils.setTheme(next);
+  };
+
+  ErlanglyUtils.initTheme = function() {
+    var currentTheme = ErlanglyUtils.getTheme();
+    ErlanglyUtils.setTheme(currentTheme);
+
+    if (typeof document !== 'undefined') {
+      var btns = document.querySelectorAll('.theme-toggle-btn');
+      btns.forEach(function(btn) {
+        if (!btn.dataset.themeBound) {
+          btn.dataset.themeBound = 'true';
+          btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            ErlanglyUtils.toggleTheme();
+          });
+        }
+      });
+    }
+  };
+
+  /**
+   * Contextual Inline Help & Tooltip System
+   * Wires accessible tooltips across forms, inputs, and tables.
+   */
+  ErlanglyUtils.initTooltips = function(container) {
+    if (typeof document === 'undefined') return;
+    var rootEl = container || document;
+    var tips = rootEl.querySelectorAll('.help-tip[data-help-text], [data-tooltip]');
+
+    // One shared bubble appended to <body> so it escapes any overflow:hidden ancestor.
+    // We reuse / lazily create it.
+    var sharedBubble = document.getElementById('erlangly-shared-tooltip');
+    if (!sharedBubble) {
+      sharedBubble = document.createElement('div');
+      sharedBubble.id = 'erlangly-shared-tooltip';
+      sharedBubble.className = 'tooltip-bubble tooltip-bubble-fixed';
+      sharedBubble.setAttribute('role', 'tooltip');
+      document.body.appendChild(sharedBubble);
+    }
+
+    // Hide bubble when clicking elsewhere
+    document.addEventListener('click', function(e) {
+      if (!e.target.classList.contains('help-tip')) {
+        sharedBubble.style.opacity = '0';
+        sharedBubble.style.visibility = 'hidden';
+        sharedBubble.style.pointerEvents = 'none';
+      }
+    }, true);
+
+    function positionBubble(triggerEl) {
+      var rect = triggerEl.getBoundingClientRect();
+      var bw = sharedBubble.offsetWidth || 290;
+      var bh = sharedBubble.offsetHeight || 80;
+      var vw = window.innerWidth || document.documentElement.clientWidth;
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      var MARGIN = 10;
+
+      // Preferred: above the button, centred
+      var top = rect.top - bh - 10;
+      var left = rect.left + rect.width / 2 - bw / 2;
+
+      // If would go above viewport, flip below
+      if (top < MARGIN) {
+        top = rect.bottom + 10;
+        sharedBubble.dataset.arrowDir = 'up'; // arrow points up (bubble is below)
+      } else {
+        sharedBubble.dataset.arrowDir = 'down';
+      }
+
+      // Clamp horizontally
+      if (left + bw > vw - MARGIN) left = vw - bw - MARGIN;
+      if (left < MARGIN) left = MARGIN;
+
+      sharedBubble.style.top = top + 'px';
+      sharedBubble.style.left = left + 'px';
+    }
+
+    function showBubble(triggerEl, title, text, example) {
+      var contentHtml = '';
+      if (title) contentHtml += '<div class="tooltip-title"><span>ℹ️</span> ' + title + '</div>';
+      contentHtml += '<div>' + text + '</div>';
+      if (example) contentHtml += '<div class="tooltip-example"><strong>Example:</strong> ' + example + '</div>';
+      sharedBubble.innerHTML = contentHtml;
+
+      // Make visible (but transparent) first so offsetWidth/Height resolve correctly
+      sharedBubble.style.visibility = 'visible';
+      sharedBubble.style.opacity = '0';
+      sharedBubble.style.pointerEvents = 'auto';
+
+      positionBubble(triggerEl);
+
+      // Fade in
+      sharedBubble.style.opacity = '1';
+    }
+
+    function hideBubble() {
+      sharedBubble.style.opacity = '0';
+      sharedBubble.style.visibility = 'hidden';
+      sharedBubble.style.pointerEvents = 'none';
+    }
+
+    tips.forEach(function(el) {
+      if (el.dataset.tooltipBound) return;
+      el.dataset.tooltipBound = 'true';
+
+      if (!el.getAttribute('tabindex')) el.setAttribute('tabindex', '0');
+      if (!el.getAttribute('role')) el.setAttribute('role', 'button');
+
+      var tipId = 'erlangly-shared-tooltip';
+      el.setAttribute('aria-describedby', tipId);
+
+      var title = el.getAttribute('data-help-title') || '';
+      var text = el.getAttribute('data-help-text') || el.getAttribute('data-tooltip') || '';
+      var example = el.getAttribute('data-help-example') || '';
+
+      el.addEventListener('mouseenter', function() { showBubble(el, title, text, example); });
+      el.addEventListener('focus', function() { showBubble(el, title, text, example); });
+      el.addEventListener('mouseleave', function() { hideBubble(); });
+      el.addEventListener('blur', function() { hideBubble(); });
+      el.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') { hideBubble(); el.blur(); }
+      });
+      el.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var isVisible = sharedBubble.style.visibility === 'visible' && sharedBubble.style.opacity === '1';
+        if (isVisible) {
+          hideBubble();
+        } else {
+          showBubble(el, title, text, example);
+        }
+      });
+    });
+  };
+
+  /**
+   * Universal CSV Import Validation Preview Modal
+   */
+  ErlanglyUtils.showCSVPreviewModal = function(options) {
+    if (typeof document === 'undefined' || !options) return;
+    var rawText = options.text || '';
+    var file = options.file || null;
+    var filename = file ? file.name : (options.filename || 'import.csv');
+    var requiredHeaders = (options.requiredHeaders || []).map(function(h) { return h.toLowerCase().replace(/[^a-z0-9_]/g, ''); });
+
+    var parsed = ErlanglyUtils.parseCSV(rawText);
+    var rows = parsed.rows || [];
+    var headers = parsed.headers || [];
+    var normHeaders = parsed.normalizedHeaders || [];
+
+    // Header validation
+    var matchedRequired = [];
+    var missingRequired = [];
+    requiredHeaders.forEach(function(req) {
+      if (normHeaders.indexOf(req) !== -1) {
+        matchedRequired.push(req);
+      } else {
+        missingRequired.push(req);
+      }
+    });
+
+    // Row validation
+    var validRows = [];
+    var malformedRows = [];
+
+    rows.forEach(function(row, idx) {
+      var lineNum = idx + 2;
+      var isRowEmpty = Object.values(row).every(function(v) { return String(v).trim() === ''; });
+      if (isRowEmpty) return;
+
+      var isValid = true;
+      var errReason = '';
+
+      for (var r = 0; r < requiredHeaders.length; r++) {
+        var rKey = requiredHeaders[r];
+        if (normHeaders.indexOf(rKey) !== -1) {
+          var val = row[rKey];
+          if (val === undefined || val === null || String(val).trim() === '') {
+            isValid = false;
+            errReason = 'Missing required column value "' + rKey + '"';
+            break;
+          }
+        }
+      }
+
+      if (isValid && typeof options.rowValidator === 'function') {
+        var vRes = options.rowValidator(row, lineNum);
+        if (vRes && vRes.valid === false) {
+          isValid = false;
+          errReason = vRes.error || 'Invalid row data';
+        }
+      }
+
+      if (isValid) {
+        validRows.push(row);
+      } else {
+        malformedRows.push({ line: lineNum, row: row, reason: errReason });
+      }
+    });
+
+    var existing = document.getElementById('modal-csv-preview-overlay');
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
+    var overlay = document.createElement('div');
+    overlay.id = 'modal-csv-preview-overlay';
+    overlay.className = 'csv-preview-modal-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'csv-preview-modal-title');
+
+    var modal = document.createElement('div');
+    modal.className = 'csv-preview-modal';
+
+    var modalHeader = document.createElement('div');
+    modalHeader.className = 'csv-preview-header';
+    modalHeader.innerHTML = 
+      '<div class="csv-preview-title" id="csv-preview-modal-title">' +
+        '<span>📊</span>' +
+        '<span>' + (options.title || 'CSV Import Preview & Validation') + '</span>' +
+      '</div>' +
+      '<button type="button" class="btn btn-ghost btn-sm btn-close-csv-preview" aria-label="Close modal" style="padding: 4px 8px; font-size: 16px;">✕</button>';
+
+    var modalBody = document.createElement('div');
+    modalBody.className = 'csv-preview-body';
+
+    var summaryHtml = 
+      '<div class="csv-stat-summary">' +
+        '<div class="csv-stat-card">' +
+          '<div class="csv-stat-label">File</div>' +
+          '<div class="csv-stat-val" style="font-size: var(--text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="' + filename + '">' + filename + '</div>' +
+        '</div>' +
+        '<div class="csv-stat-card">' +
+          '<div class="csv-stat-label">Total Rows</div>' +
+          '<div class="csv-stat-val">' + rows.length.toLocaleString() + '</div>' +
+        '</div>' +
+        '<div class="csv-stat-card valid">' +
+          '<div class="csv-stat-label">Valid Rows</div>' +
+          '<div class="csv-stat-val text-success">' + validRows.length.toLocaleString() + '</div>' +
+        '</div>' +
+        '<div class="csv-stat-card' + (malformedRows.length > 0 ? ' skipped' : '') + '">' +
+          '<div class="csv-stat-label">Skipped / Errors</div>' +
+          '<div class="csv-stat-val ' + (malformedRows.length > 0 ? 'text-warn' : 'text-muted') + '">' + malformedRows.length.toLocaleString() + '</div>' +
+        '</div>' +
+      '</div>';
+
+    var alertHtml = '';
+    if (missingRequired.length > 0) {
+      alertHtml += '<div class="csv-validation-alerts" style="border-color: var(--danger); background: var(--danger-muted);">' +
+        '<div style="color: var(--danger); font-weight: 600;">🚫 Missing Required Column(s): ' + missingRequired.join(', ') + '</div>' +
+        '<div style="color: var(--text-secondary);">Your file must contain columns named: ' + requiredHeaders.join(', ') + '. Please check headers and retry.</div>' +
+      '</div>';
+    } else if (malformedRows.length > 0) {
+      var errList = malformedRows.slice(0, 4).map(function(m) {
+        return '<li>Line ' + m.line + ': ' + m.reason + '</li>';
+      }).join('');
+      alertHtml += '<div class="csv-validation-alerts" style="border-color: var(--warn); background: var(--warn-muted);">' +
+        '<div style="color: var(--warn); font-weight: 600;">⚠️ ' + malformedRows.length + ' Malformed Row(s) Detected (Will be skipped on import):</div>' +
+        '<ul style="padding-left: 20px; color: var(--text-secondary); margin: 0;">' + errList + (malformedRows.length > 4 ? '<li>...and ' + (malformedRows.length - 4) + ' more</li>' : '') + '</ul>' +
+      '</div>';
+    }
+
+    var previewRows = validRows.slice(0, 7);
+    var tableHtml = '<div class="csv-preview-table-wrap"><table class="csv-preview-table"><thead><tr>';
+    tableHtml += '<th style="width: 40px;">#</th>';
+    headers.forEach(function(h) {
+      tableHtml += '<th>' + h + '</th>';
+    });
+    tableHtml += '</tr></thead><tbody>';
+
+    if (previewRows.length === 0) {
+      tableHtml += '<tr><td colspan="' + (headers.length + 1) + '" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No valid rows to preview.</td></tr>';
+    } else {
+      previewRows.forEach(function(pRow, rIdx) {
+        tableHtml += '<tr>';
+        tableHtml += '<td style="color: var(--text-muted);">' + (rIdx + 1) + '</td>';
+        headers.forEach(function(h) {
+          var normKey = h.toLowerCase().replace(/[^a-z0-9_]/g, '');
+          var val = pRow[h] !== undefined ? pRow[h] : (pRow[normKey] !== undefined ? pRow[normKey] : '');
+          tableHtml += '<td>' + val + '</td>';
+        });
+        tableHtml += '</tr>';
+      });
+    }
+    tableHtml += '</tbody></table></div>';
+
+    modalBody.innerHTML = summaryHtml + alertHtml + '<div><div style="font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-2);">Sample Data Preview (First ' + previewRows.length + ' rows):</div>' + tableHtml + '</div>';
+
+    var modalFooter = document.createElement('div');
+    modalFooter.className = 'csv-preview-footer';
+
+    var canCommit = validRows.length > 0 && missingRequired.length === 0;
+    modalFooter.innerHTML = 
+      '<button type="button" class="btn btn-secondary btn-sm btn-cancel-csv-preview">Cancel</button>' +
+      '<button type="button" class="btn btn-primary btn-sm btn-confirm-csv-preview"' + (canCommit ? '' : ' disabled style="opacity: 0.5; cursor: not-allowed;"') + '>' +
+        '✓ Confirm & Import (' + validRows.length.toLocaleString() + ' rows)' +
+      '</button>';
+
+    modal.appendChild(modalHeader);
+    modal.appendChild(modalBody);
+    modal.appendChild(modalFooter);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    var closeModal = function() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (typeof options.onCancel === 'function') options.onCancel();
+    };
+
+    var confirmModal = function() {
+      if (!canCommit) return;
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (typeof options.onConfirm === 'function') {
+        options.onConfirm({
+          headers: headers,
+          normalizedHeaders: normHeaders,
+          rows: validRows,
+          allRows: rows,
+          malformedCount: malformedRows.length,
+          malformedRows: malformedRows,
+          filename: filename
+        });
+      }
+    };
+
+    overlay.querySelector('.btn-close-csv-preview').addEventListener('click', closeModal);
+    overlay.querySelector('.btn-cancel-csv-preview').addEventListener('click', closeModal);
+    overlay.querySelector('.btn-confirm-csv-preview').addEventListener('click', confirmModal);
+
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) closeModal();
+    });
+
+    var handleEsc = function(e) {
+      if (e.key === 'Escape') {
+        closeModal();
+        document.removeEventListener('keydown', handleEsc);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+  };
+
   // Expose to global namespace and CommonJS
   root.ErlanglyUtils = ErlanglyUtils;
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = ErlanglyUtils;
   }
 
-  // Auto-init nav and shared preview when DOM is ready
+  // Auto-init nav, theme, tooltips, and shared preview when DOM is ready
   if (typeof document !== 'undefined') {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function() {
-        ErlanglyUtils.initNav();
-        ErlanglyUtils.checkSharedPreview();
-      });
-    } else {
+    var runInit = function() {
+      ErlanglyUtils.initTheme();
       ErlanglyUtils.initNav();
+      ErlanglyUtils.initTooltips();
       ErlanglyUtils.checkSharedPreview();
+    };
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+      runInit();
     }
   }
 

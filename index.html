@@ -12,6 +12,17 @@
   <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/apple-touch-icon.png">
   <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="css/styles.css">
+  <script>
+    (function() {
+      try {
+        var saved = localStorage.getItem('erlangly_theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+          document.documentElement.style.colorScheme = saved;
+        }
+      } catch(e) {}
+    })();
+  </script>
 </head>
 <body>
   <!-- Navigation Header -->
@@ -38,6 +49,7 @@
       </ul>
 
       <div class="nav-actions">
+        <button type="button" class="theme-toggle-btn" id="btn-theme-toggle" aria-label="Toggle light/dark theme" title="Toggle light/dark theme">☀️</button>
         <a href="login.html" class="btn btn-secondary btn-sm" id="nav-auth-btn">Sign In</a>
       </div>
     </div>
@@ -102,6 +114,7 @@
               <div class="form-group">
                 <label for="hero-volume" class="form-label">
                   Volume (calls)
+                  <button type="button" class="help-tip" data-help-title="Interval Volume" data-help-text="Total incoming interactions offered during the planning interval." data-help-example="250 calls in 30 mins = 500 calls/hr" aria-label="Volume help">?</button>
                   <span class="form-label-val" id="val-volume">250</span>
                 </label>
                 <input type="range" id="hero-volume" min="10" max="2000" step="10" value="250" aria-label="Call Volume">
@@ -111,6 +124,7 @@
               <div class="form-group">
                 <label for="hero-aht" class="form-label">
                   AHT (seconds)
+                  <button type="button" class="help-tip" data-help-title="Average Handle Time" data-help-text="Talk time + hold time + after-call work (ACW) per contact." data-help-example="180 seconds = 3.0 minutes" aria-label="AHT help">?</button>
                   <span class="form-label-val" id="val-aht">180s</span>
                 </label>
                 <input type="range" id="hero-aht" min="30" max="900" step="10" value="180" aria-label="Average Handle Time">
@@ -120,6 +134,7 @@
               <div class="form-group">
                 <label for="hero-sla" class="form-label">
                   Target SLA
+                  <button type="button" class="help-tip" data-help-title="Service Level Target" data-help-text="Percentage of incoming contacts answered within the target threshold time." data-help-example="Standard: 80% answered in 20s" aria-label="SLA help">?</button>
                   <span class="form-label-val" id="val-sla">80%</span>
                 </label>
                 <input type="range" id="hero-sla" min="50" max="99" step="1" value="80" aria-label="Target Service Level">
@@ -129,6 +144,7 @@
               <div class="form-group">
                 <label for="hero-shrinkage" class="form-label">
                   Shrinkage
+                  <button type="button" class="help-tip" data-help-title="Workforce Shrinkage" data-help-text="Planned and unplanned off-queue time: breaks, PTO, training, meetings, absenteeism." data-help-example="Typical contact centers: 25% to 35%" aria-label="Shrinkage help">?</button>
                   <span class="form-label-val" id="val-shrinkage">30%</span>
                 </label>
                 <input type="range" id="hero-shrinkage" min="0" max="60" step="1" value="30" aria-label="Shrinkage Percentage">

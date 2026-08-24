@@ -1565,7 +1565,20 @@
       });
     }
 
-    // --- CSV Upload Handler for Agent Availability ---
+    // Theme change listener for Chart.js re-rendering
+    if (typeof window !== 'undefined') {
+      window.addEventListener('erlangly:themechange', function() {
+        if (UIState.chart) {
+          UIState.chart.destroy();
+          UIState.chart = null;
+        }
+        if (UIState.dailyCoverage && UIState.dailyCoverage.length > 0) {
+          renderCoverageForActiveDay();
+        }
+      });
+    }
+
+    // --- CSV Upload Handler for Agent Availability with Preview Modal ---
     if (inputUploadAgentCsv) {
       inputUploadAgentCsv.addEventListener('change', function(e) {
         var file = e.target.files[0];
@@ -1574,63 +1587,88 @@
         var reader = new FileReader();
         reader.onload = function(evt) {
           var text = evt.target.result;
-          var lines = text.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
-          if (lines.length <= 1) {
-            if (typeof ErlanglyUtils !== 'undefined') ErlanglyUtils.showToast('Uploaded CSV file is empty', 'error');
+          if (typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.showCSVPreviewModal === 'function') {
+            ErlanglyUtils.showCSVPreviewModal({
+              title: 'Agent Roster & Availability CSV Preview',
+              file: file,
+              filename: file.name,
+              text: text,
+              requiredHeaders: ['agent_id'],
+              optionalHeaders: ['name', 'contract', 'day', 'avail_start', 'avail_end', 'preferred_shift', 'max_daily_hrs', 'max_weekly_hrs', 'min_rest_hrs', 'max_consec_days'],
+              rowValidator: function(row) {
+                var aId = row.agent_id || row.id || row.agent || row.agentid;
+                if (!aId) return { valid: false, error: 'Missing agent_id' };
+                return { valid: true };
+              },
+              onConfirm: function(parsedResult) {
+                processAgentCSVText(text, file.name);
+              }
+            });
+            inputUploadAgentCsv.value = '';
             return;
           }
-
-          var agentsMap = {};
-          for (var i = 1; i < lines.length; i++) {
-            var cols = lines[i].split(',').map(function(c) { return c.trim().replace(/^"|"$/g, ''); });
-            if (cols.length >= 3) {
-              var aId = cols[0];
-              if (!agentsMap[aId]) {
-                agentsMap[aId] = {
-                  id: aId,
-                  name: cols[1] || aId,
-                  contractType: cols[2] || 'FT',
-                  preferredShift: cols[6] || 'S1',
-                  targetWeeklyHours: cols[2] === 'PT' ? 20.0 : 40.0,
-                  maxDailyHours: parseFloat(cols[7]) || 10.0,
-                  maxWeeklyHours: parseFloat(cols[8]) || 40.0,
-                  minRestHours: parseFloat(cols[9]) || 11.0,
-                  maxConsecutiveDays: parseInt(cols[10], 10) || 6,
-                  availability: new Array(7).fill(null).map(function(_, dIdx) {
-                    return { day: dIdx, available: true, start: '07:00', end: '21:00' };
-                  })
-                };
-              }
-
-              var dayName = (cols[3] || '').toLowerCase();
-              var dIdx = -1;
-              DAY_NAMES.forEach(function(dn, idx) {
-                if (dn.toLowerCase() === dayName || dn.toLowerCase().substring(0, 3) === dayName) dIdx = idx;
-              });
-
-              if (dIdx >= 0) {
-                var isOff = cols[4] === 'OFF' || cols[5] === 'OFF';
-                agentsMap[aId].availability[dIdx] = {
-                  day: dIdx,
-                  available: !isOff,
-                  start: isOff ? '' : (cols[4] || '07:00'),
-                  end: isOff ? '' : (cols[5] || '21:00')
-                };
-              }
-            }
-          }
-
-          var parsedAgents = Object.values(agentsMap);
-          if (parsedAgents.length > 0) {
-            UIState.agents = parsedAgents;
-            UIState.allocatedHeadcount = parsedAgents.length;
-            if (numAllocHeadcount) numAllocHeadcount.value = parsedAgents.length;
-            openAgentModal();
-            if (typeof ErlanglyUtils !== 'undefined') ErlanglyUtils.showToast('Imported ' + parsedAgents.length + ' agents from CSV', 'success');
-          }
+          processAgentCSVText(text, file.name);
+          inputUploadAgentCsv.value = '';
         };
         reader.readAsText(file);
       });
+    }
+
+    function processAgentCSVText(text, filename) {
+      var lines = text.split(/\r?\n/).filter(function(l) { return l.trim().length > 0; });
+      if (lines.length <= 1) {
+        if (typeof ErlanglyUtils !== 'undefined') ErlanglyUtils.showToast('Uploaded CSV file is empty', 'error');
+        return;
+      }
+
+      var agentsMap = {};
+      for (var i = 1; i < lines.length; i++) {
+        var cols = lines[i].split(',').map(function(c) { return c.trim().replace(/^"|"$/g, ''); });
+        if (cols.length >= 3) {
+          var aId = cols[0];
+          if (!agentsMap[aId]) {
+            agentsMap[aId] = {
+              id: aId,
+              name: cols[1] || aId,
+              contractType: cols[2] || 'FT',
+              preferredShift: cols[6] || 'S1',
+              targetWeeklyHours: cols[2] === 'PT' ? 20.0 : 40.0,
+              maxDailyHours: parseFloat(cols[7]) || 10.0,
+              maxWeeklyHours: parseFloat(cols[8]) || 40.0,
+              minRestHours: parseFloat(cols[9]) || 11.0,
+              maxConsecutiveDays: parseInt(cols[10], 10) || 6,
+              availability: new Array(7).fill(null).map(function(_, dIdx) {
+                return { day: dIdx, available: true, start: '07:00', end: '21:00' };
+              })
+            };
+          }
+
+          var dayName = (cols[3] || '').toLowerCase();
+          var dIdx = -1;
+          DAY_NAMES.forEach(function(dn, idx) {
+            if (dn.toLowerCase() === dayName || dn.toLowerCase().substring(0, 3) === dayName) dIdx = idx;
+          });
+
+          if (dIdx >= 0) {
+            var isOff = cols[4] === 'OFF' || cols[5] === 'OFF';
+            agentsMap[aId].availability[dIdx] = {
+              day: dIdx,
+              available: !isOff,
+              start: isOff ? '' : (cols[4] || '07:00'),
+              end: isOff ? '' : (cols[5] || '21:00')
+            };
+          }
+        }
+      }
+
+      var parsedAgents = Object.values(agentsMap);
+      if (parsedAgents.length > 0) {
+        UIState.agents = parsedAgents;
+        UIState.allocatedHeadcount = parsedAgents.length;
+        if (numAllocHeadcount) numAllocHeadcount.value = parsedAgents.length;
+        openAgentModal();
+        if (typeof ErlanglyUtils !== 'undefined') ErlanglyUtils.showToast('Imported ' + parsedAgents.length + ' agents from ' + filename, 'success');
+      }
     }
 
     // --- Action Buttons ---

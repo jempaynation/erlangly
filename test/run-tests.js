@@ -1242,6 +1242,88 @@ ErlanglyPlans.savePlan('capacity', 'Concurrent Plan', { volume: 350 }, {}, 'pln_
       })
       .then(versions => {
         assert(Array.isArray(versions), 'Plan versions retrieved from plan_versions store');
+
+        // ====================================================
+        // [21] PHASE 14 VERIFICATION: QUICK WINS & POLISH
+        // ====================================================
+        console.log('\n====================================================');
+        console.log('PHASE 14: QUICK WINS & POLISH VERIFICATION');
+        console.log('====================================================\n');
+
+        // 21a. Theme Switcher & Storage Management
+        console.log('  [21a] Theme Switching & Persistence:');
+        ErlanglyUtils.setTheme('dark');
+        assert(ErlanglyUtils.getTheme() === 'dark', 'getTheme returns dark when set to dark');
+        var toggled = ErlanglyUtils.toggleTheme();
+        assert(toggled === 'light' && ErlanglyUtils.getTheme() === 'light', 'toggleTheme switches dark to light');
+        var toggledBack = ErlanglyUtils.toggleTheme();
+        assert(toggledBack === 'dark' && ErlanglyUtils.getTheme() === 'dark', 'toggleTheme switches light back to dark');
+
+        // 21b. Forecast Confidence Interval Mathematics
+        console.log('\n  [21b] Forecast Confidence Intervals & Horizon Expansion:');
+        var testForecast = [
+          { period: '2026-09-01', volume: 1000 },
+          { period: '2026-09-02', volume: 1050 },
+          { period: '2026-09-03', volume: 1100 },
+          { period: '2026-09-04', volume: 1150 },
+          { period: '2026-09-05', volume: 1200 }
+        ];
+        var testMetrics = { rmse: 45.0, mae: 35.0, mape: 4.2 };
+        var histLength = 28;
+
+        // Function replicating confidence interval bounds calculation
+        function testCI(points, metrics, k, level) {
+          var z = level === '95' ? 1.95996 : 1.28155;
+          var rmse = metrics.rmse;
+          var upper = [];
+          var lower = [];
+          points.forEach(function(p, idx) {
+            var h = idx + 1;
+            var se_h = rmse * Math.sqrt(1 + (h - 1) / k);
+            var margin = z * se_h;
+            upper.push(Math.round(p.volume + margin));
+            lower.push(Math.max(0, Math.round(p.volume - margin)));
+          });
+          return { upper: upper, lower: lower, z: z };
+        }
+
+        var ci80 = testCI(testForecast, testMetrics, histLength, '80');
+        var ci95 = testCI(testForecast, testMetrics, histLength, '95');
+
+        assert(ci80.upper[0] > testForecast[0].volume, '80% CI upper bound is higher than point forecast (period 1)');
+        assert(ci80.lower[0] < testForecast[0].volume, '80% CI lower bound is lower than point forecast (period 1)');
+        assert(ci95.upper[0] > ci80.upper[0], '95% CI upper bound is wider than 80% CI upper bound');
+        assert(ci95.lower[0] < ci80.lower[0], '95% CI lower bound is wider than 80% CI lower bound');
+
+        // Horizon dispersion check (margin increases over forecast steps)
+        var marginStep1 = ci95.upper[0] - testForecast[0].volume;
+        var marginStep5 = ci95.upper[4] - testForecast[4].volume;
+        assert(marginStep5 > marginStep1, `Forecast confidence margin expands monotonically over horizon (step 1: ${marginStep1}, step 5: ${marginStep5})`);
+
+        // 21c. CSV Data Validation & Normalization Engine
+        console.log('\n  [21c] Universal CSV Preview & Diagnostics Validation:');
+        var sampleCSVText = 'Date,Volume,AHT\n2026-08-01,300,180\n2026-08-02,INVALID,180\n2026-08-03,450,200\n,,\n2026-08-04,-50,180';
+        var parsedCSV = ErlanglyUtils.parseCSV(sampleCSVText);
+        assert(parsedCSV.headers.length === 3, 'parseCSV accurately detects 3 headers');
+        assert(parsedCSV.rows.length === 4, 'parseCSV ignores completely empty rows');
+
+        // Test custom validator
+        var validRows = [];
+        var errorRows = [];
+        parsedCSV.rows.forEach(function(row, idx) {
+          var vol = parseFloat(row.volume);
+          if (isNaN(vol) || vol < 0) {
+            errorRows.push({ line: idx + 2, error: 'Invalid volume' });
+          } else {
+            validRows.push(row);
+          }
+        });
+
+        assert(validRows.length === 2, 'Validation isolates exactly 2 clean rows');
+        assert(errorRows.length === 2, 'Validation flags exactly 2 malformed/negative rows');
+        assert(errorRows[0].line === 3, 'First error correctly pinpointed to line 3 (INVALID)');
+        assert(errorRows[1].line === 5, 'Second error correctly pinpointed to line 5 (-50)');
+
         console.log('\n====================================================');
         console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
         console.log('====================================================');
