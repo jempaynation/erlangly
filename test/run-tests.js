@@ -1363,6 +1363,7 @@ ErlanglyPlans.savePlan('capacity', 'Concurrent Plan', { volume: 350 }, {}, 'pln_
           assert(schemaSql.includes('CREATE TABLE IF NOT EXISTS public.plan_collaborators'), 'Schema creates public.plan_collaborators table');
           assert(schemaSql.includes('CREATE TABLE IF NOT EXISTS public.plan_versions'), 'Schema creates public.plan_versions table');
           assert(schemaSql.includes('SECURITY DEFINER'), 'Schema uses SECURITY DEFINER helper functions to prevent RLS recursion');
+          assert(schemaSql.includes('LANGUAGE plpgsql'), 'Schema helper functions use LANGUAGE plpgsql to prevent PostgreSQL inlining recursion');
           assert(schemaSql.includes('is_plan_collaborator'), 'Schema defines is_plan_collaborator function');
           assert(schemaSql.includes('is_plan_owner'), 'Schema defines is_plan_owner function');
 

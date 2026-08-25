@@ -2347,6 +2347,9 @@
     sandboxLookback: 'all',
     sandboxActiveModelId: null,
     lastSandboxResults: null,
+    sandboxMultiView: 'comparison', // 'comparison' | 'consistency'
+    sandboxAdvancedOpen: false,
+    sandboxMonthDrawerOpen: false,
     
     // Accuracy tracking state (Phase 12 / Enhancement)
     accuracyPairs: [],
@@ -3164,6 +3167,64 @@
           applySandboxWinner(UIState.sandboxActiveModelId);
         } else {
           ErlanglyUtils.showToast('No sandbox winner identified yet', 'warn');
+        }
+      });
+    }
+
+    // Toggle Collapsible Month Selector Drawer
+    var btnToggleMonthDrawer = document.getElementById('btn-toggle-month-drawer');
+    if (btnToggleMonthDrawer) {
+      btnToggleMonthDrawer.addEventListener('click', function() {
+        UIState.sandboxMonthDrawerOpen = !UIState.sandboxMonthDrawerOpen;
+        var drawer = document.getElementById('sandbox-month-drawer');
+        if (drawer) {
+          if (UIState.sandboxMonthDrawerOpen) {
+            drawer.classList.add('open');
+            btnToggleMonthDrawer.textContent = '📅 Close Picker ▴';
+          } else {
+            drawer.classList.remove('open');
+            btnToggleMonthDrawer.textContent = '📅 Pick Months ▾';
+          }
+        }
+      });
+    }
+
+    // Toggle Progressive Disclosure: Advanced Metrics Drawer
+    var btnToggleAdv = document.getElementById('btn-toggle-advanced-metrics');
+    if (btnToggleAdv) {
+      btnToggleAdv.addEventListener('click', function() {
+        UIState.sandboxAdvancedOpen = !UIState.sandboxAdvancedOpen;
+        var advDrawer = document.getElementById('sandbox-advanced-drawer');
+        if (advDrawer) {
+          if (UIState.sandboxAdvancedOpen) {
+            advDrawer.classList.add('open');
+            btnToggleAdv.innerHTML = '<span>▲ Hide Advanced Metrics</span><span style="font-size: 10px; opacity: 0.7;">Diagnostics</span>';
+          } else {
+            advDrawer.classList.remove('open');
+            btnToggleAdv.innerHTML = '<span>▾ Show Advanced Metrics (In-Sample MAPE, MAE, RMSE, Overfit Gap)</span><span style="font-size: 10px; opacity: 0.7;">Diagnostics</span>';
+          }
+        }
+      });
+    }
+
+    // Multi-Month View Switcher Tabs (Model Comparison vs Month Consistency)
+    var btnViewComp = document.getElementById('btn-view-comparison');
+    var btnViewCons = document.getElementById('btn-view-consistency');
+    if (btnViewComp && btnViewCons) {
+      btnViewComp.addEventListener('click', function() {
+        UIState.sandboxMultiView = 'comparison';
+        btnViewComp.className = 'segmented-btn active';
+        btnViewCons.className = 'segmented-btn';
+        if (UIState.lastSandboxResults) {
+          renderSandboxUI(UIState.lastSandboxResults);
+        }
+      });
+      btnViewCons.addEventListener('click', function() {
+        UIState.sandboxMultiView = 'consistency';
+        btnViewComp.className = 'segmented-btn';
+        btnViewCons.className = 'segmented-btn active';
+        if (UIState.lastSandboxResults) {
+          renderSandboxUI(UIState.lastSandboxResults);
         }
       });
     }
@@ -4852,34 +4913,42 @@
       });
     }
 
-    var minMAPE = Math.min.apply(null, compResults.map(function(c) { return c.metrics.mape; }));
+    var sorted = compResults.slice().sort(function(a, b) {
+      var btA = btMap[a.modelId];
+      var btB = btMap[b.modelId];
+      if (btA && btB) {
+        return btA.outOfSampleMetrics.wape - btB.outOfSampleMetrics.wape;
+      }
+      return a.metrics.mape - b.metrics.mape;
+    });
 
-    compResults.forEach(function(c) {
+    sorted.forEach(function(c, idx) {
       var tr = document.createElement('tr');
-      var isBest = Math.abs(c.metrics.mape - minMAPE) < 0.001;
       var isActive = c.modelId === UIState.modelId;
       var totalVol = c.forecast.reduce(function(a, b) { return a + b.volume; }, 0);
       var bt = btMap[c.modelId];
 
       var oosMapeStr = bt ? bt.outOfSampleMetrics.mape.toFixed(1) + '%' : '—';
       var oosWapeStr = bt ? bt.outOfSampleMetrics.wape.toFixed(1) + '%' : '—';
-      var oosRmseStr = bt ? Math.round(bt.outOfSampleMetrics.rmse).toLocaleString() : '—';
       var overfitGapStr = bt ? '+' + bt.overfitGap.toFixed(1) + '%' : '—';
 
+      if (idx === 0 && bt) {
+        tr.className = 'winner-row';
+      }
+
       tr.innerHTML = 
+        '<td style="text-align: center;"><span class="rank-badge ' + (idx === 0 ? 'rank-1' : '') + '">#' + (idx + 1) + '</span></td>' +
         '<td>' +
           '<strong>' + c.modelName + '</strong>' +
-          (isBest ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best In-Sample</span>' : '') +
-          (isActive ? ' <span class="badge badge-neutral" style="font-size: 10px; margin-left: 4px;">Active</span>' : '') +
+          (isActive ? '<span class="viewing-indicator">Active</span>' : '') +
         '</td>' +
-        '<td class="mono text-accent"><strong>' + c.metrics.mape.toFixed(1) + '%</strong></td>' +
+        '<td class="mono text-accent"><strong>' + oosWapeStr + '</strong></td>' +
         '<td class="mono" style="color: var(--info);">' + oosMapeStr + '</td>' +
-        '<td class="mono">' + oosWapeStr + '</td>' +
-        '<td class="mono">' + oosRmseStr + '</td>' +
+        '<td class="mono text-muted">' + c.metrics.mape.toFixed(1) + '%</td>' +
         '<td class="mono ' + (bt && bt.overfitGap > 10 ? 'text-warn' : '') + '">' + overfitGapStr + '</td>' +
         '<td class="mono">' + ErlanglyUtils.formatNumber(totalVol) + '</td>' +
-        '<td>' +
-          '<button class="btn btn-sm ' + (isActive ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 11px; height: 26px;" data-select-model="' + c.modelId + '">' +
+        '<td style="text-align: right;">' +
+          '<button class="btn btn-sm ' + (isActive ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 11px; height: 24px; padding: 2px 8px;" data-select-model="' + c.modelId + '">' +
             (isActive ? 'Active' : 'Select') +
           '</button>' +
         '</td>';
@@ -4929,6 +4998,9 @@
 
   function renderSandboxMonthChips() {
     var container = document.getElementById('sandbox-month-chips');
+    var pillsContainer = document.getElementById('sandbox-selected-pills');
+    var hintLabel = document.getElementById('sandbox-eligible-count-hint');
+    var btnToggleDrawer = document.getElementById('btn-toggle-month-drawer');
     if (!container) return;
 
     var allMonths = extractHistoryMonths(UIState.history);
@@ -4936,11 +5008,13 @@
 
     if (allMonths.length === 0) {
       container.innerHTML = '<span class="text-muted" style="font-size: 11px;">No history loaded. Load sample or CSV to enable holdout sandbox.</span>';
+      if (pillsContainer) pillsContainer.innerHTML = '<span class="text-muted" style="font-size: 11px;">No history</span>';
       return;
     }
 
     if (eligibleMonths.length === 0) {
       container.innerHTML = '<span class="text-muted" style="font-size: 11px;">Single month dataset detected (' + allMonths[0].label + '). Multi-month history required for month holdout sandbox.</span>';
+      if (pillsContainer) pillsContainer.innerHTML = '<span class="text-muted" style="font-size: 11px;">Single month (insufficient before-data)</span>';
       return;
     }
 
@@ -4949,6 +5023,52 @@
       UIState.sandboxTargetMonths = [eligibleMonths[eligibleMonths.length - 1].key];
     }
 
+    // Render Compact Selected Months Summary Pills
+    if (pillsContainer) {
+      pillsContainer.innerHTML = '';
+      var selCount = UIState.sandboxTargetMonths.length;
+      if (selCount === 0) {
+        pillsContainer.innerHTML = '<span class="text-muted" style="font-size: 11px;">None selected</span>';
+      } else if (selCount <= 3) {
+        UIState.sandboxTargetMonths.forEach(function(mKey) {
+          var meta = allMonths.find(function(m) { return m.key === mKey; });
+          var label = meta ? meta.label : mKey;
+          var pill = document.createElement('span');
+          pill.className = 'sandbox-selected-pill';
+          pill.innerHTML = '<span>' + label + '</span>';
+          pillsContainer.appendChild(pill);
+        });
+      } else {
+        // Show first 2 + count pill
+        var first2 = UIState.sandboxTargetMonths.slice(0, 2);
+        first2.forEach(function(mKey) {
+          var meta = allMonths.find(function(m) { return m.key === mKey; });
+          var label = meta ? meta.label : mKey;
+          var pill = document.createElement('span');
+          pill.className = 'sandbox-selected-pill';
+          pill.innerHTML = '<span>' + label + '</span>';
+          pillsContainer.appendChild(pill);
+        });
+        var morePill = document.createElement('span');
+        morePill.className = 'sandbox-selected-pill';
+        morePill.style.background = 'var(--bg-surface-elevated)';
+        morePill.style.borderColor = 'var(--border-default)';
+        morePill.style.color = 'var(--text-secondary)';
+        morePill.textContent = '+' + (selCount - 2) + ' more';
+        pillsContainer.appendChild(morePill);
+      }
+    }
+
+    if (hintLabel) {
+      hintLabel.textContent = UIState.sandboxTargetMonths.length + ' of ' + eligibleMonths.length + ' eligible months selected';
+    }
+
+    if (btnToggleDrawer) {
+      var isDrawerOpen = UIState.sandboxMonthDrawerOpen;
+      btnToggleDrawer.textContent = isDrawerOpen ? '📅 Close Picker ▴' : '📅 Pick Months (' + UIState.sandboxTargetMonths.length + '/' + eligibleMonths.length + ') ▾';
+    }
+
+    // Render Full Chips in Drawer
     container.innerHTML = '';
     allMonths.forEach(function(m) {
       var isSel = UIState.sandboxTargetMonths.indexOf(m.key) !== -1;
@@ -4982,26 +5102,46 @@
   function renderSandboxUI(sandboxResults) {
     if (!sandboxResults) return;
 
+    var decisionSummary = document.getElementById('sandbox-decision-summary');
+    var headlineWinner = document.getElementById('lbl-decision-winner-headline');
+    var subtextWinner = document.getElementById('lbl-decision-winner-subtext');
+    var valWinner = document.getElementById('val-decision-winner');
+    var valWape = document.getElementById('val-decision-wape');
+    var valBias = document.getElementById('val-decision-bias');
+    var subBias = document.getElementById('sub-decision-bias');
+    var cardStability = document.getElementById('card-decision-stability');
+    var valStability = document.getElementById('val-decision-stability');
+    var subStability = document.getElementById('sub-decision-stability');
+    var btnApplyWinner = document.getElementById('btn-apply-sandbox-winner');
+
     var banner = document.getElementById('sandbox-active-banner');
     var bannerText = document.getElementById('sandbox-banner-text');
-    var btnApplyWinner = document.getElementById('btn-apply-sandbox-winner');
+    var badgeOverlayTarget = document.getElementById('lbl-overlay-target-badge');
+
+    var multiTabs = document.getElementById('sandbox-multi-tabs');
+    var lblConsistencyTabCount = document.getElementById('lbl-consistency-tab-count');
+    var btnViewComp = document.getElementById('btn-view-comparison');
+    var btnViewCons = document.getElementById('btn-view-consistency');
+
     var singleBox = document.getElementById('sandbox-single-results');
     var multiBox = document.getElementById('sandbox-multi-results');
     var tbodySingle = document.getElementById('tbody-sandbox-single');
+    var tbodyAdvanced = document.getElementById('tbody-sandbox-advanced');
     var theadConsistency = document.getElementById('thead-sandbox-consistency');
     var tbodyConsistency = document.getElementById('tbody-sandbox-consistency');
-    var lblConsistencyCount = document.getElementById('lbl-consistency-month-count');
-    var badgeBestModel = document.getElementById('badge-sandbox-best-model');
 
     var validMonths = sandboxResults.monthEvaluations ? sandboxResults.monthEvaluations.filter(function(m) { return m.isFeasible; }) : [];
 
     if (validMonths.length === 0) {
+      if (decisionSummary) decisionSummary.style.display = 'none';
       if (banner) banner.style.display = 'none';
+      if (multiTabs) multiTabs.style.display = 'none';
       if (singleBox) singleBox.style.display = 'block';
       if (multiBox) multiBox.style.display = 'none';
       if (tbodySingle) {
-        tbodySingle.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No valid holdout months selected or insufficient preceding training data. Select 1+ target months above.</td></tr>';
+        tbodySingle.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: var(--space-4);">No valid holdout months selected or insufficient preceding training data. Select 1+ target months above.</td></tr>';
       }
+      if (tbodyAdvanced) tbodyAdvanced.innerHTML = '';
       return;
     }
 
@@ -5012,51 +5152,98 @@
 
     var activeModelName = MODEL_REGISTRY[UIState.sandboxActiveModelId] ? MODEL_REGISTRY[UIState.sandboxActiveModelId].name : UIState.sandboxActiveModelId;
 
+    // 1. Render Decision Summary (Section 5 & 6)
+    if (decisionSummary && sandboxResults.winner) {
+      decisionSummary.style.display = 'block';
+      var win = sandboxResults.winner;
+      var winWape = (win.overallWape !== undefined ? win.overallWape : (win.holdoutMetrics ? win.holdoutMetrics.wape : (win.wape || 0)));
+      var winBias = (win.overallBiasPct !== undefined ? win.overallBiasPct : (win.holdoutMetrics ? win.holdoutMetrics.biasPct : (win.biasPct || 0)));
+      var biasPrefix = winBias >= 0 ? '+' : '';
+
+      if (headlineWinner) headlineWinner.textContent = '🏆 Best Holdout Model: ' + win.modelName;
+      if (subtextWinner) {
+        subtextWinner.textContent = validMonths.length === 1 
+          ? 'Evaluated against ' + validMonths[0].monthLabel + ' holdout actuals (' + validMonths[0].holdoutPeriodsCount + ' days)'
+          : 'Evaluated across ' + validMonths.length + ' holdout months with strict before-only training';
+      }
+      if (valWinner) valWinner.textContent = win.modelName;
+      if (valWape) valWape.textContent = winWape.toFixed(1) + '%';
+      if (valBias) {
+        valBias.textContent = biasPrefix + winBias.toFixed(1) + '%';
+        valBias.className = 'sandbox-card-value ' + (Math.abs(winBias) <= 5 ? 'text-success' : 'text-warn');
+      }
+      if (subBias) {
+        if (Math.abs(winBias) <= 1.0) {
+          subBias.textContent = 'Balanced forecast';
+        } else if (winBias < 0) {
+          subBias.textContent = 'Slight under-forecast';
+        } else {
+          subBias.textContent = 'Slight over-forecast';
+        }
+      }
+
+      if (cardStability) {
+        if (validMonths.length > 1 && win.wapeStdDev !== undefined) {
+          cardStability.style.display = 'flex';
+          if (valStability) valStability.textContent = '±' + win.wapeStdDev.toFixed(1) + '%';
+          if (subStability) subStability.textContent = 'Across ' + validMonths.length + ' selected months';
+        } else {
+          cardStability.style.display = 'none';
+        }
+      }
+
+      if (btnApplyWinner) {
+        btnApplyWinner.textContent = '⚡ Use ' + win.modelName + ' for Production';
+      }
+    }
+
+    // 2. Render Active Overlay Banner
     if (banner) {
       banner.style.display = 'flex';
       if (bannerText) {
         bannerText.innerHTML = '<strong class="text-accent">👁️ Active Overlay:</strong> Plotting <span class="text-accent" style="font-weight: 600;">' + activeModelName + '</span> holdout forecast vs actuals on chart below.';
       }
-      if (btnApplyWinner && sandboxResults.winner) {
-        btnApplyWinner.textContent = '⚡ Use Winner (' + sandboxResults.winner.modelName + ') for Production';
+      if (badgeOverlayTarget) {
+        badgeOverlayTarget.textContent = validMonths.length === 1 
+          ? validMonths[0].monthLabel 
+          : validMonths.length + ' Target Months';
       }
     }
 
-    // Single Month View
+    // 3. Render Table Views
     if (validMonths.length === 1) {
+      // Single Month Evaluation
+      if (multiTabs) multiTabs.style.display = 'none';
       if (singleBox) singleBox.style.display = 'block';
       if (multiBox) multiBox.style.display = 'none';
       if (!tbodySingle) return;
 
       tbodySingle.innerHTML = '';
+      if (tbodyAdvanced) tbodyAdvanced.innerHTML = '';
+
       var mEval = validMonths[0];
 
       mEval.models.forEach(function(m, idx) {
         var tr = document.createElement('tr');
         var isOverlayActive = m.modelId === UIState.sandboxActiveModelId;
-        var isActiveProd = m.modelId === UIState.modelId;
         var isWinner = idx === 0;
         var biasPrefix = m.holdoutMetrics.biasPct >= 0 ? '+' : '';
 
-        tr.className = isWinner ? 'winner-row' : '';
+        if (isWinner) tr.className = 'winner-row';
+
         tr.innerHTML = 
+          '<td style="text-align: center;"><span class="rank-badge ' + (isWinner ? 'rank-1' : '') + '">#' + (idx + 1) + '</span></td>' +
           '<td>' +
             '<strong>' + m.modelName + '</strong>' +
-            (isWinner ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Holdout</span>' : '') +
-            (isOverlayActive ? ' <span class="badge badge-neutral" style="font-size: 10px; margin-left: 4px;">Viewing</span>' : '') +
+            (isOverlayActive ? '<span class="viewing-indicator">Viewing</span>' : '') +
           '</td>' +
-          '<td class="mono text-muted">' + m.inSampleMetrics.mape.toFixed(1) + '%</td>' +
           '<td class="mono text-accent"><strong>' + m.holdoutMetrics.wape.toFixed(1) + '%</strong></td>' +
           '<td class="mono">' + m.holdoutMetrics.mape.toFixed(1) + '%</td>' +
           '<td class="mono ' + (Math.abs(m.holdoutMetrics.biasPct) <= 5 ? 'text-success' : 'text-warn') + '">' + biasPrefix + m.holdoutMetrics.biasPct.toFixed(1) + '%</td>' +
-          '<td class="mono">' + Math.round(m.holdoutMetrics.mae).toLocaleString() + '</td>' +
-          '<td class="mono">' + Math.round(m.holdoutMetrics.rmse).toLocaleString() + '</td>' +
-          '<td class="mono">' + Math.round(m.totalActual).toLocaleString() + ' / ' + Math.round(m.totalForecast).toLocaleString() + '</td>' +
-          '<td style="white-space: nowrap;">' +
-            '<div style="display: flex; gap: 4px;">' +
-              '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-overlay-model="' + m.modelId + '">👁️ View</button>' +
-              '<button class="btn btn-sm ' + (isActiveProd ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-promote-model="' + m.modelId + '">' + (isActiveProd ? 'Active' : '⚡ Use') + '</button>' +
-            '</div>' +
+          '<td style="text-align: right;">' +
+            '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 11px; height: 24px; padding: 2px 8px;" data-overlay-model="' + m.modelId + '">' +
+              (isOverlayActive ? '👁️ Viewing' : '👁️ View') +
+            '</button>' +
           '</td>';
 
         var btnOverlay = tr.querySelector('[data-overlay-model]');
@@ -5068,89 +5255,150 @@
           });
         }
 
-        var btnPromote = tr.querySelector('[data-promote-model]');
-        if (btnPromote) {
-          btnPromote.addEventListener('click', function() {
-            applySandboxWinner(m.modelId);
-          });
-        }
-
         tbodySingle.appendChild(tr);
+
+        // Advanced metrics row
+        if (tbodyAdvanced) {
+          var trAdv = document.createElement('tr');
+          var overfitStr = m.overfitGap !== undefined ? '+' + m.overfitGap.toFixed(1) + '%' : '—';
+          trAdv.innerHTML = 
+            '<td><strong>' + m.modelName + '</strong></td>' +
+            '<td class="mono">' + m.inSampleMetrics.mape.toFixed(1) + '%</td>' +
+            '<td class="mono">' + Math.round(m.holdoutMetrics.mae).toLocaleString() + '</td>' +
+            '<td class="mono">' + Math.round(m.holdoutMetrics.rmse).toLocaleString() + '</td>' +
+            '<td class="mono ' + (m.overfitGap > 10 ? 'text-warn' : '') + '">' + overfitStr + '</td>' +
+            '<td class="mono">' + Math.round(m.totalActual).toLocaleString() + ' / ' + Math.round(m.totalForecast).toLocaleString() + '</td>';
+          tbodyAdvanced.appendChild(trAdv);
+        }
       });
     } else {
-      // Multi-Month Consistency Matrix View
-      if (singleBox) singleBox.style.display = 'none';
-      if (multiBox) multiBox.style.display = 'block';
-      if (!theadConsistency || !tbodyConsistency) return;
+      // Multi-Month Evaluation (Section 10)
+      if (multiTabs) multiTabs.style.display = 'flex';
+      if (lblConsistencyTabCount) lblConsistencyTabCount.textContent = validMonths.length;
 
-      if (lblConsistencyCount) lblConsistencyCount.textContent = validMonths.length;
-      if (badgeBestModel && sandboxResults.winner) {
-        badgeBestModel.textContent = '🏆 Best: ' + sandboxResults.winner.modelName + ' (' + sandboxResults.winner.overallWape.toFixed(1) + '% WAPE)';
-      }
+      var view = UIState.sandboxMultiView || 'comparison';
+      if (btnViewComp) btnViewComp.className = 'segmented-btn ' + (view === 'comparison' ? 'active' : '');
+      if (btnViewCons) btnViewCons.className = 'segmented-btn ' + (view === 'consistency' ? 'active' : '');
 
-      // Build Headers
-      var headerHtml = '<tr><th>Model Algorithm</th><th style="color: var(--accent);">Overall WAPE</th><th>Overall Bias</th>';
-      validMonths.forEach(function(mEval) {
-        headerHtml += '<th class="mono">' + mEval.monthLabel + '</th>';
-      });
-      headerHtml += '<th>WAPE StdDev</th><th>WAPE Range</th><th style="width: 140px;">Actions</th></tr>';
-      theadConsistency.innerHTML = headerHtml;
+      if (view === 'comparison') {
+        if (singleBox) singleBox.style.display = 'block';
+        if (multiBox) multiBox.style.display = 'none';
+        if (!tbodySingle) return;
 
-      tbodyConsistency.innerHTML = '';
-      sandboxResults.modelSummaries.forEach(function(s, idx) {
-        var tr = document.createElement('tr');
-        var isOverlayActive = s.modelId === UIState.sandboxActiveModelId;
-        var isActiveProd = s.modelId === UIState.modelId;
-        var isWinner = idx === 0;
-        var biasPrefix = s.overallBiasPct >= 0 ? '+' : '';
+        tbodySingle.innerHTML = '';
+        if (tbodyAdvanced) tbodyAdvanced.innerHTML = '';
 
-        tr.className = isWinner ? 'winner-row' : '';
+        sandboxResults.modelSummaries.forEach(function(s, idx) {
+          var tr = document.createElement('tr');
+          var isOverlayActive = s.modelId === UIState.sandboxActiveModelId;
+          var isWinner = idx === 0;
+          var biasPrefix = s.overallBiasPct >= 0 ? '+' : '';
 
-        var rowHtml = 
-          '<td>' +
-            '<strong>' + s.modelName + '</strong>' +
-            (isWinner ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Overall</span>' : '') +
-            (s.isMostConsistent ? ' <span class="badge badge-neutral" style="font-size: 10px; margin-left: 4px;">Most Stable</span>' : '') +
-          '</td>' +
-          '<td class="mono text-accent"><strong>' + s.overallWape.toFixed(1) + '%</strong></td>' +
-          '<td class="mono ' + (Math.abs(s.overallBiasPct) <= 5 ? 'text-success' : 'text-warn') + '">' + biasPrefix + s.overallBiasPct.toFixed(1) + '%</td>';
+          if (isWinner) tr.className = 'winner-row';
 
-        validMonths.forEach(function(mEval) {
-          var mRes = s.monthResults[mEval.monthKey];
-          var mWape = mRes ? mRes.holdoutMetrics.wape.toFixed(1) + '%' : '—';
-          rowHtml += '<td class="mono">' + mWape + '</td>';
+          tr.innerHTML = 
+            '<td style="text-align: center;"><span class="rank-badge ' + (isWinner ? 'rank-1' : '') + '">#' + (idx + 1) + '</span></td>' +
+            '<td>' +
+              '<strong>' + s.modelName + '</strong>' +
+              (isWinner ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Overall</span>' : '') +
+              (isOverlayActive ? '<span class="viewing-indicator">Viewing</span>' : '') +
+            '</td>' +
+            '<td class="mono text-accent"><strong>' + s.overallWape.toFixed(1) + '%</strong></td>' +
+            '<td class="mono">' + (s.overallMape !== undefined ? s.overallMape.toFixed(1) + '%' : '—') + '</td>' +
+            '<td class="mono ' + (Math.abs(s.overallBiasPct) <= 5 ? 'text-success' : 'text-warn') + '">' + biasPrefix + s.overallBiasPct.toFixed(1) + '%</td>' +
+            '<td style="text-align: right;">' +
+              '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 11px; height: 24px; padding: 2px 8px;" data-overlay-model="' + s.modelId + '">' +
+                (isOverlayActive ? '👁️ Viewing' : '👁️ View') +
+              '</button>' +
+            '</td>';
+
+          var btnOverlay = tr.querySelector('[data-overlay-model]');
+          if (btnOverlay) {
+            btnOverlay.addEventListener('click', function() {
+              UIState.sandboxActiveModelId = s.modelId;
+              renderSandboxUI(sandboxResults);
+              renderChart(UIState.lastForecast, []);
+            });
+          }
+
+          tbodySingle.appendChild(tr);
+
+          // Advanced metrics row
+          if (tbodyAdvanced) {
+            var trAdv = document.createElement('tr');
+            var overfitStr = s.overallMape && s.avgInSampleMape ? '+' + Math.max(0, s.overallMape - s.avgInSampleMape).toFixed(1) + '%' : '—';
+            trAdv.innerHTML = 
+              '<td><strong>' + s.modelName + '</strong></td>' +
+              '<td class="mono">' + (s.avgInSampleMape ? s.avgInSampleMape.toFixed(1) + '%' : '—') + '</td>' +
+              '<td class="mono">' + (s.overallMae ? Math.round(s.overallMae).toLocaleString() : '—') + '</td>' +
+              '<td class="mono">' + (s.overallRmse ? Math.round(s.overallRmse).toLocaleString() : '—') + '</td>' +
+              '<td class="mono">' + overfitStr + '</td>' +
+              '<td class="mono">' + (s.totalActual ? Math.round(s.totalActual).toLocaleString() + ' / ' + Math.round(s.totalForecast).toLocaleString() : '—') + '</td>';
+            tbodyAdvanced.appendChild(trAdv);
+          }
         });
+      } else {
+        // Consistency Matrix View
+        if (singleBox) singleBox.style.display = 'none';
+        if (multiBox) multiBox.style.display = 'block';
+        if (!theadConsistency || !tbodyConsistency) return;
 
-        rowHtml += 
-          '<td class="mono text-muted">±' + s.wapeStdDev.toFixed(2) + '%</td>' +
-          '<td class="mono text-muted">' + s.wapeRange.toFixed(1) + '%</td>' +
-          '<td style="white-space: nowrap;">' +
-            '<div style="display: flex; gap: 4px;">' +
-              '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-overlay-model="' + s.modelId + '">👁️ View</button>' +
-              '<button class="btn btn-sm ' + (isActiveProd ? 'btn-ghost' : 'btn-secondary') + '" style="font-size: 10px; height: 24px; padding: 2px 6px;" data-promote-model="' + s.modelId + '">' + (isActiveProd ? 'Active' : '⚡ Use') + '</button>' +
-            '</div>' +
-          '</td>';
+        // Build Headers
+        var headerHtml = '<tr><th style="width: 48px; text-align: center;">Rank</th><th>Model Algorithm</th><th style="color: var(--accent);">Overall WAPE</th><th>Overall Bias</th>';
+        validMonths.forEach(function(mEval) {
+          headerHtml += '<th class="mono">' + mEval.monthLabel + '</th>';
+        });
+        headerHtml += '<th>Stability (StdDev)</th><th>WAPE Range</th><th style="width: 80px; text-align: right;">Action</th></tr>';
+        theadConsistency.innerHTML = headerHtml;
 
-        tr.innerHTML = rowHtml;
+        tbodyConsistency.innerHTML = '';
+        sandboxResults.modelSummaries.forEach(function(s, idx) {
+          var tr = document.createElement('tr');
+          var isOverlayActive = s.modelId === UIState.sandboxActiveModelId;
+          var isWinner = idx === 0;
+          var biasPrefix = s.overallBiasPct >= 0 ? '+' : '';
 
-        var btnOverlay = tr.querySelector('[data-overlay-model]');
-        if (btnOverlay) {
-          btnOverlay.addEventListener('click', function() {
-            UIState.sandboxActiveModelId = s.modelId;
-            renderSandboxUI(sandboxResults);
-            renderChart(UIState.lastForecast, []);
+          if (isWinner) tr.className = 'winner-row';
+
+          var rowHtml = 
+            '<td style="text-align: center;"><span class="rank-badge ' + (isWinner ? 'rank-1' : '') + '">#' + (idx + 1) + '</span></td>' +
+            '<td>' +
+              '<strong>' + s.modelName + '</strong>' +
+              (isWinner ? ' <span class="badge badge-success" style="font-size: 10px; margin-left: 4px;">Best Overall</span>' : '') +
+              (isOverlayActive ? '<span class="viewing-indicator">Viewing</span>' : '') +
+            '</td>' +
+            '<td class="mono text-accent"><strong>' + s.overallWape.toFixed(1) + '%</strong></td>' +
+            '<td class="mono ' + (Math.abs(s.overallBiasPct) <= 5 ? 'text-success' : 'text-warn') + '">' + biasPrefix + s.overallBiasPct.toFixed(1) + '%</td>';
+
+          validMonths.forEach(function(mEval) {
+            var mRes = s.monthResults[mEval.monthKey];
+            var mWape = mRes ? mRes.holdoutMetrics.wape.toFixed(1) + '%' : '—';
+            rowHtml += '<td class="mono">' + mWape + '</td>';
           });
-        }
 
-        var btnPromote = tr.querySelector('[data-promote-model]');
-        if (btnPromote) {
-          btnPromote.addEventListener('click', function() {
-            applySandboxWinner(s.modelId);
-          });
-        }
+          rowHtml += 
+            '<td class="mono text-muted">±' + s.wapeStdDev.toFixed(2) + '%</td>' +
+            '<td class="mono text-muted">' + s.wapeRange.toFixed(1) + '%</td>' +
+            '<td style="text-align: right;">' +
+              '<button class="btn btn-sm ' + (isOverlayActive ? 'btn-primary' : 'btn-ghost') + '" style="font-size: 11px; height: 24px; padding: 2px 8px;" data-overlay-model="' + s.modelId + '">' +
+                (isOverlayActive ? '👁️ Viewing' : '👁️ View') +
+              '</button>' +
+            '</td>';
 
-        tbodyConsistency.appendChild(tr);
-      });
+          tr.innerHTML = rowHtml;
+
+          var btnOverlay = tr.querySelector('[data-overlay-model]');
+          if (btnOverlay) {
+            btnOverlay.addEventListener('click', function() {
+              UIState.sandboxActiveModelId = s.modelId;
+              renderSandboxUI(sandboxResults);
+              renderChart(UIState.lastForecast, []);
+            });
+          }
+
+          tbodyConsistency.appendChild(tr);
+        });
+      }
     }
   }
 

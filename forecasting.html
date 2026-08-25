@@ -586,55 +586,56 @@
           <!-- Controls Bar for Specific Month Sandbox Mode (Phase 13) -->
           <div id="box-sandbox-controls"
             style="display: none; padding: var(--space-3) var(--space-4); background: var(--bg-surface-elevated); border-bottom: 1px solid var(--border-subtle);">
-            <div
-              style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-2);">
+            
+            <!-- Month Selection Header & Quick Actions -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2);">
               <div style="display: flex; align-items: center; gap: var(--space-2);">
-                <span class="form-label"
-                  style="font-size: var(--text-xs); margin: 0; font-weight: 600; color: var(--accent-light);">Pick
-                  Holdout Target Month(s):</span>
-                <span class="form-hint" style="margin: 0; font-size: 11px;">(Models train strictly on data before target
-                  month — zero future data leakage)</span>
+                <span class="form-label" style="font-size: var(--text-xs); margin: 0; font-weight: 600; color: var(--accent-light);">Holdout Target Month(s):</span>
+                <span class="form-hint" style="margin: 0; font-size: 11px;">(Models train strictly on data before target month — zero future data leakage)</span>
               </div>
-              <div style="display: flex; gap: var(--space-1);">
-                <button type="button" id="btn-sandbox-select-last" class="btn btn-ghost btn-sm"
-                  style="font-size: 11px; height: 24px; padding: 2px 8px;">Select Last Month</button>
-                <button type="button" id="btn-sandbox-select-last3" class="btn btn-ghost btn-sm"
-                  style="font-size: 11px; height: 24px; padding: 2px 8px;">Select Last 3 Months</button>
-                <button type="button" id="btn-sandbox-clear-months" class="btn btn-ghost btn-sm"
-                  style="font-size: 11px; height: 24px; padding: 2px 8px; color: var(--danger);">Clear</button>
+              <div style="display: flex; gap: var(--space-1); align-items: center;">
+                <button type="button" id="btn-sandbox-select-last" class="btn btn-ghost btn-sm" style="font-size: 11px; height: 24px; padding: 2px 8px;">Select Last Month</button>
+                <button type="button" id="btn-sandbox-select-last3" class="btn btn-ghost btn-sm" style="font-size: 11px; height: 24px; padding: 2px 8px;">Select Last 3</button>
+                <button type="button" id="btn-sandbox-clear-months" class="btn btn-ghost btn-sm" style="font-size: 11px; height: 24px; padding: 2px 8px; color: var(--danger);">Clear</button>
+                <button type="button" id="btn-toggle-month-drawer" class="btn btn-secondary btn-sm" style="font-size: 11px; height: 24px; padding: 2px 8px; margin-left: 4px;">📅 Pick Months ▾</button>
               </div>
             </div>
 
-            <!-- Month Selection Chips -->
-            <div id="sandbox-month-chips" class="sandbox-month-grid">
-              <span class="text-muted" style="font-size: 11px;">Load history with multiple calendar months to enable
-                holdout sandbox.</span>
+            <!-- Compact Selected Months Summary Bar -->
+            <div class="sandbox-month-summary-bar" id="sandbox-month-summary">
+              <div style="display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;">
+                <span style="font-size: 11px; color: var(--text-secondary); font-weight: 500;">Active Targets:</span>
+                <div class="sandbox-selected-pills" id="sandbox-selected-pills">
+                  <span class="text-muted" style="font-size: 11px;">None selected</span>
+                </div>
+              </div>
+              <span class="form-hint" id="sandbox-eligible-count-hint" style="font-size: 10px; margin: 0;">Multi-month dataset</span>
             </div>
 
-            <!-- Lookback Window & Action Buttons -->
-            <div
-              style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);">
+            <!-- Collapsible Month Selection Chips Drawer -->
+            <div class="sandbox-month-drawer" id="sandbox-month-drawer">
+              <div id="sandbox-month-chips" class="sandbox-month-grid">
+                <span class="text-muted" style="font-size: 11px;">Load history with multiple calendar months to enable holdout sandbox.</span>
+              </div>
+            </div>
+
+            <!-- Lookback Window & Primary Action Buttons -->
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle);">
               <div style="display: flex; align-items: center; gap: var(--space-2);">
-                <label for="select-sandbox-lookback"
-                  style="font-size: var(--text-xs); color: var(--text-secondary); margin: 0;">Lookback Training
-                  Window:</label>
-                <select id="select-sandbox-lookback" class="form-control mono"
-                  style="font-size: 11px; height: 26px; width: auto;">
+                <label for="select-sandbox-lookback" style="font-size: var(--text-xs); color: var(--text-secondary); margin: 0;">Lookback Training Window:</label>
+                <select id="select-sandbox-lookback" class="form-control mono" style="font-size: 11px; height: 26px; width: auto;">
                   <option value="all" selected>All Available History (Default)</option>
                   <option value="1">1 Month Before Target</option>
                   <option value="3">3 Months Before Target</option>
                   <option value="6">6 Months Before Target</option>
                   <option value="12">12 Months Before Target</option>
                 </select>
-                <span class="form-hint" style="margin: 0; font-size: 11px;">Tests performance under limited training
-                  history</span>
+                <span class="form-hint" style="margin: 0; font-size: 11px;">Tests performance under limited training history</span>
               </div>
 
               <div style="display: flex; gap: var(--space-2);">
-                <button id="btn-export-sandbox-csv" class="btn btn-secondary btn-sm"
-                  style="font-size: 11px; height: 26px;">Export Sandbox CSV</button>
-                <button id="btn-run-sandbox" class="btn btn-primary btn-sm" style="font-size: 11px; height: 26px;">Run
-                  Sandbox Evaluation</button>
+                <button id="btn-export-sandbox-csv" class="btn btn-secondary btn-sm" style="font-size: 11px; height: 26px;">Export Sandbox CSV</button>
+                <button id="btn-run-sandbox" class="btn btn-primary btn-sm" style="font-size: 11px; height: 26px;">Run Sandbox Evaluation</button>
               </div>
             </div>
           </div>
@@ -642,17 +643,17 @@
           <!-- Body: Last N Periods Table View -->
           <div class="panel-body" id="box-last-n-table" style="padding: 0;">
             <div class="table-container" style="border: none;">
-              <table class="data-table">
+              <table class="data-table sandbox-streamlined-table">
                 <thead>
                   <tr>
+                    <th style="width: 48px; text-align: center;">Rank</th>
                     <th>Model Algorithm</th>
+                    <th style="color: var(--accent);">OOS WAPE</th>
+                    <th style="color: var(--info);">OOS MAPE</th>
                     <th>In-Sample MAPE</th>
-                    <th style="color: var(--info);">Holdout OOS MAPE</th>
-                    <th>OOS WAPE</th>
-                    <th>OOS RMSE</th>
                     <th>Overfit Gap</th>
                     <th>Projected Total</th>
-                    <th style="width: 80px;">Action</th>
+                    <th style="width: 80px; text-align: right;">Action</th>
                   </tr>
                 </thead>
                 <tbody id="tbody-model-comparison"></tbody>
@@ -660,58 +661,113 @@
             </div>
           </div>
 
-          <!-- Body: Holdout Sandbox Results View (Phase 13) -->
+          <!-- Body: Holdout Sandbox Results View (Phase 13 Redesign) -->
           <div class="panel-body" id="box-sandbox-results" style="display: none; padding: 0;">
-            <!-- Active Overlay Banner -->
-            <div id="sandbox-active-banner"
-              style="display: none; background: rgba(0, 210, 211, 0.08); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
-              <span id="sandbox-banner-text"><strong class="text-accent">👁️ Active Overlay:</strong> Plotting holdout
-                forecast vs actuals on chart below.</span>
-              <button id="btn-apply-sandbox-winner" class="btn btn-primary btn-sm"
-                style="font-size: 11px; height: 24px; padding: 2px 10px;">⚡ Use Winner for Future Forecast</button>
+            
+            <!-- Decision Summary Area (Prompt Section 5 & 6) -->
+            <div class="sandbox-decision-summary" id="sandbox-decision-summary" style="display: none;">
+              <div class="sandbox-decision-header">
+                <div class="sandbox-decision-winner-title">
+                  <span style="font-size: 18px;">🏆</span>
+                  <div>
+                    <h4 id="lbl-decision-winner-headline">Best Holdout Model: --</h4>
+                    <span class="form-hint" id="lbl-decision-winner-subtext" style="font-size: 11px; margin: 0;">Lowest forecast error across target evaluation period</span>
+                  </div>
+                </div>
+                <button id="btn-apply-sandbox-winner" class="btn btn-primary btn-sm" style="font-size: 11px; height: 26px; padding: 2px 12px; font-weight: 600;">⚡ Use Winner for Production</button>
+              </div>
+
+              <!-- 4 KPI Summary Cards -->
+              <div class="sandbox-decision-grid">
+                <div class="sandbox-decision-card highlight" id="card-decision-winner">
+                  <div class="sandbox-card-label">🏆 Winning Model</div>
+                  <div class="sandbox-card-value" id="val-decision-winner" style="color: var(--text-accent);">--</div>
+                  <div class="sandbox-card-subtext">Best holdout performance</div>
+                </div>
+                <div class="sandbox-decision-card">
+                  <div class="sandbox-card-label">Holdout WAPE</div>
+                  <div class="sandbox-card-value text-accent" id="val-decision-wape">--</div>
+                  <div class="sandbox-card-subtext">↓ Lower is better</div>
+                </div>
+                <div class="sandbox-decision-card">
+                  <div class="sandbox-card-label">Signed Bias</div>
+                  <div class="sandbox-card-value" id="val-decision-bias">--</div>
+                  <div class="sandbox-card-subtext" id="sub-decision-bias">Near 0 is balanced</div>
+                </div>
+                <div class="sandbox-decision-card" id="card-decision-stability" style="display: none;">
+                  <div class="sandbox-card-label">Stability (StdDev)</div>
+                  <div class="sandbox-card-value text-success" id="val-decision-stability">--</div>
+                  <div class="sandbox-card-subtext" id="sub-decision-stability">Across selected months</div>
+                </div>
+              </div>
             </div>
 
-            <!-- Single Month Results View -->
+            <!-- Active Overlay Status Banner -->
+            <div id="sandbox-active-banner"
+              style="display: none; background: rgba(0, 210, 211, 0.05); padding: var(--space-2) var(--space-4); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+              <span id="sandbox-banner-text"><strong class="text-accent">👁️ Active Overlay:</strong> Plotting holdout forecast vs actuals on chart below.</span>
+              <span class="badge badge-neutral" style="font-size: 10px;" id="lbl-overlay-target-badge">Holdout Period</span>
+            </div>
+
+            <!-- Multi-Month View Switcher Tabs (Prompt Section 10) -->
+            <div id="sandbox-multi-tabs" style="display: none; padding: var(--space-2) var(--space-4); background: var(--bg-surface-elevated); border-bottom: 1px solid var(--border-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2);">
+              <div class="segmented-control" id="control-sandbox-view">
+                <button type="button" class="segmented-btn active" id="btn-view-comparison">📊 Model Comparison</button>
+                <button type="button" class="segmented-btn" id="btn-view-consistency">📈 Month Consistency (<span id="lbl-consistency-tab-count">0</span>)</button>
+              </div>
+              <span class="form-hint" style="font-size: 11px; margin: 0;">Multi-month holdout evaluation</span>
+            </div>
+
+            <!-- Primary Model Comparison Table View (Prompt Section 3 & 4) -->
             <div id="sandbox-single-results" style="display: none;">
               <div class="table-container" style="border: none;">
-                <table class="data-table">
+                <table class="data-table sandbox-streamlined-table">
                   <thead>
                     <tr>
+                      <th style="width: 48px; text-align: center;">Rank</th>
                       <th>Model Algorithm</th>
-                      <th>In-Sample MAPE</th>
                       <th style="color: var(--accent);">Holdout WAPE</th>
                       <th>Holdout MAPE</th>
                       <th>Signed Bias %</th>
-                      <th>Holdout MAE</th>
-                      <th>Holdout RMSE</th>
-                      <th>Actual vs Fcst</th>
-                      <th style="width: 140px;">Actions</th>
+                      <th style="width: 80px; text-align: right;">Action</th>
                     </tr>
                   </thead>
                   <tbody id="tbody-sandbox-single"></tbody>
                 </table>
               </div>
-            </div>
 
-            <!-- Multi-Month Consistency Matrix View -->
-            <div id="sandbox-multi-results" style="display: none;">
-              <div
-                style="padding: var(--space-3) var(--space-4); background: rgba(16, 185, 129, 0.04); border-bottom: 1px solid var(--border-subtle);">
-                <div
-                  style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: var(--space-2);">
-                  <span style="font-size: var(--text-xs); color: var(--text-secondary); font-weight: 500;">
-                    📈 <strong>Multi-Month Consistency Matrix</strong> — Comparing algorithm stability across all <span
-                      id="lbl-consistency-month-count" class="text-accent font-bold">0</span> selected months:
-                  </span>
-                  <span class="badge badge-success" id="badge-sandbox-best-model" style="font-size: 11px;">🏆 Best:
-                    None</span>
+              <!-- Progressive Disclosure: Advanced Metrics Drawer (Prompt Section 4) -->
+              <div class="sandbox-advanced-section">
+                <button type="button" id="btn-toggle-advanced-metrics" class="btn btn-ghost btn-sm" style="font-size: 11px; color: var(--text-secondary); width: 100%; display: flex; justify-content: space-between; align-items: center;">
+                  <span>▾ Show Advanced Metrics (In-Sample MAPE, MAE, RMSE, Overfit Gap)</span>
+                  <span style="font-size: 10px; opacity: 0.7;">Diagnostics</span>
+                </button>
+                <div class="sandbox-advanced-drawer" id="sandbox-advanced-drawer">
+                  <div class="table-container" style="border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); margin-top: var(--space-2);">
+                    <table class="data-table sandbox-advanced-table">
+                      <thead>
+                        <tr>
+                          <th>Model</th>
+                          <th>In-Sample MAPE</th>
+                          <th>Holdout MAE</th>
+                          <th>Holdout RMSE</th>
+                          <th>Overfit Gap</th>
+                          <th>Actual / Fcst Total</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbody-sandbox-advanced"></tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
+            </div>
 
+            <!-- Multi-Month Consistency Matrix View (Prompt Section 10) -->
+            <div id="sandbox-multi-results" style="display: none;">
               <div class="table-container" style="border: none;">
                 <table class="data-table sandbox-consistency-table" id="table-sandbox-consistency">
                   <thead id="thead-sandbox-consistency">
-                    <!-- Dynamic Headers (Algorithm, Overall WAPE, Bias, [Month 1 WAPE], [Month 2 WAPE], Consistency, Actions) -->
+                    <!-- Dynamic Headers (Rank, Model, Overall WAPE, Bias, [Month 1], [Month 2], StdDev, Range, Action) -->
                   </thead>
                   <tbody id="tbody-sandbox-consistency"></tbody>
                 </table>

@@ -72,34 +72,49 @@ ALTER TABLE public.plan_versions ENABLE ROW LEVEL SECURITY;
 -- Helper: Check if current authenticated user owns a plan
 CREATE OR REPLACE FUNCTION public.is_plan_owner(check_plan_id UUID)
 RETURNS BOOLEAN
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 STABLE
 AS $$
-  SELECT EXISTS (
+BEGIN
+  RETURN EXISTS (
     SELECT 1 FROM public.plans
     WHERE id = check_plan_id AND user_id = auth.uid()
   );
+END;
 $$;
 
 -- Helper: Check if current authenticated user is a collaborator on a plan
 CREATE OR REPLACE FUNCTION public.is_plan_collaborator(check_plan_id UUID, check_role TEXT DEFAULT NULL)
 RETURNS BOOLEAN
-LANGUAGE sql
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 STABLE
 AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.plan_collaborators
-    WHERE plan_id = check_plan_id
-      AND (
-        user_id = auth.uid()
-        OR LOWER(user_email) = LOWER(COALESCE(auth.jwt() ->> 'email', ''))
-      )
-      AND (check_role IS NULL OR role = check_role)
-  );
+BEGIN
+  IF check_role IS NULL THEN
+    RETURN EXISTS (
+      SELECT 1 FROM public.plan_collaborators
+      WHERE plan_id = check_plan_id
+        AND (
+          user_id = auth.uid()
+          OR (user_email IS NOT NULL AND LOWER(user_email) = LOWER(COALESCE(auth.jwt() ->> 'email', '')))
+        )
+    );
+  ELSE
+    RETURN EXISTS (
+      SELECT 1 FROM public.plan_collaborators
+      WHERE plan_id = check_plan_id
+        AND role = check_role
+        AND (
+          user_id = auth.uid()
+          OR (user_email IS NOT NULL AND LOWER(user_email) = LOWER(COALESCE(auth.jwt() ->> 'email', '')))
+        )
+    );
+  END IF;
+END;
 $$;
 
 -- ============================================================================

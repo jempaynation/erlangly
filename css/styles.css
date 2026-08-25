@@ -1359,21 +1359,74 @@ input[type="range"]::-moz-range-thumb {
   outline-offset: 1px;
 }
 
+/* ==========================================================================
+   PHASE 13 REDESIGN: HOLDOUT SANDBOX DECISION WORKSPACE STYLES
+   ========================================================================== */
+
+/* Month Selection Summary & Collapsible Drawer */
+.sandbox-month-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.sandbox-selected-pills {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.sandbox-selected-pill {
+  background: var(--accent-muted);
+  border: 1px solid var(--accent);
+  color: var(--text-accent);
+  border-radius: var(--radius-full);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.sandbox-month-drawer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--transition-normal), opacity var(--transition-normal);
+  opacity: 0;
+  border-top: 1px solid transparent;
+}
+
+.sandbox-month-drawer.open {
+  max-height: 180px;
+  opacity: 1;
+  overflow-y: auto;
+  border-top-color: var(--border-subtle);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+}
+
 .sandbox-month-grid {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-2);
-  max-height: 140px;
-  overflow-y: auto;
-  padding: var(--space-1);
+  padding: var(--space-1) 0;
 }
 
 .sandbox-month-chip {
   background: var(--bg-surface-elevated);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
-  padding: 4px 12px;
+  padding: 4px 10px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--text-secondary);
@@ -1381,7 +1434,7 @@ input[type="range"]::-moz-range-thumb {
   user-select: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   transition: all var(--transition-fast);
 }
 
@@ -1410,10 +1463,221 @@ input[type="range"]::-moz-range-thumb {
   background: var(--bg-surface-elevated);
 }
 
+/* Decision Summary Workspace */
+.sandbox-decision-summary {
+  background: linear-gradient(135deg, rgba(0, 210, 211, 0.06) 0%, rgba(15, 23, 42, 0.4) 100%);
+  border: 1px solid var(--border-default);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) var(--space-4);
+}
+
+.sandbox-decision-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.sandbox-decision-winner-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.sandbox-decision-winner-title h4 {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.sandbox-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.sandbox-decision-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.sandbox-decision-card.highlight {
+  border-color: var(--accent);
+  background: rgba(0, 210, 211, 0.04);
+}
+
+.sandbox-card-label {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sandbox-card-value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-family: var(--mono);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sandbox-card-subtext {
+  font-size: 9.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Streamlined Ranking Table */
+.sandbox-streamlined-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sandbox-streamlined-table th {
+  background: var(--bg-surface-elevated);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.sandbox-streamlined-table td {
+  padding: 8px 12px;
+  font-size: var(--text-xs);
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.sandbox-streamlined-table tbody tr {
+  transition: background var(--transition-fast);
+}
+
+.sandbox-streamlined-table tbody tr:hover {
+  background: var(--bg-surface-hover);
+}
+
+.sandbox-streamlined-table tbody tr.winner-row {
+  border-left: 3px solid var(--accent);
+  background: rgba(0, 210, 211, 0.03);
+}
+
+.sandbox-streamlined-table tbody tr.winner-row td:first-child {
+  padding-left: 9px; /* balance the 3px border-left */
+}
+
+.rank-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.rank-badge.rank-1 {
+  background: var(--accent-muted);
+  border-color: var(--accent);
+  color: var(--text-accent);
+}
+
+.viewing-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--accent);
+  font-weight: 600;
+  margin-left: 6px;
+}
+
+.viewing-indicator::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Progressive Disclosure: Advanced Metrics Drawer */
+.sandbox-advanced-section {
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface-elevated);
+  padding: var(--space-2) var(--space-4);
+}
+
+.sandbox-advanced-drawer {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height var(--transition-normal), opacity var(--transition-normal);
+  opacity: 0;
+}
+
+.sandbox-advanced-drawer.open {
+  max-height: 400px;
+  opacity: 1;
+  overflow-y: auto;
+  margin-top: var(--space-2);
+}
+
+.sandbox-advanced-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.sandbox-advanced-table th,
+.sandbox-advanced-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.sandbox-advanced-table th {
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+/* Multi-Month Consistency Matrix Table */
 .sandbox-consistency-table {
-  min-width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  width: 100%;
+  border-collapse: collapse;
 }
 
 .sandbox-consistency-table th,
@@ -1425,43 +1689,47 @@ input[type="range"]::-moz-range-thumb {
   border-right: 1px solid var(--border-subtle);
 }
 
-/* Sticky first column (Model Algorithm) */
-.sandbox-consistency-table th:first-child,
-.sandbox-consistency-table td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 3;
+.sandbox-consistency-table th {
   background: var(--bg-surface-elevated);
-  box-shadow: 3px 0 6px var(--shadow-sm);
-  border-right: 1px solid var(--border-default);
-  min-width: 160px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  font-weight: 600;
+  color: var(--text-secondary);
 }
 
-.sandbox-consistency-table tr:hover td:first-child {
-  background: var(--bg-surface-hover);
-}
-
-.winner-row td:first-child {
-  background: var(--accent-muted) !important;
-}
-
-/* Sticky last column (Actions) */
 .sandbox-consistency-table th:last-child,
 .sandbox-consistency-table td:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 3;
-  background: var(--bg-surface-elevated);
-  box-shadow: -3px 0 6px var(--shadow-sm);
-  border-left: 1px solid var(--border-default);
+  border-right: none;
 }
 
-.sandbox-consistency-table tr:hover td:last-child {
+.sandbox-consistency-table tbody tr {
+  transition: background var(--transition-fast);
+}
+
+.sandbox-consistency-table tbody tr:hover {
   background: var(--bg-surface-hover);
 }
 
-.winner-row td:last-child {
-  background: var(--accent-muted) !important;
+.sandbox-consistency-table tbody tr.winner-row {
+  border-left: 3px solid var(--accent);
+  background: rgba(0, 210, 211, 0.03);
+}
+
+.sandbox-consistency-table tbody tr.winner-row td:first-child {
+  padding-left: 9px;
+}
+
+@media (max-width: 768px) {
+  .sandbox-decision-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .sandbox-decision-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ==========================================================================
