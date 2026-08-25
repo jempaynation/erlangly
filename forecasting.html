@@ -25,44 +25,135 @@
   </script>
   <!-- Chart.js CDN for History & Forecast Charts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    /*
+     * Forecasting page layout:
+     * 1. Squeezed 1-line KPI cards grid (.fc-stat-grid)
+     * 2. Fixed readable chart height (#panel-chart-forecast)
+     * 3. Dynamic forecast breakdown table (#panel-forecast-table) flexing to align with
+     *    the bottom of the left column (Pluggable Model Architecture panel)
+     */
+    .forecasting-tool-body {
+      align-items: stretch;   /* stretches both columns to equal height */
+    }
+
+    #forecast-right-col {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-6);
+      height: 100%;
+      min-height: 0;
+    }
+
+    /* Squeeze all 6 KPI cards into a single horizontal row (one liner) */
+    .stat-grid.fc-stat-grid,
+    #forecast-kpi-grid {
+      display: grid !important;
+      grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+      gap: var(--space-2) !important;
+      flex-shrink: 0;
+    }
+
+    .fc-stat-grid .metric-card {
+      padding: 6px 10px;
+      min-width: 0;
+      gap: 2px;
+    }
+
+    .fc-stat-grid .metric-label {
+      font-size: 9.5px;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .fc-stat-grid .metric-value {
+      font-size: var(--text-base);
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .fc-stat-grid .metric-subtext {
+      font-size: 9.5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Fixed readable chart panel */
+    #panel-chart-forecast {
+      display: flex;
+      flex-direction: column;
+      height: 310px;
+      flex: 0 0 310px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    /* Chart canvas body: fills the flexible space in the panel */
+    #chart-forecast-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    /* Forecast breakdown table: flexes dynamically to match left column */
+    #panel-forecast-table {
+      display: flex;
+      flex-direction: column;
+      flex: 1 1 0;
+      min-height: 200px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    #panel-forecast-table .panel-body {
+      flex: 1 1 0;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    #panel-forecast-table .table-container {
+      flex: 1 1 0;
+      min-height: 0;
+      max-height: none !important;
+      overflow-y: auto;
+      overflow-x: auto;
+      border: none;
+    }
+
+    #table-forecast-results th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: var(--bg-surface-elevated);
+    }
+
+    @media (max-width: 768px) {
+      .stat-grid.fc-stat-grid,
+      #forecast-kpi-grid {
+        grid-template-columns: repeat(3, 1fr) !important;
+        gap: var(--space-2) !important;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .stat-grid.fc-stat-grid,
+      #forecast-kpi-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+      }
+    }
+  </style>
 </head>
-<style>
-  /*
-   * Forecasting page: dynamic chart height layout
-   * The chart panel (flex:1) fills all space between the KPI cards + model panel
-   * and the fixed-height forecast breakdown table.
-   * The right column height is anchored to the viewport via a CSS custom property
-   * (--fc-right-h) that is set by JS once the nav/header heights are known.
-   */
-  .forecasting-tool-body {
-    align-items: stretch;   /* grid rows stretch both columns to equal height */
-  }
-
-  #forecast-right-col {
-    min-height: var(--fc-right-min-h, 700px);
-  }
-
-  /* Chart panel: flex column that fills its parent */
-  #panel-chart-forecast {
-    display: flex;
-    flex-direction: column;
-    flex: 1;               /* absorb remaining space in the right col */
-    min-height: 320px;     /* never collapses below a readable height */
-    min-width: 0;
-  }
-
-  /* Chart canvas body: fills the flexible space in the panel */
-  #chart-forecast-body {
-    flex: 1;
-    min-height: 0;
-    position: relative;
-  }
-
-  /* Forecast breakdown table: fixed scrollable height, never grows */
-  #panel-forecast-table {
-    flex-shrink: 0;
-  }
-</style>
 <body>
   <!-- Navigation Header -->
   <header class="site-nav">
@@ -372,10 +463,10 @@
       </div>
 
       <!-- Right Column: Visualization & Results Tables -->
-      <div id="forecast-right-col" style="display: flex; flex-direction: column; gap: var(--space-6); min-height: 0;">
+      <div id="forecast-right-col">
         
         <!-- Summary KPI & Fit Stats -->
-        <div class="stat-grid">
+        <div class="stat-grid fc-stat-grid" id="forecast-kpi-grid">
           <div class="metric-card">
             <div class="metric-label">Historical Volume</div>
             <div class="metric-value" id="stat-hist-total">--</div>
@@ -713,13 +804,13 @@
             </div>
           </div>
 
-          <div class="panel-body" id="chart-forecast-body" style="flex: 1; min-height: 0; position: relative; width: 100%; min-width: 0; overflow: hidden;">
+          <div class="panel-body" id="chart-forecast-body">
             <canvas id="chart-forecast" style="width: 100%; height: 100%;"></canvas>
           </div>
         </div>
 
         <!-- Forecast Breakdown Table -->
-        <div class="panel" id="panel-forecast-table" style="flex-shrink: 0;">
+        <div class="panel" id="panel-forecast-table">
           <div class="panel-header">
             <div class="panel-title">
               <span>Forecast Breakdown Table (<span id="lbl-forecast-table-count">0</span> periods)</span>
@@ -730,8 +821,8 @@
             </div>
           </div>
 
-          <div class="panel-body" style="padding: 0;">
-            <div class="table-container" style="border: none; max-height: 360px; overflow-y: auto;">
+          <div class="panel-body">
+            <div class="table-container" style="border: none;">
               <table class="data-table" id="table-forecast-results">
                 <thead>
                   <tr>

@@ -1378,6 +1378,130 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ==========================================================================
+   FORECASTING TOOL LAYOUT & RESPONSIVE DESIGN
+   ========================================================================== */
+
+.forecasting-tool-body {
+  align-items: stretch;
+}
+
+#forecast-right-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  height: 100%;
+  min-height: 0;
+}
+
+/* Squeeze all 6 KPI cards into a single horizontal row (one liner) */
+.stat-grid.fc-stat-grid,
+#forecast-kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: var(--space-2) !important;
+  flex-shrink: 0;
+}
+
+.fc-stat-grid .metric-card {
+  padding: 6px 10px;
+  min-width: 0;
+  gap: 2px;
+}
+
+.fc-stat-grid .metric-label {
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-stat-grid .metric-value {
+  font-size: var(--text-base);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fc-stat-grid .metric-subtext {
+  font-size: 9.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Fixed readable chart panel */
+#panel-chart-forecast {
+  display: flex;
+  flex-direction: column;
+  height: 310px;
+  flex: 0 0 310px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Chart canvas body: fills the flexible space in the panel */
+#chart-forecast-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Forecast breakdown table: flexes dynamically to match left column */
+#panel-forecast-table {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 200px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+#panel-forecast-table .panel-body {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+#panel-forecast-table .table-container {
+  flex: 1 1 0;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto;
+  overflow-x: auto;
+  border: none;
+}
+
+#table-forecast-results th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-surface-elevated);
+}
+
+@media (max-width: 768px) {
+  .stat-grid.fc-stat-grid,
+  #forecast-kpi-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: var(--space-2) !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .stat-grid.fc-stat-grid,
+  #forecast-kpi-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ==========================================================================
    PHASE 9: SCHEDULING LABOR RULES, ROSTER MATRIX & COMPLIANCE STYLES
    ========================================================================== */
 
