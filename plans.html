@@ -288,13 +288,7 @@
           }
 
           // Summary details
-          var summaryHtml = '';
-          if (plan.inputs) {
-            var keys = Object.keys(plan.inputs).slice(0, 3);
-            summaryHtml = keys.map(function(k) {
-              return '<span style="color: var(--text-muted);">' + k + ':</span> <strong class="mono">' + plan.inputs[k] + '</strong>';
-            }).join(' &bull; ');
-          }
+          var summaryHtml = ErlanglyPlans.formatPlanSummary ? ErlanglyPlans.formatPlanSummary(plan) : 'Saved workforce parameter set.';
 
           card.innerHTML = 
             '<div class="panel-header" style="background: var(--bg-surface-elevated);">' +
@@ -305,9 +299,9 @@
               '<span style="font-size: var(--text-xs); color: var(--text-muted); font-family: var(--mono);">' + updatedStr + '</span>' +
             '</div>' +
             '<div class="panel-body">' +
-              '<h3 style="font-size: var(--text-lg); margin-bottom: var(--space-1);">' + plan.name + '</h3>' +
-              '<div style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.6; margin-bottom: var(--space-3);">' + 
-                (summaryHtml || 'Saved workforce parameter set.') + 
+              '<h3 style="font-size: var(--text-lg); margin-bottom: var(--space-2); font-weight: 600;">' + plan.name + '</h3>' +
+              '<div style="margin-bottom: var(--space-3);">' + 
+                summaryHtml + 
               '</div>' +
               '<div style="display: flex; gap: var(--space-2); align-items: center; border-top: 1px solid var(--border-subtle); padding-top: var(--space-2); font-size: 11px;">' +
                 '<button class="btn btn-ghost btn-sm btn-history" style="padding: 2px 6px; font-size: 11px;" title="View version snapshot history">📜 History</button>' +

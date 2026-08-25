@@ -18,6 +18,39 @@
   var ErlanglyPlans = {};
 
   /**
+   * Format parameter values compactly for diff view without dumping raw objects/arrays
+   */
+  ErlanglyPlans.formatDiffValue = function(val) {
+    if (val === null || val === undefined) return '—';
+    if (Array.isArray(val)) {
+      if (val.length === 0) return '[ ] (empty)';
+      if (val.length === 1 && (typeof val[0] !== 'object' || val[0] === null)) return '[' + String(val[0]) + ']';
+      return 'Array (' + val.length + ' items)';
+    }
+    if (typeof val === 'object') {
+      var keys = Object.keys(val);
+      if (keys.length === 0) return '{ } (empty)';
+      if (keys.length <= 3) {
+        var pairs = keys.map(function(k) {
+          var v = val[k];
+          return k + ': ' + (typeof v === 'object' && v !== null ? (Array.isArray(v) ? v.length + ' items' : '{...}') : String(v));
+        });
+        return '{ ' + pairs.join(', ') + ' }';
+      }
+      return '{ ' + keys.length + ' properties }';
+    }
+    if (typeof val === 'number') {
+      return Number.isInteger(val) ? val.toLocaleString() : (Math.abs(val) < 1 ? val.toString() : val.toFixed(2));
+    }
+    if (typeof val === 'boolean') {
+      return val ? 'true' : 'false';
+    }
+    var str = String(val);
+    if (str.length > 60) return str.slice(0, 57) + '...';
+    return str;
+  };
+
+  /**
    * Deep diff comparison between two parameter objects (inputs or outputs)
    */
   ErlanglyPlans.diffObjects = function(objA, objB) {
@@ -29,19 +62,178 @@
     allKeys.forEach(function(k) {
       var valA = objA[k];
       var valB = objB[k];
-      var strA = typeof valA === 'object' && valA !== null ? JSON.stringify(valA) : String(valA !== undefined ? valA : '');
-      var strB = typeof valB === 'object' && valB !== null ? JSON.stringify(valB) : String(valB !== undefined ? valB : '');
+      var strA = ErlanglyPlans.formatDiffValue(valA);
+      var strB = ErlanglyPlans.formatDiffValue(valB);
+
+      var isSame = false;
+      if (valA === valB) {
+        isSame = true;
+      } else if (typeof valA === 'object' && typeof valB === 'object' && valA !== null && valB !== null) {
+        isSame = JSON.stringify(valA) === JSON.stringify(valB);
+      }
 
       if (!(k in objA)) {
         diffs.push({ key: k, type: 'added', oldVal: null, newVal: valB, strA: '—', strB: strB });
       } else if (!(k in objB)) {
         diffs.push({ key: k, type: 'removed', oldVal: valA, newVal: null, strA: strA, strB: '—' });
-      } else if (strA !== strB) {
+      } else if (!isSame) {
         diffs.push({ key: k, type: 'modified', oldVal: valA, newVal: valB, strA: strA, strB: strB });
       }
     });
 
     return diffs;
+  };
+
+  /**
+   * Format human-readable summary badges & details for plan cards
+   * Prevents [object Object] rendering for complex objects, series, and large histories
+   *
+   * @param {Object} plan - Plan record with tool, inputs, outputs
+   * @returns {string} HTML string of formatted summary pills
+   */
+  ErlanglyPlans.formatPlanSummary = function(plan) {
+    if (!plan) return 'Saved workforce parameter set.';
+    var tool = plan.tool || 'capacity';
+    var inputs = plan.inputs || {};
+    var outputs = plan.outputs || {};
+    var pills = [];
+
+    function pill(label, value, isHighlight) {
+      if (value === null || value === undefined || value === '') return '';
+      var valColor = isHighlight ? 'var(--accent)' : 'var(--text-primary)';
+      return '<span style="display: inline-flex; align-items: baseline; gap: 4px; background: var(--bg-surface-elevated); padding: 3px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin: 2px 3px 2px 0;">' +
+        '<span style="color: var(--text-muted); font-size: 11px;">' + label + ':</span> ' +
+        '<strong class="mono" style="color: ' + valColor + '; font-size: 11px;">' + value + '</strong>' +
+      '</span>';
+    }
+
+    if (tool === 'forecasting') {
+      // Model Name
+      var modelNames = {
+        wma: 'Weighted Moving Avg',
+        sma: 'Simple Moving Avg',
+        linear_trend: 'Linear Trend (OLS)',
+        seasonal_multiplicative: 'Seasonal Multiplicative',
+        seasonal_additive: 'Seasonal Additive',
+        ses: 'Simple Exponential',
+        holt: "Holt's Double Exp",
+        multivariable: 'Multi-Variable Reg',
+        yoy: 'Year-over-Year (YoY)',
+        ensemble: 'Blended Ensemble'
+      };
+      var modelLabel = outputs.modelName || modelNames[inputs.modelId] || (inputs.modelId ? inputs.modelId.replace(/_/g, ' ') : 'Forecast Model');
+      pills.push(pill('Model', modelLabel, true));
+
+      // History Length
+      var histLen = Array.isArray(inputs.history) ? inputs.history.length : (Array.isArray(inputs.multiSkillHistory) ? inputs.multiSkillHistory.length : 0);
+      if (histLen > 0) {
+        var histDesc = histLen >= 700 ? histLen + ' periods (~2 yrs)' : (histLen >= 350 ? histLen + ' periods (~1 yr)' : histLen + ' periods');
+        pills.push(pill('History', histDesc));
+      }
+
+      // Horizon
+      if (inputs.horizon) {
+        pills.push(pill('Horizon', inputs.horizon + ' periods'));
+      }
+
+      // Multi-Skill queue count
+      if (Array.isArray(inputs.skills) && inputs.skills.length > 1) {
+        pills.push(pill('Skills', inputs.skills.length + ' queues'));
+      }
+
+      // Accuracy Metrics or Projected Volume
+      if (outputs.metrics && typeof outputs.metrics.mape === 'number') {
+        pills.push(pill('MAPE', outputs.metrics.mape.toFixed(1) + '%'));
+      } else if (outputs.totalVolume) {
+        pills.push(pill('Proj Vol', Math.round(outputs.totalVolume).toLocaleString()));
+      }
+    } else if (tool === 'capacity') {
+      if (inputs.volume !== undefined) {
+        pills.push(pill('Volume', Number(inputs.volume).toLocaleString() + ' calls', true));
+      }
+      if (inputs.aht !== undefined) {
+        pills.push(pill('AHT', inputs.aht + 's'));
+      }
+      if (inputs.targetSLA !== undefined) {
+        var slaPct = Math.round(Number(inputs.targetSLA) * (inputs.targetSLA <= 1 ? 100 : 1));
+        var slaTime = inputs.targetTime ? ' / ' + inputs.targetTime + 's' : '';
+        pills.push(pill('Target SLA', slaPct + '%' + slaTime));
+      }
+      if (inputs.shrinkage !== undefined) {
+        var shrinkPct = Math.round(Number(inputs.shrinkage) * (inputs.shrinkage <= 1 ? 100 : 1));
+        pills.push(pill('Shrinkage', shrinkPct + '%'));
+      }
+      if (outputs.staffedAgents) {
+        pills.push(pill('Staffed', outputs.staffedAgents + ' FTE', true));
+      }
+    } else if (tool === 'scheduling') {
+      var intervalCount = Array.isArray(inputs.intervals) ? inputs.intervals.length : (inputs.intervalCount || 0);
+      if (intervalCount > 0) {
+        pills.push(pill('Intervals', intervalCount + ' slots'));
+      }
+      var rosterCount = Array.isArray(inputs.roster) ? inputs.roster.length : (inputs.agentCount || 0);
+      if (rosterCount > 0) {
+        pills.push(pill('Roster', rosterCount + ' agents', true));
+      }
+      if (outputs.coverageAlignment !== undefined) {
+        var alignPct = Math.round(Number(outputs.coverageAlignment) * (outputs.coverageAlignment <= 1 ? 100 : 1));
+        pills.push(pill('Coverage', alignPct + '%', true));
+      } else if (outputs.totalScheduledHours) {
+        pills.push(pill('Hours', Math.round(outputs.totalScheduledHours) + 'h'));
+      }
+    } else if (tool === 'realtime') {
+      if (inputs.date) {
+        pills.push(pill('Date', inputs.date));
+      }
+      var rtIntervals = Array.isArray(inputs.intervals) ? inputs.intervals.length : 0;
+      if (rtIntervals > 0) {
+        pills.push(pill('Intervals', rtIntervals + ' slots'));
+      }
+      if (outputs.netStaffingDelta !== undefined) {
+        var delta = Number(outputs.netStaffingDelta);
+        pills.push(pill('Net Staffing', (delta > 0 ? '+' : '') + delta, true));
+      }
+      if (outputs.totalActualVolume) {
+        pills.push(pill('Actual Vol', Math.round(outputs.totalActualVolume).toLocaleString()));
+      }
+    } else if (tool === 'simulation') {
+      if (inputs.numSimulations) {
+        pills.push(pill('Simulations', Number(inputs.numSimulations).toLocaleString() + ' runs', true));
+      }
+      if (inputs.periods) {
+        pills.push(pill('Periods', inputs.periods + ' months'));
+      }
+      if (outputs.slaBreachProb !== undefined) {
+        var riskPct = Math.round(Number(outputs.slaBreachProb) * (outputs.slaBreachProb <= 1 ? 100 : 1));
+        pills.push(pill('SLA Risk', riskPct + '%', riskPct > 20));
+      }
+    }
+
+    // Universal Fallback if no tool-specific pills matched
+    if (pills.length === 0) {
+      var keys = Object.keys(inputs).slice(0, 4);
+      keys.forEach(function(k) {
+        var val = inputs[k];
+        var formattedVal = '';
+        if (Array.isArray(val)) {
+          formattedVal = val.length + ' items';
+        } else if (typeof val === 'object' && val !== null) {
+          formattedVal = Object.keys(val).length + ' params';
+        } else if (typeof val === 'number') {
+          formattedVal = (val > 0 && val < 1 && (k.toLowerCase().indexOf('sla') !== -1 || k.toLowerCase().indexOf('shrink') !== -1)) ? (Math.round(val * 100) + '%') : val.toLocaleString();
+        } else if (typeof val === 'boolean') {
+          formattedVal = val ? 'Yes' : 'No';
+        } else {
+          var str = String(val !== undefined && val !== null ? val : '');
+          formattedVal = str.length > 25 ? str.slice(0, 22) + '...' : str;
+        }
+        if (formattedVal) {
+          pills.push(pill(k, formattedVal));
+        }
+      });
+    }
+
+    return pills.length > 0 ? ('<div style="display: flex; flex-wrap: wrap; gap: 2px;">' + pills.join('') + '</div>') : 'Saved workforce parameter set.';
   };
 
   /**

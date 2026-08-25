@@ -1210,6 +1210,49 @@ assert(modVol && modVol.type === 'modified' && modVol.oldVal === 300 && modVol.n
 const addedShrinkage = diffResult.inputDiffs.find(d => d.key === 'shrinkage');
 assert(addedShrinkage && addedShrinkage.type === 'added' && addedShrinkage.newVal === 0.35, 'Diff identifies added parameter');
 
+// Plan Summary & Object Rendering Sanitization
+console.log('\n  [20c-2] Plan Summary Formatter & Object Sanitization:');
+const forecastPlan2Yr = {
+  tool: 'forecasting',
+  name: '2-Year Retail Demand Plan',
+  inputs: {
+    history: new Array(730).fill(0).map((_, i) => ({ period: '2024-01-01', volume: 1500 })),
+    skills: ['Customer Care', 'Tech Support'],
+    modelId: 'seasonal_multiplicative',
+    horizon: 30
+  },
+  outputs: {
+    modelName: 'Seasonal Multiplicative Decomposition',
+    metrics: { mape: 3.8, wape: 4.1 },
+    totalVolume: 45200
+  }
+};
+const summary2Yr = ErlanglyPlans.formatPlanSummary(forecastPlan2Yr);
+assert(!summary2Yr.includes('[object Object]'), '2-Year forecasting summary contains ZERO [object Object] strings');
+assert(summary2Yr.includes('730 periods (~2 yrs)'), '2-Year forecasting summary renders human-friendly history length badge');
+assert(summary2Yr.includes('Seasonal Multiplicative Decomposition'), 'Summary displays clean model name badge');
+assert(summary2Yr.includes('MAPE:'), 'Summary displays accuracy metric pill');
+
+const schedPlan = {
+  tool: 'scheduling',
+  name: 'Omnichannel Roster',
+  inputs: {
+    intervals: new Array(48).fill({}),
+    roster: new Array(40).fill({})
+  },
+  outputs: {
+    coverageAlignment: 0.94
+  }
+};
+const summarySched = ErlanglyPlans.formatPlanSummary(schedPlan);
+assert(!summarySched.includes('[object Object]'), 'Scheduling plan summary contains ZERO [object Object] strings');
+assert(summarySched.includes('40 agents'), 'Scheduling plan summary renders agent roster count');
+assert(summarySched.includes('94%'), 'Scheduling plan summary renders coverage percentage');
+
+// Test formatDiffValue on arrays and objects
+assert(ErlanglyPlans.formatDiffValue(new Array(730).fill({})) === 'Array (730 items)', 'formatDiffValue summarizes large arrays without JSON dumping');
+assert(!ErlanglyPlans.formatDiffValue({ a: 1, b: 2 }).includes('[object Object]'), 'formatDiffValue formats objects cleanly');
+
 // 20d. Optimistic Concurrency & Role Permissions
 console.log('\n  [20d] Optimistic Concurrency & Permission Model:');
 // Test savePlan conflict detection
