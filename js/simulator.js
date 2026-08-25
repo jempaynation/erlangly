@@ -1218,6 +1218,10 @@
         p90Vals.push(d.p90 * scale);
       });
 
+      var themeColors = typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.getChartColors === 'function' ?
+        ErlanglyUtils.getChartColors() :
+        { isLight: true, textMuted: '#64748b', tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipTitle: '#0f172a', tooltipBody: '#334155', gridX: 'rgba(0,0,0,0.05)', gridY: 'rgba(0,0,0,0.07)', accent: '#0f766e', accentFill: 'rgba(15, 118, 110, 0.12)', success: '#059669', warn: '#d97706' };
+
       // Deterministic comparison line
       var det = state.simResults[state.activeScenarioIdx];
       var detVals = det ? det.periods.map(function(p) {
@@ -1241,7 +1245,7 @@
         label: 'P10–P90 (90% Confidence Interval)',
         data: p10Vals,
         borderColor: 'transparent',
-        backgroundColor: 'rgba(0, 210, 211, 0.12)',
+        backgroundColor: themeColors.accentFill,
         fill: '-1',
         pointRadius: 0,
         tension: 0.2
@@ -1263,7 +1267,7 @@
         label: 'P25–P75 (50% Inner Quartile Band)',
         data: p25Vals,
         borderColor: 'transparent',
-        backgroundColor: 'rgba(0, 210, 211, 0.25)',
+        backgroundColor: themeColors.isLight ? 'rgba(15, 118, 110, 0.22)' : 'rgba(0, 210, 211, 0.25)',
         fill: '-1',
         pointRadius: 0,
         tension: 0.2
@@ -1273,7 +1277,7 @@
       datasets.push({
         label: 'P50 Median Line',
         data: p50Vals,
-        borderColor: '#00d2d3',
+        borderColor: themeColors.accent,
         backgroundColor: 'transparent',
         borderWidth: 3,
         pointRadius: 4,
@@ -1285,7 +1289,7 @@
       datasets.push({
         label: 'Deterministic Benchmark',
         data: detVals,
-        borderColor: '#94a3b8',
+        borderColor: themeColors.textMuted,
         borderDash: [5, 5],
         backgroundColor: 'transparent',
         borderWidth: 2,
@@ -1296,19 +1300,23 @@
       // Legend in Monte Carlo mode
       if (boxChartLegend) {
         boxChartLegend.innerHTML =
-          '<span style="display: inline-flex; align-items: center; gap: 4px; color: #00d2d3;">' +
-            '<span style="display: inline-block; width: 12px; height: 3px; background: #00d2d3;"></span> P50 Median' +
+          '<span style="display: inline-flex; align-items: center; gap: 4px; color: ' + themeColors.accent + ';">' +
+            '<span style="display: inline-block; width: 12px; height: 3px; background: ' + themeColors.accent + ';"></span> P50 Median' +
           '</span>' +
-          '<span style="display: inline-flex; align-items: center; gap: 4px; color: rgba(0, 210, 211, 0.8);">' +
-            '<span style="display: inline-block; width: 10px; height: 10px; background: rgba(0, 210, 211, 0.25); border: 1px solid #00d2d3;"></span> 50% &amp; 90% Bands' +
+          '<span style="display: inline-flex; align-items: center; gap: 4px; color: ' + themeColors.accent + ';">' +
+            '<span style="display: inline-block; width: 10px; height: 10px; background: ' + themeColors.accentFill + '; border: 1px solid ' + themeColors.accent + ';"></span> 50% &amp; 90% Bands' +
           '</span>' +
-          '<span style="display: inline-flex; align-items: center; gap: 4px; color: #94a3b8;">' +
-            '<span style="display: inline-block; width: 12px; height: 2px; border-top: 2px dashed #94a3b8;"></span> Point Baseline' +
+          '<span style="display: inline-flex; align-items: center; gap: 4px; color: ' + themeColors.textMuted + ';">' +
+            '<span style="display: inline-block; width: 12px; height: 2px; border-top: 2px dashed ' + themeColors.textMuted + ';"></span> Point Baseline' +
           '</span>';
       }
     } else {
       // Deterministic 3-Scenario Comparison
-      var colors = ['#00d2d3', '#10b981', '#f59e0b'];
+      var themeColors = typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.getChartColors === 'function' ?
+        ErlanglyUtils.getChartColors() :
+        { isLight: true, textMuted: '#64748b', tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipTitle: '#0f172a', tooltipBody: '#334155', gridX: 'rgba(0,0,0,0.05)', gridY: 'rgba(0,0,0,0.07)', accent: '#0f766e', success: '#059669', warn: '#d97706' };
+
+      var colors = [themeColors.accent, themeColors.success, themeColors.warn];
       datasets = state.simResults.map(function(res, idx) {
         var vals = res.periods.map(function(p) {
           var val = p[metric] !== undefined ? p[metric] : p.sla;
@@ -1318,7 +1326,7 @@
         return {
           label: res.scenario.name,
           data: vals,
-          borderColor: colors[idx] || '#cbd5e1',
+          borderColor: colors[idx] || themeColors.textMuted,
           backgroundColor: 'transparent',
           borderWidth: idx === state.activeScenarioIdx ? 3 : 2,
           pointRadius: 4,
@@ -1329,14 +1337,14 @@
 
       if (boxChartLegend) {
         boxChartLegend.innerHTML =
-          '<span style="display: inline-flex; align-items: center; gap: 4px; color: #00d2d3;">' +
-            '<span style="display: inline-block; width: 10px; height: 10px; background: #00d2d3; border-radius: 50%;"></span> Scenario A' +
+          '<span style="display: inline-flex; align-items: center; gap: 4px; color: ' + themeColors.accent + ';">' +
+            '<span style="display: inline-block; width: 10px; height: 10px; background: ' + themeColors.accent + '; border-radius: 50%;"></span> Scenario A' +
           '</span>' +
-          '<span style="display: inline-flex; align-items: center; gap: 4px; color: #10b981;">' +
-            '<span style="display: inline-block; width: 10px; height: 10px; background: #10b981; border-radius: 50%;"></span> Scenario B' +
+          '<span style="display: inline-flex; align-items: center; gap: 4px; color: ' + themeColors.success + ';">' +
+            '<span style="display: inline-block; width: 10px; height: 10px; background: ' + themeColors.success + '; border-radius: 50%;"></span> Scenario B' +
           '</span>' +
-          '<span style="display: inline-flex; align-items: center; gap: 4px; color: #f59e0b;">' +
-            '<span style="display: inline-block; width: 10px; height: 10px; background: #f59e0b; border-radius: 50%;"></span> Scenario C' +
+          '<span style="display: inline-flex; align-items: center; gap: 4px; color: ' + themeColors.warn + ';">' +
+            '<span style="display: inline-block; width: 10px; height: 10px; background: ' + themeColors.warn + '; border-radius: 50%;"></span> Scenario C' +
           '</span>';
       }
     }
@@ -1346,7 +1354,14 @@
       state.chart.data.datasets = datasets;
       state.chart.options.scales.y.min = yMin;
       state.chart.options.scales.y.max = yMax;
-      state.chart.options.scales.y.ticks.callback = yFmt;
+      state.chart.options.plugins.tooltip.backgroundColor = themeColors.tooltipBg;
+      state.chart.options.plugins.tooltip.borderColor = themeColors.tooltipBorder;
+      state.chart.options.plugins.tooltip.titleColor = themeColors.tooltipTitle;
+      state.chart.options.plugins.tooltip.bodyColor = themeColors.tooltipBody;
+      state.chart.options.scales.x.grid.color = themeColors.gridX;
+      state.chart.options.scales.x.ticks.color = themeColors.textMuted;
+      state.chart.options.scales.y.grid.color = themeColors.gridY;
+      state.chart.options.scales.y.ticks.color = themeColors.textMuted;
       state.chart.update();
       return;
     }
@@ -1365,9 +1380,11 @@
         plugins: {
           legend: { display: false },
           tooltip: {
-            backgroundColor: '#0f172a',
-            borderColor: '#2b3954',
+            backgroundColor: themeColors.tooltipBg,
+            borderColor: themeColors.tooltipBorder,
             borderWidth: 1,
+            titleColor: themeColors.tooltipTitle,
+            bodyColor: themeColors.tooltipBody,
             titleFont: { family: 'IBM Plex Mono', size: 12 },
             bodyFont: { family: 'IBM Plex Mono', size: 12 },
             callbacks: {
@@ -1382,15 +1399,15 @@
         },
         scales: {
           x: {
-            grid: { color: 'rgba(255, 255, 255, 0.04)' },
-            ticks: { color: '#64748b', font: { family: 'IBM Plex Mono', size: 10 } }
+            grid: { color: themeColors.gridX },
+            ticks: { color: themeColors.textMuted, font: { family: 'IBM Plex Mono', size: 10 } }
           },
           y: {
             min: yMin,
             max: yMax,
-            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+            grid: { color: themeColors.gridY },
             ticks: {
-              color: '#94a3b8',
+              color: themeColors.textMuted,
               font: { family: 'IBM Plex Mono', size: 11 },
               callback: yFmt
             }

@@ -1308,6 +1308,10 @@
       state.sim.chart = null;
     }
 
+    var themeColors = typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.getChartColors === 'function' ?
+      ErlanglyUtils.getChartColors() :
+      { textSecondary: '#334155', tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipTitle: '#0f172a', tooltipBody: '#334155', gridX: 'rgba(0,0,0,0.05)', gridY: 'rgba(0,0,0,0.07)', textMuted: '#64748b', accent: '#0f766e', info: '#0284c7', warn: '#d97706' };
+
     var labels = periods.map(function(p) { return p.label; });
     var staffData = periods.map(function(p) { return p.staffedFTE || p.peakAgents; });
     var baseData = periods.map(function(p) { return p.baseFTE || (p.peakAgents ? Math.round(p.peakAgents * 0.7) : 0); });
@@ -1322,8 +1326,8 @@
           {
             label: staffMetricName + ' (Shrinkage-Adjusted)',
             data: staffData,
-            backgroundColor: 'rgba(0, 210, 211, 0.45)',
-            borderColor: '#00d2d3',
+            backgroundColor: themeColors.isLight ? 'rgba(15, 118, 110, 0.65)' : 'rgba(0, 210, 211, 0.45)',
+            borderColor: themeColors.accent,
             borderWidth: 1.5,
             borderRadius: 4,
             yAxisID: 'y',
@@ -1333,12 +1337,12 @@
             label: 'Base Net Productive FTE',
             data: baseData,
             type: 'line',
-            borderColor: '#38bdf8',
+            borderColor: themeColors.info,
             backgroundColor: 'transparent',
             borderWidth: 2,
             borderDash: [4, 4],
             pointRadius: 3,
-            pointBackgroundColor: '#38bdf8',
+            pointBackgroundColor: themeColors.info,
             yAxisID: 'y',
             order: 1
           },
@@ -1346,13 +1350,13 @@
             label: 'Interaction Volume (' + volUnit + ')',
             data: volData,
             type: 'line',
-            borderColor: '#f59e0b',
-            backgroundColor: 'rgba(245, 158, 11, 0.08)',
+            borderColor: themeColors.warn,
+            backgroundColor: themeColors.isLight ? 'rgba(217, 119, 6, 0.1)' : 'rgba(245, 158, 11, 0.08)',
             fill: true,
             borderWidth: 2,
             tension: 0.3,
             pointRadius: 3,
-            pointBackgroundColor: '#f59e0b',
+            pointBackgroundColor: themeColors.warn,
             yAxisID: 'y1',
             order: 3
           }
@@ -1369,41 +1373,41 @@
           legend: {
             position: 'top',
             labels: {
-              color: '#cbd5e1',
+              color: themeColors.textSecondary,
               font: { family: 'Inter', size: 11 },
               boxWidth: 12,
               padding: 12
             }
           },
           tooltip: {
-            backgroundColor: '#0f172a',
-            titleColor: '#f8fafc',
-            bodyColor: '#cbd5e1',
-            borderColor: '#2b3954',
+            backgroundColor: themeColors.tooltipBg,
+            titleColor: themeColors.tooltipTitle,
+            bodyColor: themeColors.tooltipBody,
+            borderColor: themeColors.tooltipBorder,
             borderWidth: 1,
             padding: 10
           }
         },
         scales: {
           x: {
-            grid: { color: 'rgba(43, 57, 84, 0.4)' },
-            ticks: { color: '#94a3b8', font: { family: 'IBM Plex Mono', size: 10 } }
+            grid: { color: themeColors.gridX },
+            ticks: { color: themeColors.textMuted, font: { family: 'IBM Plex Mono', size: 10 } }
           },
           y: {
             type: 'linear',
             display: true,
             position: 'left',
-            grid: { color: 'rgba(43, 57, 84, 0.4)' },
-            ticks: { color: '#00d2d3', font: { family: 'IBM Plex Mono', size: 10 } },
-            title: { display: true, text: staffMetricName, color: '#00d2d3', font: { size: 10 } }
+            grid: { color: themeColors.gridY },
+            ticks: { color: themeColors.accent, font: { family: 'IBM Plex Mono', size: 10 } },
+            title: { display: true, text: staffMetricName, color: themeColors.accent, font: { size: 10 } }
           },
           y1: {
             type: 'linear',
             display: true,
             position: 'right',
             grid: { drawOnChartArea: false },
-            ticks: { color: '#f59e0b', font: { family: 'IBM Plex Mono', size: 10 } },
-            title: { display: true, text: 'Volume', color: '#f59e0b', font: { size: 10 } }
+            ticks: { color: themeColors.warn, font: { family: 'IBM Plex Mono', size: 10 } },
+            title: { display: true, text: 'Volume', color: themeColors.warn, font: { size: 10 } }
           }
         }
       }
@@ -2016,6 +2020,10 @@
 
     var currentStrategyLabel = strategyLabels[res.strategy] || 'Selected Strategy';
 
+    var themeColors = typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.getChartColors === 'function' ?
+      ErlanglyUtils.getChartColors() :
+      { isLight: true, textSecondary: '#334155', textMuted: '#64748b', tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipTitle: '#0f172a', tooltipBody: '#334155', gridY: 'rgba(0,0,0,0.07)', accent: '#0f766e', danger: '#dc2626', success: '#059669' };
+
     state.mq.chart = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -2024,16 +2032,16 @@
           label: 'Required Base Staffing (Agents)',
           data: [res.siloedAgents, res.totalAgents, res.pooledAgents],
           backgroundColor: [
-            'rgba(255, 107, 107, 0.45)',
-            'rgba(0, 210, 211, 0.75)',
-            'rgba(29, 209, 161, 0.45)'
+            themeColors.isLight ? 'rgba(220, 38, 38, 0.6)' : 'rgba(255, 107, 107, 0.45)',
+            themeColors.isLight ? 'rgba(15, 118, 110, 0.8)' : 'rgba(0, 210, 211, 0.75)',
+            themeColors.isLight ? 'rgba(5, 150, 105, 0.6)' : 'rgba(29, 209, 161, 0.45)'
           ],
           borderColor: [
-            '#ff6b6b',
-            '#00d2d3',
-            '#1dd1a1'
+            themeColors.danger,
+            themeColors.accent,
+            themeColors.success
           ],
-          borderWidth: 1,
+          borderWidth: 1.5,
           borderRadius: 4
         }]
       },
@@ -2043,6 +2051,11 @@
         plugins: {
           legend: { display: false },
           tooltip: {
+            backgroundColor: themeColors.tooltipBg,
+            titleColor: themeColors.tooltipTitle,
+            bodyColor: themeColors.tooltipBody,
+            borderColor: themeColors.tooltipBorder,
+            borderWidth: 1,
             callbacks: {
               label: function(item) {
                 return ' ' + item.formattedValue + ' agents required';
@@ -2053,12 +2066,12 @@
         scales: {
           y: {
             beginAtZero: true,
-            grid: { color: 'rgba(255,255,255,0.06)' },
-            ticks: { color: '#8395a7', font: { family: 'IBM Plex Mono', size: 11 } }
+            grid: { color: themeColors.gridY },
+            ticks: { color: themeColors.textMuted, font: { family: 'IBM Plex Mono', size: 11 } }
           },
           x: {
             grid: { display: false },
-            ticks: { color: '#c8d6e5', font: { size: 11 } }
+            ticks: { color: themeColors.textSecondary, font: { size: 11 } }
           }
         }
       }

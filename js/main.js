@@ -553,11 +553,11 @@
     if (typeof document !== 'undefined' && document.documentElement.getAttribute('data-theme')) {
       return document.documentElement.getAttribute('data-theme');
     }
-    return 'dark';
+    return 'light';
   };
 
   ErlanglyUtils.setTheme = function(theme) {
-    theme = theme === 'light' ? 'light' : 'dark';
+    theme = theme === 'dark' ? 'dark' : 'light';
     if (typeof document !== 'undefined') {
       document.documentElement.setAttribute('data-theme', theme);
       document.documentElement.style.colorScheme = theme;
@@ -615,6 +615,37 @@
         }
       });
     }
+  };
+
+  /**
+   * Universal Theme-Aware Chart Colors Palette
+   * Returns consistent contrast tokens for Chart.js line, bar, and area plots.
+   */
+  ErlanglyUtils.getChartColors = function() {
+    var isLight = ErlanglyUtils.getTheme() === 'light';
+    return {
+      isLight: isLight,
+      textPrimary: isLight ? '#0f172a' : '#f8fafc',
+      textSecondary: isLight ? '#334155' : '#cbd5e1',
+      textMuted: isLight ? '#64748b' : '#94a3b8',
+      gridX: isLight ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.04)',
+      gridY: isLight ? 'rgba(0, 0, 0, 0.07)' : 'rgba(255, 255, 255, 0.06)',
+      tooltipBg: isLight ? '#ffffff' : '#0f172a',
+      tooltipBorder: isLight ? '#cbd5e1' : '#2b3954',
+      tooltipTitle: isLight ? '#0f172a' : '#f8fafc',
+      tooltipBody: isLight ? '#334155' : '#cbd5e1',
+      accent: isLight ? '#0f766e' : '#00d2d3',
+      accentLight: isLight ? '#0d9488' : '#54f0f0',
+      accentFill: isLight ? 'rgba(15, 118, 110, 0.12)' : 'rgba(0, 210, 211, 0.12)',
+      success: isLight ? '#059669' : '#10b981',
+      successFill: isLight ? 'rgba(5, 150, 105, 0.12)' : 'rgba(16, 185, 129, 0.15)',
+      warn: isLight ? '#d97706' : '#f59e0b',
+      warnFill: isLight ? 'rgba(217, 119, 6, 0.12)' : 'rgba(245, 158, 11, 0.08)',
+      danger: isLight ? '#dc2626' : '#ef4444',
+      dangerFill: isLight ? 'rgba(220, 38, 38, 0.12)' : 'rgba(239, 68, 68, 0.08)',
+      info: isLight ? '#0284c7' : '#38bdf8',
+      infoFill: isLight ? 'rgba(2, 132, 199, 0.12)' : 'rgba(56, 189, 248, 0.12)'
+    };
   };
 
   /**

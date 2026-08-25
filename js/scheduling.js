@@ -1363,10 +1363,22 @@
       var reqData = dayCov.intervals.map(function(c) { return c.required; });
       var schedData = dayCov.intervals.map(function(c) { return c.scheduled; });
 
+      var themeColors = typeof ErlanglyUtils !== 'undefined' && typeof ErlanglyUtils.getChartColors === 'function' ?
+        ErlanglyUtils.getChartColors() :
+        { textMuted: '#64748b', tooltipBg: '#ffffff', tooltipBorder: '#cbd5e1', tooltipTitle: '#0f172a', tooltipBody: '#334155', gridX: 'rgba(0,0,0,0.05)', gridY: 'rgba(0,0,0,0.07)', danger: '#dc2626', success: '#059669' };
+
       if (UIState.chart) {
         UIState.chart.data.labels = labels;
         UIState.chart.data.datasets[0].data = reqData;
         UIState.chart.data.datasets[1].data = schedData;
+        UIState.chart.options.plugins.tooltip.backgroundColor = themeColors.tooltipBg;
+        UIState.chart.options.plugins.tooltip.borderColor = themeColors.tooltipBorder;
+        UIState.chart.options.plugins.tooltip.titleColor = themeColors.tooltipTitle;
+        UIState.chart.options.plugins.tooltip.bodyColor = themeColors.tooltipBody;
+        UIState.chart.options.scales.x.grid.color = themeColors.gridX;
+        UIState.chart.options.scales.x.ticks.color = themeColors.textMuted;
+        UIState.chart.options.scales.y.grid.color = themeColors.gridY;
+        UIState.chart.options.scales.y.ticks.color = themeColors.textMuted;
         UIState.chart.update();
         return;
       }
@@ -1380,8 +1392,8 @@
             {
               label: 'Required Headcount',
               data: reqData,
-              borderColor: '#ef4444',
-              backgroundColor: 'rgba(239, 68, 68, 0.05)',
+              borderColor: themeColors.danger,
+              backgroundColor: themeColors.dangerFill,
               borderWidth: 2,
               pointRadius: 3,
               stepped: 'middle',
@@ -1390,11 +1402,11 @@
             {
               label: 'Scheduled Headcount',
               data: schedData,
-              borderColor: '#10b981',
-              backgroundColor: 'rgba(16, 185, 129, 0.15)',
+              borderColor: themeColors.success,
+              backgroundColor: themeColors.successFill,
               borderWidth: 2,
               pointRadius: 4,
-              pointBackgroundColor: '#10b981',
+              pointBackgroundColor: themeColors.success,
               fill: true,
               tension: 0.2
             }
@@ -1407,22 +1419,24 @@
           plugins: {
             legend: { display: false },
             tooltip: {
-              backgroundColor: '#0f172a',
-              borderColor: '#2b3954',
+              backgroundColor: themeColors.tooltipBg,
+              borderColor: themeColors.tooltipBorder,
               borderWidth: 1,
+              titleColor: themeColors.tooltipTitle,
+              bodyColor: themeColors.tooltipBody,
               titleFont: { family: 'IBM Plex Mono', size: 12 },
               bodyFont: { family: 'IBM Plex Mono', size: 12 }
             }
           },
           scales: {
             x: {
-              grid: { color: 'rgba(255, 255, 255, 0.04)' },
-              ticks: { color: '#64748b', font: { family: 'IBM Plex Mono', size: 10 } }
+              grid: { color: themeColors.gridX },
+              ticks: { color: themeColors.textMuted, font: { family: 'IBM Plex Mono', size: 10 } }
             },
             y: {
-              grid: { color: 'rgba(255, 255, 255, 0.06)' },
+              grid: { color: themeColors.gridY },
               ticks: {
-                color: '#94a3b8',
+                color: themeColors.textMuted,
                 font: { family: 'IBM Plex Mono', size: 11 },
                 callback: function(v) { return v + ' agents'; }
               }
