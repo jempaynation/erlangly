@@ -1452,7 +1452,7 @@
   function runHoldoutSandbox(history, targetMonths, modelIds, modelParams, lookbackMonths, options) {
     var targets = Array.isArray(targetMonths) ? targetMonths.slice() : (targetMonths ? [targetMonths] : []);
     if (!history || history.length === 0 || targets.length === 0) {
-      return { targetMonths: [], lookbackMonths: lookbackMonths || 'all', results: [] };
+      return { targetMonths: [], lookbackMonths: lookbackMonths || 'all', monthEvaluations: [] };
     }
 
     var defaultModels = ['holt', 'decomp_mult', 'trend', 'regression', 'yoy_trend', 'ensemble'];
@@ -2438,6 +2438,29 @@
     }
   }
 
+  /**
+   * Dynamically adjust the forecast breakdown table container max-height.
+   * When Model Comparison & Backtest or Accuracy Tracking is shown in the right column,
+   * compact the table to clamp(320px, 45vh, 520px) to prevent excessive page height.
+   * When backtest sandbox and accuracy tracking are hidden (standard view),
+   * stretch the table to clamp(450px, 75vh, 900px) showing 15-25+ rows comfortably.
+   */
+  function updateTableContainerHeight() {
+    var compPanel = document.getElementById('panel-model-comparison');
+    var accuracyPanel = document.getElementById('panel-accuracy-tracking');
+    var tableContainer = document.querySelector('#panel-forecast-table .table-container');
+    if (!tableContainer) return;
+    
+    var compVisible = compPanel && compPanel.style.display === 'block';
+    var accuracyVisible = accuracyPanel && accuracyPanel.style.display === 'block';
+    
+    if (compVisible || accuracyVisible) {
+      tableContainer.style.maxHeight = 'clamp(320px, 45vh, 520px)';
+    } else {
+      tableContainer.style.maxHeight = 'clamp(450px, 75vh, 900px)';
+    }
+  }
+
   function initUI() {
     setupTabSwitching();
     setupModelSelector();
@@ -2446,6 +2469,7 @@
     renderLockedForecastUI();
     initWebWorker();
     handleIncomingHandoff();
+    updateTableContainerHeight();
   }
 
   function handleIncomingHandoff() {
@@ -2636,6 +2660,7 @@
       if (active === 'accuracy') {
         renderAccuracyDashboard();
       }
+      updateTableContainerHeight();
     }
 
     if (tabSample) tabSample.addEventListener('click', function() { selectTab('history'); });
@@ -3343,6 +3368,7 @@
         if (compPanel) compPanel.style.display = UIState.compareMode ? 'block' : 'none';
         btnCompareToggle.textContent = UIState.compareMode ? 'Hide Comparison & Backtesting' : 'Model Comparison & Backtest';
         btnCompareToggle.className = UIState.compareMode ? 'btn btn-secondary btn-sm' : 'btn btn-ghost btn-sm';
+        updateTableContainerHeight();
         runForecast();
       });
     }
@@ -5581,20 +5607,9 @@
     }
   }
 
-  // ── Chart resize observer ──────────────────────────────────────────────
-  // A ResizeObserver on #chart-forecast-body tells Chart.js to resize
-  // whenever the canvas container dimensions change.
-  if (typeof window !== 'undefined' && typeof ResizeObserver !== 'undefined') {
-    var chartBodyEl = document.getElementById('chart-forecast-body');
-    if (chartBodyEl) {
-      var chartResizeObserver = new ResizeObserver(function() {
-        if (UIState.chart) {
-          UIState.chart.resize();
-        }
-      });
-      chartResizeObserver.observe(chartBodyEl);
-    }
-  }
+  // Chart.js with responsive:true and maintainAspectRatio:false on the fixed-height
+  // #panel-chart-forecast container handles canvas sizing automatically.
+  // No manual ResizeObserver is needed — it was a source of resize loop feedback.
 
   // Export module for testing and programmatic execution
   return {
