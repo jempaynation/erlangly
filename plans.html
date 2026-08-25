@@ -172,10 +172,10 @@
           var status = ErlanglySupabaseConfig.getConnectionStatus();
           if (status.isLive) {
             lblConnBadge.className = 'badge badge-success';
-            lblConnBadge.textContent = '🟢 Live Supabase (' + (status.projectRef || 'Connected') + ')';
+            lblConnBadge.textContent = '🟢 LIVE';
           } else {
-            lblConnBadge.className = 'badge badge-warning';
-            lblConnBadge.textContent = '🟡 Local Sandbox (Offline)';
+            lblConnBadge.className = 'badge badge-warn';
+            lblConnBadge.textContent = '🟡 OFFLINE';
           }
         }
       }

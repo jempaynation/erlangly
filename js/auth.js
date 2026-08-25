@@ -61,10 +61,54 @@
   };
 
   /**
-   * Update Global Navigation Bar with Auth State
+   * Update Global Navigation Bar with Auth State & Global LIVE Indicator
    */
   ErlanglyAuth.updateNavAuthUI = function() {
     var authBtn = document.getElementById('nav-auth-btn');
+    var navActions = document.querySelector('.nav-actions');
+
+    // Global LIVE / OFFLINE Status Indicator in Navigation Bar
+    if (navActions) {
+      var liveBadge = document.getElementById('nav-global-live-indicator');
+      if (!liveBadge) {
+        liveBadge = document.createElement('span');
+        liveBadge.id = 'nav-global-live-indicator';
+        liveBadge.style.display = 'inline-flex';
+        liveBadge.style.alignItems = 'center';
+        liveBadge.style.gap = '4px';
+        liveBadge.style.fontSize = '10px';
+        liveBadge.style.padding = '2px 8px';
+        liveBadge.style.fontWeight = '700';
+        liveBadge.style.letterSpacing = '0.05em';
+        liveBadge.style.cursor = 'pointer';
+        liveBadge.title = 'Cloud Sync Status';
+        liveBadge.addEventListener('click', function() {
+          if (root.ErlanglyPlans && root.ErlanglyPlans.showConnectionModal) {
+            root.ErlanglyPlans.showConnectionModal();
+          } else if (typeof window !== 'undefined' && window.location.pathname.indexOf('plans.html') === -1) {
+            window.location.href = 'plans.html';
+          }
+        });
+        if (authBtn) {
+          navActions.insertBefore(liveBadge, authBtn);
+        } else {
+          navActions.appendChild(liveBadge);
+        }
+      }
+
+      var isLive = false;
+      if (root.ErlanglySupabaseConfig && root.ErlanglySupabaseConfig.getConnectionStatus) {
+        isLive = root.ErlanglySupabaseConfig.getConnectionStatus().isLive;
+      }
+      if (isLive) {
+        liveBadge.className = 'badge badge-success';
+        liveBadge.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block; box-shadow: 0 0 6px var(--success);"></span>LIVE';
+      } else {
+        liveBadge.className = 'badge badge-warn';
+        liveBadge.innerHTML = '<span style="width: 6px; height: 6px; border-radius: 50%; background: var(--warn); display: inline-block;"></span>OFFLINE';
+      }
+    }
+
     if (!authBtn) return;
 
     ErlanglyAuth.getUser().then(function(user) {

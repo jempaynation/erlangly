@@ -1135,14 +1135,14 @@
     modalOverlay.style.padding = 'var(--space-4)';
 
     var statusBadge = status.isLive ?
-      '<span class="badge badge-success" style="font-size: 12px; padding: 4px 8px;">🟢 Live Supabase Connected</span>' :
-      '<span class="badge badge-warning" style="font-size: 12px; padding: 4px 8px;">🟡 Local Browser Sandbox</span>';
+      '<span class="badge badge-success" style="font-size: 12px; padding: 4px 8px;">🟢 LIVE</span>' :
+      '<span class="badge badge-warn" style="font-size: 12px; padding: 4px 8px;">🟡 OFFLINE</span>';
 
     modalOverlay.innerHTML = 
       '<div class="panel" style="max-width: 580px; width: 100%; box-shadow: var(--shadow-lg); border-color: var(--accent); max-height: 90vh; display: flex; flex-direction: column;">' +
         '<div class="panel-header" style="flex-shrink: 0;">' +
           '<div style="display: flex; align-items: center; gap: var(--space-2);">' +
-            '<div class="panel-title">⚡ Supabase Database Connection</div>' +
+            '<div class="panel-title">⚡ Database Connection &amp; Cloud Sync</div>' +
           '</div>' +
           '<button id="conn-modal-close" class="btn btn-ghost btn-sm" style="padding: 0 8px;">✕</button>' +
         '</div>' +
@@ -1150,7 +1150,7 @@
           '<div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border-default);">' +
             '<div>' +
               '<div style="font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; font-family: var(--mono);">Current Status</div>' +
-              '<div style="font-size: var(--text-sm); font-weight: 600; margin-top: 2px;">' + (status.isLive ? (status.projectRef || 'Live Database') : 'Local Offline Sandbox') + '</div>' +
+              '<div style="font-size: var(--text-sm); font-weight: 600; margin-top: 2px;">' + (status.isLive ? 'Live Cloud Connected' : 'Local Offline Sandbox') + '</div>' +
             '</div>' +
             statusBadge +
           '</div>' +
