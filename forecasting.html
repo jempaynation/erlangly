@@ -199,12 +199,7 @@
         </div>
 
         <!-- Tool Actions & Input Source Tabs -->
-        <div style="display: flex; flex-direction: column; align-items: flex-end; gap: var(--space-2);">
-          <div style="display: flex; gap: var(--space-2);">
-            <button id="btn-save-forecast-plan" class="btn btn-secondary btn-sm">💾 Save Plan</button>
-            <button id="btn-share-forecast-plan" class="btn btn-ghost btn-sm">🔗 Share Link</button>
-          </div>
-
+        <div style="display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;">
           <div
             style="display: flex; gap: var(--space-1); background: var(--bg-surface-elevated); padding: var(--space-1); border-radius: var(--radius-md); border: 1px solid var(--border-default);">
             <button id="tab-history-sample" class="btn btn-sm btn-primary">Historical Series</button>
@@ -213,6 +208,11 @@
                 id="lbl-holidays-count">2</span>)</button>
             <button id="tab-accuracy" class="btn btn-sm btn-ghost">Accuracy Tracking (<span
                 id="lbl-accuracy-count">14</span>)</button>
+          </div>
+
+          <div style="display: flex; gap: var(--space-2); align-items: center;">
+            <button id="btn-save-forecast-plan" class="btn btn-primary btn-sm">💾 Save Plan</button>
+            <button id="btn-share-forecast-plan" class="btn btn-secondary btn-sm" title="Share plan link">🔗 Share</button>
           </div>
         </div>
       </div>
@@ -980,9 +980,11 @@
             <div class="panel-title">
               <span>Forecast Breakdown Table (<span id="lbl-forecast-table-count">0</span> periods)</span>
             </div>
-            <div style="display: flex; gap: var(--space-2);">
-              <button id="btn-export-forecast-csv" class="btn btn-secondary btn-sm">Export Forecast CSV</button>
-              <button id="btn-send-to-capacity" class="btn btn-primary btn-sm">Send to Capacity Planning →</button>
+            <div style="display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+              <button id="btn-export-forecast-csv" class="btn btn-secondary btn-sm" style="font-size: 11px; height: 26px; padding: 2px 10px;">Export CSV</button>
+              <button id="btn-save-forecast-plan-bottom" class="btn btn-secondary btn-sm" style="font-size: 11px; height: 26px; padding: 2px 10px;">💾 Save Plan</button>
+              <button id="btn-share-forecast-plan-bottom" class="btn btn-ghost btn-sm" style="font-size: 11px; height: 26px; padding: 2px 10px;">🔗 Share</button>
+              <button id="btn-send-to-capacity" class="btn btn-primary btn-sm" style="font-size: 11px; height: 26px; padding: 2px 10px;">Send to Capacity Planning →</button>
             </div>
           </div>
 

@@ -3902,82 +3902,87 @@
       });
     }
 
-    // Save Plan Modal
-    if (btnSavePlan) {
-      btnSavePlan.addEventListener('click', function() {
-        if (typeof window.ErlanglyPlans !== 'undefined' && window.ErlanglyPlans.showSaveModal) {
-          var inputs = {
-            history: UIState.history,
-            multiSkillHistory: UIState.multiSkillHistory,
-            skills: UIState.skills,
-            selectedSkill: UIState.selectedSkill,
-            holidays: UIState.holidays,
-            modelId: UIState.modelId,
-            modelParams: UIState.modelParams,
-            trendProfile: UIState.trendProfile,
-            trendProfileParams: UIState.trendProfileParams,
-            horizon: UIState.horizon,
-            growthModifier: UIState.growthModifier,
-            assumedAht: UIState.assumedAht,
-            accuracyPairs: UIState.accuracyPairs,
-            accuracyRunsHistory: UIState.accuracyRunsHistory,
-            lockedForecast: UIState.lockedForecast,
-            backtestMode: UIState.backtestMode,
-            sandboxTargetMonths: UIState.sandboxTargetMonths,
-            sandboxLookback: UIState.sandboxLookback,
-            sandboxActiveModelId: UIState.sandboxActiveModelId,
-            chartGranularity: UIState.chartGranularity,
-            chartRangePreset: UIState.chartRangePreset,
-            chartStartDate: UIState.chartStartDate,
-            chartEndDate: UIState.chartEndDate
-          };
-          var outputs = UIState.lastForecast ? {
-            modelName: UIState.lastForecast.modelName,
-            metrics: UIState.lastForecast.metrics,
-            forecastCount: UIState.lastForecast.forecast.length,
-            totalVolume: UIState.lastForecast.forecast.reduce(function(a, b) { return a + b.volume; }, 0),
-            accuracyMetrics: UIState.lastAccuracyMetrics,
-            lockedForecast: UIState.lockedForecast,
-            sandboxResults: UIState.lastSandboxResults
-          } : {};
-          window.ErlanglyPlans.showSaveModal('forecasting', inputs, outputs);
-        }
-      });
+    // Save Plan Modal Handler
+    function handleSavePlanModal() {
+      if (typeof window.ErlanglyPlans !== 'undefined' && window.ErlanglyPlans.showSaveModal) {
+        var inputs = {
+          history: UIState.history,
+          multiSkillHistory: UIState.multiSkillHistory,
+          skills: UIState.skills,
+          selectedSkill: UIState.selectedSkill,
+          holidays: UIState.holidays,
+          modelId: UIState.modelId,
+          modelParams: UIState.modelParams,
+          trendProfile: UIState.trendProfile,
+          trendProfileParams: UIState.trendProfileParams,
+          horizon: UIState.horizon,
+          growthModifier: UIState.growthModifier,
+          assumedAht: UIState.assumedAht,
+          accuracyPairs: UIState.accuracyPairs,
+          accuracyRunsHistory: UIState.accuracyRunsHistory,
+          lockedForecast: UIState.lockedForecast,
+          backtestMode: UIState.backtestMode,
+          sandboxTargetMonths: UIState.sandboxTargetMonths,
+          sandboxLookback: UIState.sandboxLookback,
+          sandboxActiveModelId: UIState.sandboxActiveModelId,
+          chartGranularity: UIState.chartGranularity,
+          chartRangePreset: UIState.chartRangePreset,
+          chartStartDate: UIState.chartStartDate,
+          chartEndDate: UIState.chartEndDate
+        };
+        var outputs = UIState.lastForecast ? {
+          modelName: UIState.lastForecast.modelName,
+          metrics: UIState.lastForecast.metrics,
+          forecastCount: UIState.lastForecast.forecast.length,
+          totalVolume: UIState.lastForecast.forecast.reduce(function(a, b) { return a + b.volume; }, 0),
+          accuracyMetrics: UIState.lastAccuracyMetrics,
+          lockedForecast: UIState.lockedForecast,
+          sandboxResults: UIState.lastSandboxResults
+        } : {};
+        window.ErlanglyPlans.showSaveModal('forecasting', inputs, outputs);
+      }
     }
 
-    // Share Plan Link
-    if (btnSharePlan) {
-      btnSharePlan.addEventListener('click', function() {
-        if (typeof window.ErlanglyPlans !== 'undefined' && window.ErlanglyPlans.showShareModal) {
-          var inputs = {
-            history: UIState.history,
-            multiSkillHistory: UIState.multiSkillHistory,
-            skills: UIState.skills,
-            selectedSkill: UIState.selectedSkill,
-            holidays: UIState.holidays,
-            modelId: UIState.modelId,
-            modelParams: UIState.modelParams,
-            trendProfile: UIState.trendProfile,
-            trendProfileParams: UIState.trendProfileParams,
-            horizon: UIState.horizon,
-            growthModifier: UIState.growthModifier,
-            assumedAht: UIState.assumedAht,
-            accuracyPairs: UIState.accuracyPairs,
-            accuracyRunsHistory: UIState.accuracyRunsHistory,
-            lockedForecast: UIState.lockedForecast,
-            backtestMode: UIState.backtestMode,
-            sandboxTargetMonths: UIState.sandboxTargetMonths,
-            sandboxLookback: UIState.sandboxLookback,
-            sandboxActiveModelId: UIState.sandboxActiveModelId,
-            chartGranularity: UIState.chartGranularity,
-            chartRangePreset: UIState.chartRangePreset,
-            chartStartDate: UIState.chartStartDate,
-            chartEndDate: UIState.chartEndDate
-          };
-          window.ErlanglyPlans.showShareModal('forecasting', inputs);
-        }
-      });
+    if (btnSavePlan) btnSavePlan.addEventListener('click', handleSavePlanModal);
+    var btnSavePlanBottom = document.getElementById('btn-save-forecast-plan-bottom');
+    if (btnSavePlanBottom) btnSavePlanBottom.addEventListener('click', handleSavePlanModal);
+
+    // Share Plan Link Handler
+    function handleSharePlanModal() {
+      if (typeof window.ErlanglyPlans !== 'undefined' && window.ErlanglyPlans.showShareModal) {
+        var inputs = {
+          history: UIState.history,
+          multiSkillHistory: UIState.multiSkillHistory,
+          skills: UIState.skills,
+          selectedSkill: UIState.selectedSkill,
+          holidays: UIState.holidays,
+          modelId: UIState.modelId,
+          modelParams: UIState.modelParams,
+          trendProfile: UIState.trendProfile,
+          trendProfileParams: UIState.trendProfileParams,
+          horizon: UIState.horizon,
+          growthModifier: UIState.growthModifier,
+          assumedAht: UIState.assumedAht,
+          accuracyPairs: UIState.accuracyPairs,
+          accuracyRunsHistory: UIState.accuracyRunsHistory,
+          lockedForecast: UIState.lockedForecast,
+          backtestMode: UIState.backtestMode,
+          sandboxTargetMonths: UIState.sandboxTargetMonths,
+          sandboxLookback: UIState.sandboxLookback,
+          sandboxActiveModelId: UIState.sandboxActiveModelId,
+          chartGranularity: UIState.chartGranularity,
+          chartRangePreset: UIState.chartRangePreset,
+          chartStartDate: UIState.chartStartDate,
+          chartEndDate: UIState.chartEndDate
+        };
+        var planTitle = 'Demand Forecast (' + (UIState.lastForecast ? UIState.lastForecast.modelName : 'Active Series') + ')';
+        window.ErlanglyPlans.showShareModal('forecasting', planTitle, inputs);
+      }
     }
+
+    if (btnSharePlan) btnSharePlan.addEventListener('click', handleSharePlanModal);
+    var btnSharePlanBottom = document.getElementById('btn-share-forecast-plan-bottom');
+    if (btnSharePlanBottom) btnSharePlanBottom.addEventListener('click', handleSharePlanModal);
 
     // CSV File Dropzone (Multi-Skill Supported with Preview Modal)
     var dropzone = document.getElementById('forecast-dropzone');

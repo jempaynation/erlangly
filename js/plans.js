@@ -1231,6 +1231,13 @@
    * Show Share Modal with 1-Click Copy
    */
   ErlanglyPlans.showShareModal = function(tool, planName, planData) {
+    if (typeof planName === 'object' && !planData) {
+      planData = planName;
+      planName = null;
+    }
+    if (!planName || typeof planName !== 'string' || planName.indexOf('[object') !== -1) {
+      planName = 'Workforce Plan (' + (tool ? tool.charAt(0).toUpperCase() + tool.slice(1) : '') + ')';
+    }
     var shareUrl = ErlanglyPlans.createShareableLink(tool, planData);
 
     var oldModal = document.getElementById('erlangly-share-modal');
