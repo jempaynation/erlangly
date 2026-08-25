@@ -13,7 +13,7 @@
 
 window.ERLANGLY_CONFIG = {
   // Replace with your project URL, e.g. 'https://xyzcompany.supabase.co'
-  SUPABASE_URL: 'https://bijhqhvlepxarzmyfxda.supabase.co',
+  SUPABASE_URL: '',
   // Replace with your project public anon key, e.g. 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJpamhxaHZsZXB4YXJ6bXlmeGRhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc1OTQ3MDMsImV4cCI6MjEwMzE3MDcwM30.6IvU8KPHI2fdMwSUuuJfNVJW_Od5MOOzjJeuFtWBfzw'
+  SUPABASE_ANON_KEY: ''
 };
