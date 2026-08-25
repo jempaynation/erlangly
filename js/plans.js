@@ -1109,6 +1109,161 @@
     });
   };
 
+  /**
+   * Show Supabase Connection Settings & Diagnostic Modal
+   */
+  ErlanglyPlans.showConnectionModal = function(onSave) {
+    var oldModal = document.getElementById('erlangly-conn-modal');
+    if (oldModal) oldModal.remove();
+
+    var cfg = (root.ErlanglySupabaseConfig ? root.ErlanglySupabaseConfig.getCredentials() : {});
+    var status = (root.ErlanglySupabaseConfig ? root.ErlanglySupabaseConfig.getConnectionStatus() : { isLive: false });
+
+    var modalOverlay = document.createElement('div');
+    modalOverlay.id = 'erlangly-conn-modal';
+    modalOverlay.style.position = 'fixed';
+    modalOverlay.style.top = '0';
+    modalOverlay.style.left = '0';
+    modalOverlay.style.width = '100vw';
+    modalOverlay.style.height = '100vh';
+    modalOverlay.style.background = 'rgba(4, 8, 16, 0.85)';
+    modalOverlay.style.backdropFilter = 'blur(8px)';
+    modalOverlay.style.zIndex = '999999';
+    modalOverlay.style.display = 'flex';
+    modalOverlay.style.alignItems = 'center';
+    modalOverlay.style.justifyContent = 'center';
+    modalOverlay.style.padding = 'var(--space-4)';
+
+    var statusBadge = status.isLive ?
+      '<span class="badge badge-success" style="font-size: 12px; padding: 4px 8px;">🟢 Live Supabase Connected</span>' :
+      '<span class="badge badge-warning" style="font-size: 12px; padding: 4px 8px;">🟡 Local Browser Sandbox</span>';
+
+    modalOverlay.innerHTML = 
+      '<div class="panel" style="max-width: 580px; width: 100%; box-shadow: var(--shadow-lg); border-color: var(--accent); max-height: 90vh; display: flex; flex-direction: column;">' +
+        '<div class="panel-header" style="flex-shrink: 0;">' +
+          '<div style="display: flex; align-items: center; gap: var(--space-2);">' +
+            '<div class="panel-title">⚡ Supabase Database Connection</div>' +
+          '</div>' +
+          '<button id="conn-modal-close" class="btn btn-ghost btn-sm" style="padding: 0 8px;">✕</button>' +
+        '</div>' +
+        '<div class="panel-body" style="overflow-y: auto; padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4);">' +
+          '<div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-surface-elevated); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border-default);">' +
+            '<div>' +
+              '<div style="font-size: var(--text-xs); color: var(--text-muted); text-transform: uppercase; font-family: var(--mono);">Current Status</div>' +
+              '<div style="font-size: var(--text-sm); font-weight: 600; margin-top: 2px;">' + (status.isLive ? (status.projectRef || 'Live Database') : 'Local Offline Sandbox') + '</div>' +
+            '</div>' +
+            statusBadge +
+          '</div>' +
+
+          '<p style="font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5;">' +
+            'Connect your Supabase PostgreSQL database to enable durable cross-device cloud persistence, magic link authentication, and real-time team collaboration.' +
+          '</p>' +
+
+          '<div class="form-group">' +
+            '<label class="form-label" for="input-supabase-url">Supabase Project URL</label>' +
+            '<input type="url" id="input-supabase-url" class="form-control mono" placeholder="https://xyzcompany.supabase.co" value="' + (cfg.url !== 'https://demo.supabase.co' ? (cfg.url || '') : '') + '">' +
+            '<span class="form-hint">Found in Supabase Dashboard &gt; Project Settings &gt; API &gt; Project URL</span>' +
+          '</div>' +
+
+          '<div class="form-group">' +
+            '<label class="form-label" for="input-supabase-anon-key">Supabase Public Anon Key</label>' +
+            '<input type="password" id="input-supabase-anon-key" class="form-control mono" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." value="' + (cfg.anonKey && cfg.anonKey.indexOf('.demo') === -1 ? cfg.anonKey : '') + '">' +
+            '<span class="form-hint">Public anon/public key (safe to ship client-side). Never use the service_role key!</span>' +
+          '</div>' +
+
+          '<div id="conn-test-result" style="display: none; padding: var(--space-3); border-radius: var(--radius-md); font-size: var(--text-xs); line-height: 1.4;"></div>' +
+
+          '<div style="background: var(--bg-input); padding: var(--space-3); border-radius: var(--radius-md); border: 1px solid var(--border-subtle); font-size: var(--text-xs); color: var(--text-muted);">' +
+            '<strong>⚡ First Time Setup Checklist:</strong><br>' +
+            '1. In Supabase Dashboard, go to <strong>SQL Editor</strong> and run <code>sql/schema.sql</code>.<br>' +
+            '2. In <strong>Authentication &gt; URL Configuration</strong>, add your Vercel URL to <strong>Redirect URLs</strong>.<br>' +
+            '3. Paste your Project URL and Anon Key above and click <strong>Test &amp; Connect</strong>.' +
+          '</div>' +
+        '</div>' +
+        '<div class="panel-footer" style="justify-content: space-between; flex-shrink: 0; flex-wrap: wrap; gap: var(--space-2);">' +
+          '<button id="btn-conn-reset" class="btn btn-ghost btn-sm" style="color: var(--danger);">Reset to Local Sandbox</button>' +
+          '<div style="display: flex; gap: var(--space-2);">' +
+            '<button id="btn-conn-test" class="btn btn-secondary btn-sm">🔍 Test Connection</button>' +
+            '<button id="btn-conn-save" class="btn btn-primary btn-sm">💾 Save &amp; Connect</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.body.appendChild(modalOverlay);
+
+    var closeModal = function() { modalOverlay.remove(); };
+    modalOverlay.querySelector('#conn-modal-close').addEventListener('click', closeModal);
+
+    var inputUrl = modalOverlay.querySelector('#input-supabase-url');
+    var inputKey = modalOverlay.querySelector('#input-supabase-anon-key');
+    var btnTest = modalOverlay.querySelector('#btn-conn-test');
+    var btnSave = modalOverlay.querySelector('#btn-conn-save');
+    var btnReset = modalOverlay.querySelector('#btn-conn-reset');
+    var resultDiv = modalOverlay.querySelector('#conn-test-result');
+
+    btnTest.addEventListener('click', function() {
+      var testUrl = inputUrl.value.trim();
+      var testKey = inputKey.value.trim();
+
+      btnTest.disabled = true;
+      btnTest.textContent = 'Testing...';
+      resultDiv.style.display = 'block';
+      resultDiv.style.background = 'var(--bg-surface-elevated)';
+      resultDiv.style.color = 'var(--text-primary)';
+      resultDiv.style.border = '1px solid var(--border-default)';
+      resultDiv.textContent = 'Connecting to Supabase...';
+
+      root.ErlanglySupabaseConfig.testConnection(testUrl, testKey).then(function(res) {
+        btnTest.disabled = false;
+        btnTest.textContent = '🔍 Test Connection';
+        if (res.success) {
+          resultDiv.style.background = 'rgba(46, 213, 115, 0.15)';
+          resultDiv.style.color = 'var(--success)';
+          resultDiv.style.border = '1px solid var(--success)';
+          resultDiv.textContent = '✓ ' + (res.message || 'Connection test successful! Database is accessible.');
+        } else {
+          resultDiv.style.background = 'rgba(255, 71, 87, 0.15)';
+          resultDiv.style.color = 'var(--danger)';
+          resultDiv.style.border = '1px solid var(--danger)';
+          resultDiv.textContent = '✗ ' + res.error;
+        }
+      });
+    });
+
+    btnSave.addEventListener('click', function() {
+      var url = inputUrl.value.trim();
+      var key = inputKey.value.trim();
+
+      if (!url || !key) {
+        alert('Please enter both Supabase Project URL and Anon Key, or click "Reset to Local Sandbox".');
+        return;
+      }
+
+      btnSave.disabled = true;
+      btnSave.textContent = 'Saving...';
+
+      root.ErlanglySupabaseConfig.setCredentials(url, key, false);
+      if (root.ErlanglyUtils && root.ErlanglyUtils.showToast) {
+        root.ErlanglyUtils.showToast('Supabase credentials saved! Reloading application...', 'success');
+      }
+      setTimeout(function() {
+        window.location.reload();
+      }, 600);
+    });
+
+    btnReset.addEventListener('click', function() {
+      if (confirm('Reset to offline local browser sandbox? Cloud plans will not be synced until you reconnect.')) {
+        root.ErlanglySupabaseConfig.clearCredentials(false);
+        if (root.ErlanglyUtils && root.ErlanglyUtils.showToast) {
+          root.ErlanglyUtils.showToast('Reset to local sandbox.', 'info');
+        }
+        setTimeout(function() {
+          window.location.reload();
+        }, 500);
+      }
+    });
+  };
+
   if (typeof module !== 'undefined' && module.exports) {
     module.exports = ErlanglyPlans;
   }

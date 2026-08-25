@@ -243,7 +243,7 @@
   var btnOpenLiveFeedModal, badgeLiveFeedStatus, txtLiveFeedStatus;
   var modalLiveFeed, modalStatusDot, btnCloseFeedModal, selectFeedMode, containerUrlConfig;
   var inputFeedUrl, selectFeedFormat, selectFeedInterval, feedDiagnosticsText, feedStaleWarning;
-  var btnTestFeedConnection, btnCancelFeedModal, btnApplyFeedSettings;
+  var btnTestFeedConnection, btnCancelFeedModal, btnApplyFeedSettings, btnSaveRtPlan;
 
   function initDOM() {
     if (typeof document === 'undefined') return;
@@ -328,6 +328,7 @@
     btnTestFeedConnection = document.getElementById('btn-test-feed-connection');
     btnCancelFeedModal = document.getElementById('btn-cancel-feed-modal');
     btnApplyFeedSettings = document.getElementById('btn-apply-feed-settings');
+    btnSaveRtPlan = document.getElementById('btn-save-rt-plan');
   }
 
   // --- Initialization ---
@@ -439,6 +440,38 @@
         if (typeof ErlanglyUtils !== 'undefined' && ErlanglyUtils.exportCSV) {
           ErlanglyUtils.exportCSV('realtime_intraday_actuals.csv', headers, rows);
         }
+      });
+    }
+
+    // Save Real-Time Plan to Supabase
+    if (btnSaveRtPlan) {
+      btnSaveRtPlan.addEventListener('click', function() {
+        if (typeof ErlanglyPlans === 'undefined' || !ErlanglyPlans.showSaveModal) {
+          if (typeof ErlanglyUtils !== 'undefined') ErlanglyUtils.showToast('Persistence engine loading...', 'warn');
+          return;
+        }
+
+        var curInterval = state.intervals[state.currentIdx] || {};
+        var inputs = {
+          targetSLA: state.targetSLA,
+          targetTime: state.targetTime,
+          intervalLength: state.intervalLength,
+          targetOccupancy: state.targetOccupancy,
+          vtoBufferPct: state.vtoBufferPct,
+          vtoOccFloorPct: state.vtoOccFloorPct,
+          vtoMaxPerInterval: state.vtoMaxPerInterval,
+          vtoHourlyRate: state.vtoHourlyRate,
+          intervalsCount: state.intervals.length,
+          feedMode: state.feedMode
+        };
+
+        var outputs = {
+          currentInterval: curInterval.interval || '08:00',
+          currentIndex: state.currentIdx + 1,
+          totalIntervals: state.intervals.length
+        };
+
+        ErlanglyPlans.showSaveModal('realtime', inputs, outputs);
       });
     }
   }

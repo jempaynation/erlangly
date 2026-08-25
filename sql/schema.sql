@@ -1,6 +1,11 @@
 -- ============================================================================
 -- ERLANGLY DATABASE SCHEMA & ROW LEVEL SECURITY (RLS)
 -- File: sql/schema.sql
+-- 
+-- Rules from AGENTS.md:
+-- - Schema is the source of truth for Supabase Postgres
+-- - RLS enabled on every table holding user data
+-- - Zero infinite recursion in RLS policies (uses SECURITY DEFINER functions)
 -- ============================================================================
 
 -- 1. Create the `plans` table for cross-tool persistence
@@ -61,56 +66,81 @@ CREATE INDEX IF NOT EXISTS idx_versions_created_at ON public.plan_versions (crea
 ALTER TABLE public.plan_versions ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
+-- SECURITY DEFINER HELPER FUNCTIONS (Eliminates RLS Infinite Recursion)
+-- ============================================================================
+
+-- Helper: Check if current authenticated user owns a plan
+CREATE OR REPLACE FUNCTION public.is_plan_owner(check_plan_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.plans
+    WHERE id = check_plan_id AND user_id = auth.uid()
+  );
+$$;
+
+-- Helper: Check if current authenticated user is a collaborator on a plan
+CREATE OR REPLACE FUNCTION public.is_plan_collaborator(check_plan_id UUID, check_role TEXT DEFAULT NULL)
+RETURNS BOOLEAN
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+STABLE
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.plan_collaborators
+    WHERE plan_id = check_plan_id
+      AND (
+        user_id = auth.uid()
+        OR LOWER(user_email) = LOWER(COALESCE(auth.jwt() ->> 'email', ''))
+      )
+      AND (check_role IS NULL OR role = check_role)
+  );
+$$;
+
+-- ============================================================================
 -- ROW LEVEL SECURITY POLICIES
 -- ============================================================================
 
--- Policies for `plans`
+-- Clean existing policies
 DROP POLICY IF EXISTS "Users can view their own plans" ON public.plans;
+DROP POLICY IF EXISTS "Users can view owned or shared plans" ON public.plans;
+DROP POLICY IF EXISTS "Users can create their own plans" ON public.plans;
+DROP POLICY IF EXISTS "Users can update their own plans" ON public.plans;
+DROP POLICY IF EXISTS "Users and editors can update plans" ON public.plans;
+DROP POLICY IF EXISTS "Users can delete their own plans" ON public.plans;
+DROP POLICY IF EXISTS "Only plan owners can delete plans" ON public.plans;
+
+-- Policies for `plans`
 CREATE POLICY "Users can view owned or shared plans"
   ON public.plans
   FOR SELECT
   TO authenticated
   USING (
-    auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM public.plan_collaborators
-      WHERE plan_collaborators.plan_id = plans.id
-        AND (plan_collaborators.user_id = auth.uid() OR plan_collaborators.user_email = auth.jwt() ->> 'email')
-    )
+    auth.uid() = user_id OR public.is_plan_collaborator(id)
   );
 
-DROP POLICY IF EXISTS "Users can create their own plans" ON public.plans;
 CREATE POLICY "Users can create their own plans"
   ON public.plans
   FOR INSERT
   TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "Users can update their own plans" ON public.plans;
 CREATE POLICY "Users and editors can update plans"
   ON public.plans
   FOR UPDATE
   TO authenticated
   USING (
-    auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM public.plan_collaborators
-      WHERE plan_collaborators.plan_id = plans.id
-        AND (plan_collaborators.user_id = auth.uid() OR plan_collaborators.user_email = auth.jwt() ->> 'email')
-        AND plan_collaborators.role = 'editor'
-    )
+    auth.uid() = user_id OR public.is_plan_collaborator(id, 'editor')
   )
   WITH CHECK (
-    auth.uid() = user_id OR
-    EXISTS (
-      SELECT 1 FROM public.plan_collaborators
-      WHERE plan_collaborators.plan_id = plans.id
-        AND (plan_collaborators.user_id = auth.uid() OR plan_collaborators.user_email = auth.jwt() ->> 'email')
-        AND plan_collaborators.role = 'editor'
-    )
+    auth.uid() = user_id OR public.is_plan_collaborator(id, 'editor')
   );
 
-DROP POLICY IF EXISTS "Users can delete their own plans" ON public.plans;
 CREATE POLICY "Only plan owners can delete plans"
   ON public.plans
   FOR DELETE
@@ -118,23 +148,20 @@ CREATE POLICY "Only plan owners can delete plans"
   USING (auth.uid() = user_id);
 
 -- Policies for `plan_collaborators`
-CREATE POLICY "Users can view collaborators for plans they can access"
+DROP POLICY IF EXISTS "Users can view collaborators for plans they can access" ON public.plan_collaborators;
+DROP POLICY IF EXISTS "Only plan owners can insert collaborators" ON public.plan_collaborators;
+DROP POLICY IF EXISTS "Only plan owners can update collaborators" ON public.plan_collaborators;
+DROP POLICY IF EXISTS "Only plan owners can delete collaborators" ON public.plan_collaborators;
+
+CREATE POLICY "Users can view collaborators for accessible plans"
   ON public.plan_collaborators
   FOR SELECT
   TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_collaborators.plan_id
-        AND (
-          plans.user_id = auth.uid() OR
-          EXISTS (
-            SELECT 1 FROM public.plan_collaborators pc
-            WHERE pc.plan_id = plans.id
-              AND (pc.user_id = auth.uid() OR pc.user_email = auth.jwt() ->> 'email')
-          )
-        )
-    )
+    public.is_plan_owner(plan_id)
+    OR user_id = auth.uid()
+    OR LOWER(user_email) = LOWER(COALESCE(auth.jwt() ->> 'email', ''))
+    OR public.is_plan_collaborator(plan_id)
   );
 
 CREATE POLICY "Only plan owners can insert collaborators"
@@ -142,10 +169,7 @@ CREATE POLICY "Only plan owners can insert collaborators"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_collaborators.plan_id AND plans.user_id = auth.uid()
-    )
+    public.is_plan_owner(plan_id)
   );
 
 CREATE POLICY "Only plan owners can update collaborators"
@@ -153,16 +177,10 @@ CREATE POLICY "Only plan owners can update collaborators"
   FOR UPDATE
   TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_collaborators.plan_id AND plans.user_id = auth.uid()
-    )
+    public.is_plan_owner(plan_id)
   )
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_collaborators.plan_id AND plans.user_id = auth.uid()
-    )
+    public.is_plan_owner(plan_id)
   );
 
 CREATE POLICY "Only plan owners can delete collaborators"
@@ -170,30 +188,19 @@ CREATE POLICY "Only plan owners can delete collaborators"
   FOR DELETE
   TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_collaborators.plan_id AND plans.user_id = auth.uid()
-    )
+    public.is_plan_owner(plan_id)
   );
 
 -- Policies for `plan_versions`
-CREATE POLICY "Users can view versions for plans they can access"
+DROP POLICY IF EXISTS "Users can view versions for plans they can access" ON public.plan_versions;
+DROP POLICY IF EXISTS "Owners and editors can insert plan versions" ON public.plan_versions;
+
+CREATE POLICY "Users can view versions for accessible plans"
   ON public.plan_versions
   FOR SELECT
   TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_versions.plan_id
-        AND (
-          plans.user_id = auth.uid() OR
-          EXISTS (
-            SELECT 1 FROM public.plan_collaborators pc
-            WHERE pc.plan_id = plans.id
-              AND (pc.user_id = auth.uid() OR pc.user_email = auth.jwt() ->> 'email')
-          )
-        )
-    )
+    public.is_plan_owner(plan_id) OR public.is_plan_collaborator(plan_id)
   );
 
 CREATE POLICY "Owners and editors can insert plan versions"
@@ -201,22 +208,14 @@ CREATE POLICY "Owners and editors can insert plan versions"
   FOR INSERT
   TO authenticated
   WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.plans
-      WHERE plans.id = plan_versions.plan_id
-        AND (
-          plans.user_id = auth.uid() OR
-          EXISTS (
-            SELECT 1 FROM public.plan_collaborators pc
-            WHERE pc.plan_id = plans.id
-              AND (pc.user_id = auth.uid() OR pc.user_email = auth.jwt() ->> 'email')
-              AND pc.role = 'editor'
-          )
-        )
-    )
+    public.is_plan_owner(plan_id) OR public.is_plan_collaborator(plan_id, 'editor')
   );
 
--- 6. Auto-update `updated_at` timestamp trigger
+-- ============================================================================
+-- TRIGGERS & AUTOMATION
+-- ============================================================================
+
+-- 6. Auto-update `updated_at` timestamp trigger on `plans`
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN

@@ -1324,13 +1324,65 @@ ErlanglyPlans.savePlan('capacity', 'Concurrent Plan', { volume: 350 }, {}, 'pln_
         assert(errorRows[0].line === 3, 'First error correctly pinpointed to line 3 (INVALID)');
         assert(errorRows[1].line === 5, 'Second error correctly pinpointed to line 5 (-50)');
 
+        // ====================================================
+        // [22] SUPABASE CLIENT, CONFIG RESOLUTION & RLS AUDIT
+        // ====================================================
         console.log('\n====================================================');
-        console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
-        console.log('====================================================');
+        console.log('SUPABASE CLIENT, CONFIG & RLS VERIFICATION');
+        console.log('====================================================\n');
 
-        if (failed > 0) {
-          process.exit(1);
-        }
+        const fs = require('fs');
+        const path = require('path');
+
+        // 22a. Config File & Resolution
+        console.log('  [22a] Config Resolution & Client Status:');
+        assert(typeof global.ErlanglySupabaseConfig !== 'undefined', 'ErlanglySupabaseConfig is exported');
+        const initialStatus = global.ErlanglySupabaseConfig.getConnectionStatus();
+        assert(initialStatus && typeof initialStatus.isLive === 'boolean', 'getConnectionStatus returns valid status descriptor');
+        assert(initialStatus.mode === 'mock' || initialStatus.mode === 'live', 'Status mode is either live or mock');
+
+        // Test credentials update & retrieval
+        global.ErlanglySupabaseConfig.setCredentials('https://testproject.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.testkey', false);
+        assert(global.localStorage.getItem('erlangly_supabase_url') === 'https://testproject.supabase.co', 'setCredentials persists URL to localStorage');
+        assert(global.localStorage.getItem('erlangly_supabase_anon_key') === 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.testkey', 'setCredentials persists Anon Key to localStorage');
+
+        global.ErlanglySupabaseConfig.clearCredentials(false);
+        assert(global.localStorage.getItem('erlangly_supabase_url') === null, 'clearCredentials removes URL from localStorage');
+        assert(global.localStorage.getItem('erlangly_supabase_anon_key') === null, 'clearCredentials removes Anon Key from localStorage');
+
+        // 22b. testConnection Validation
+        console.log('\n  [22b] testConnection Validation:');
+        global.ErlanglySupabaseConfig.testConnection('', '').then(function(resBad) {
+          assert(resBad.success === false, 'testConnection rejects empty credentials gracefully');
+          assert(resBad.error.indexOf('valid Supabase Project URL') !== -1, 'testConnection returns actionable validation error');
+
+          // 22c. Database Schema & RLS Non-Recursion Audit
+          console.log('\n  [22c] SQL Schema & RLS Non-Recursion Audit:');
+          const schemaSql = fs.readFileSync(path.join(__dirname, '../sql/schema.sql'), 'utf8');
+          assert(schemaSql.includes('CREATE TABLE IF NOT EXISTS public.plans'), 'Schema creates public.plans table');
+          assert(schemaSql.includes('CREATE TABLE IF NOT EXISTS public.plan_collaborators'), 'Schema creates public.plan_collaborators table');
+          assert(schemaSql.includes('CREATE TABLE IF NOT EXISTS public.plan_versions'), 'Schema creates public.plan_versions table');
+          assert(schemaSql.includes('SECURITY DEFINER'), 'Schema uses SECURITY DEFINER helper functions to prevent RLS recursion');
+          assert(schemaSql.includes('is_plan_collaborator'), 'Schema defines is_plan_collaborator function');
+          assert(schemaSql.includes('is_plan_owner'), 'Schema defines is_plan_owner function');
+
+          // Check .gitignore does not ignore js/config.js
+          const gitignore = fs.readFileSync(path.join(__dirname, '../.gitignore'), 'utf8');
+          const ignoresConfigJs = gitignore.split('\n').some(line => line.trim() === 'js/config.js');
+          assert(!ignoresConfigJs, '.gitignore does NOT ignore js/config.js (prevents Vercel 404 error)');
+
+          // Check default js/config.js exists
+          const configJsExists = fs.existsSync(path.join(__dirname, '../js/config.js'));
+          assert(configJsExists, 'Default js/config.js exists in repository');
+
+          console.log('\n====================================================');
+          console.log(`TEST RESULTS: ${passed} Passed, ${failed} Failed`);
+          console.log('====================================================');
+
+          if (failed > 0) {
+            process.exit(1);
+          }
+        });
       });
   })
   .catch(err => {

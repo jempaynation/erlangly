@@ -778,6 +778,7 @@
 
     var btnExportFteCSV = document.getElementById('btn-export-fte-csv');
     var btnProceedToShifts = document.getElementById('btn-proceed-to-shifts');
+    var btnSaveSchedPlan = document.getElementById('btn-save-sched-plan');
 
     var numRuleMaxDaily = document.getElementById('num-rule-max-daily');
     var numRuleMaxWeekly = document.getElementById('num-rule-max-weekly');
@@ -1779,6 +1780,39 @@
         if (typeof ErlanglyUtils !== 'undefined') {
           ErlanglyUtils.exportCSV('fte_workforce_breakdown.csv', headers, rows);
         }
+      });
+    }
+
+    if (btnSaveSchedPlan) {
+      btnSaveSchedPlan.addEventListener('click', function() {
+        if (typeof ErlanglyPlans === 'undefined' || !ErlanglyPlans.showSaveModal) {
+          if (typeof ErlanglyUtils !== 'undefined') ErlanglyUtils.showToast('Persistence engine loading...', 'warn');
+          return;
+        }
+
+        var inputs = {
+          workWeek: parseFloat(numWorkWeek ? numWorkWeek.value : 40.0) || 40.0,
+          ptMix: parseFloat(numPtMix ? numPtMix.value : 25) || 25,
+          ptHours: parseFloat(numPtHours ? numPtHours.value : 20.0) || 20.0,
+          shrinkage: parseFloat(numFteShrinkage ? numFteShrinkage.value : 30.0) || 30.0,
+          operatingDays: selectOperatingDays ? selectOperatingDays.value : '7',
+          ruleMaxDaily: parseFloat(numRuleMaxDaily ? numRuleMaxDaily.value : 10.0) || 10.0,
+          ruleMaxWeekly: parseFloat(numRuleMaxWeekly ? numRuleMaxWeekly.value : 40.0) || 40.0,
+          ruleMinRest: parseFloat(numRuleMinRest ? numRuleMinRest.value : 11.0) || 11.0,
+          shiftsCount: (UIState.shifts || []).length,
+          agentsCount: (UIState.agents || []).length
+        };
+
+        var outputs = {
+          totalGrossFTE: UIState.totalGrossFTE || 0,
+          totalBaseFTE: UIState.totalBaseFTE || 0,
+          ftHeadcount: UIState.ftCount || 0,
+          ptHeadcount: UIState.ptCount || 0,
+          compliantPct: statCompliantPct ? statCompliantPct.textContent : '100%',
+          hardViolations: statHardViolations ? statHardViolations.textContent : '0'
+        };
+
+        ErlanglyPlans.showSaveModal('scheduling', inputs, outputs);
       });
     }
 

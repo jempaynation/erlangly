@@ -68,8 +68,12 @@
           </p>
         </div>
 
-        <div style="display: flex; gap: var(--space-2); align-items: center;">
-          <input type="text" id="input-search-plans" class="form-control" placeholder="🔍 Search plans by name..." style="width: 220px; height: 36px; font-size: var(--text-xs);">
+        <div style="display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;">
+          <div id="plans-conn-badge-container" style="display: flex; align-items: center; gap: var(--space-2); background: var(--bg-surface-elevated); padding: 4px 10px; border-radius: var(--radius-md); border: 1px solid var(--border-default);">
+            <span id="lbl-plans-conn-badge" class="badge badge-warning" style="font-size: 11px;">Checking...</span>
+            <button id="btn-plans-conn-settings" class="btn btn-ghost btn-sm" style="padding: 2px 6px; font-size: 11px;" title="Configure Supabase Connection">⚙️ Settings</button>
+          </div>
+          <input type="text" id="input-search-plans" class="form-control" placeholder="🔍 Search plans..." style="width: 180px; height: 34px; font-size: var(--text-xs);">
         </div>
       </div>
     </div>
@@ -153,11 +157,35 @@
       var toolPills = document.querySelectorAll('#filter-tool-pills button');
       var scopePills = document.querySelectorAll('#filter-scope-pills button');
       var btnSignOut = document.getElementById('btn-sign-out');
+      var lblConnBadge = document.getElementById('lbl-plans-conn-badge');
+      var btnConnSettings = document.getElementById('btn-plans-conn-settings');
 
       function init() {
+        updateConnStatus();
         checkAuth();
         setupFilters();
         loadPlans();
+      }
+
+      function updateConnStatus() {
+        if (typeof ErlanglySupabaseConfig !== 'undefined' && lblConnBadge) {
+          var status = ErlanglySupabaseConfig.getConnectionStatus();
+          if (status.isLive) {
+            lblConnBadge.className = 'badge badge-success';
+            lblConnBadge.textContent = '🟢 Live Supabase (' + (status.projectRef || 'Connected') + ')';
+          } else {
+            lblConnBadge.className = 'badge badge-warning';
+            lblConnBadge.textContent = '🟡 Local Sandbox (Offline)';
+          }
+        }
+      }
+
+      if (btnConnSettings) {
+        btnConnSettings.addEventListener('click', function() {
+          if (typeof ErlanglyPlans !== 'undefined' && ErlanglyPlans.showConnectionModal) {
+            ErlanglyPlans.showConnectionModal();
+          }
+        });
       }
 
       function checkAuth() {

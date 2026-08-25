@@ -1,5 +1,4 @@
-# Supabase credentials & local config
-js/config.js
+# Local configuration overrides
 js/config.local.js
 .env
 .env.local
