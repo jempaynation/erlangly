@@ -771,7 +771,33 @@
     var rawText = options.text || '';
     var file = options.file || null;
     var filename = file ? file.name : (options.filename || 'import.csv');
-    var requiredHeaders = (options.requiredHeaders || []).map(function(h) { return h.toLowerCase().replace(/[^a-z0-9_]/g, ''); });
+    // Parse required headers with synonym/alias group support
+    var requiredGroups = (options.requiredHeaders || []).map(function(item) {
+      if (Array.isArray(item)) {
+        return item.map(function(h) { return String(h).toLowerCase().replace(/[^a-z0-9_]/g, ''); });
+      }
+      var str = String(item).toLowerCase().trim();
+      if (str.indexOf('|') !== -1) {
+        return str.split('|').map(function(h) { return h.trim().replace(/[^a-z0-9_]/g, ''); });
+      }
+      var cleaned = str.replace(/[^a-z0-9_]/g, '');
+      if (cleaned === 'date' || cleaned === 'period' || cleaned === 'interval' || cleaned === 'day' || cleaned === 'time' || cleaned === 'timestamp' || cleaned === 'datetime') {
+        return ['date', 'period', 'interval', 'day', 'time', 'timestamp', 'datetime'];
+      }
+      if (cleaned === 'volume' || cleaned === 'calls' || cleaned === 'contacts' || cleaned === 'interactions' || cleaned === 'count') {
+        return ['volume', 'calls', 'contacts', 'interactions', 'count'];
+      }
+      if (cleaned === 'actual' || cleaned === 'actuals' || cleaned === 'actual_volume' || cleaned === 'actualvolume') {
+        return ['actual', 'actuals', 'actual_volume', 'actualvolume', 'volume', 'calls'];
+      }
+      if (cleaned === 'forecast' || cleaned === 'projected' || cleaned === 'forecast_volume' || cleaned === 'forecastvolume') {
+        return ['forecast', 'projected', 'forecast_volume', 'forecastvolume'];
+      }
+      if (cleaned === 'skill' || cleaned === 'queue' || cleaned === 'channel' || cleaned === 'lob') {
+        return ['skill', 'queue', 'channel', 'lob', 'service', 'skill_group', 'skillgroup'];
+      }
+      return [cleaned];
+    });
 
     var parsed = ErlanglyUtils.parseCSV(rawText);
     var rows = parsed.rows || [];
@@ -781,11 +807,26 @@
     // Header validation
     var matchedRequired = [];
     var missingRequired = [];
-    requiredHeaders.forEach(function(req) {
-      if (normHeaders.indexOf(req) !== -1) {
-        matchedRequired.push(req);
+    var matchedHeaderKeys = [];
+
+    requiredGroups.forEach(function(group) {
+      var foundKey = null;
+      for (var k = 0; k < group.length; k++) {
+        var alias = group[k];
+        if (normHeaders.indexOf(alias) !== -1) {
+          foundKey = alias;
+          break;
+        }
+      }
+      if (foundKey) {
+        matchedRequired.push(foundKey);
+        matchedHeaderKeys.push(foundKey);
       } else {
-        missingRequired.push(req);
+        var label = group[0].charAt(0).toUpperCase() + group[0].slice(1);
+        if (group.length > 1) {
+          label += ' / ' + group[1].charAt(0).toUpperCase() + group[1].slice(1);
+        }
+        missingRequired.push(label);
       }
     });
 
@@ -801,15 +842,13 @@
       var isValid = true;
       var errReason = '';
 
-      for (var r = 0; r < requiredHeaders.length; r++) {
-        var rKey = requiredHeaders[r];
-        if (normHeaders.indexOf(rKey) !== -1) {
-          var val = row[rKey];
-          if (val === undefined || val === null || String(val).trim() === '') {
-            isValid = false;
-            errReason = 'Missing required column value "' + rKey + '"';
-            break;
-          }
+      for (var r = 0; r < matchedHeaderKeys.length; r++) {
+        var rKey = matchedHeaderKeys[r];
+        var val = row[rKey];
+        if (val === undefined || val === null || String(val).trim() === '') {
+          isValid = false;
+          errReason = 'Missing required column value "' + rKey + '"';
+          break;
         }
       }
 
@@ -877,7 +916,7 @@
     if (missingRequired.length > 0) {
       alertHtml += '<div class="csv-validation-alerts" style="border-color: var(--danger); background: var(--danger-muted);">' +
         '<div style="color: var(--danger); font-weight: 600;">🚫 Missing Required Column(s): ' + missingRequired.join(', ') + '</div>' +
-        '<div style="color: var(--text-secondary);">Your file must contain columns named: ' + requiredHeaders.join(', ') + '. Please check headers and retry.</div>' +
+        '<div style="color: var(--text-secondary);">Your file must contain required columns: ' + missingRequired.join(', ') + '. Please check headers and retry.</div>' +
       '</div>';
     } else if (malformedRows.length > 0) {
       var errList = malformedRows.slice(0, 4).map(function(m) {

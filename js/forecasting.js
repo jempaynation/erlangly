@@ -3511,11 +3511,11 @@
             file: file,
             filename: file ? file.name : 'actuals.csv',
             text: text,
-            requiredHeaders: ['period'],
-            optionalHeaders: ['actual', 'volume', 'calls', 'forecast', 'skill', 'queue'],
+            requiredHeaders: ['Date', 'Actual'],
+            optionalHeaders: ['Forecast', 'Skill', 'AHT', 'Volume', 'Calls', 'Queue', 'Period', 'Interval'],
             rowValidator: function(row) {
-              var p = (row.period || row.date || row.interval || row.day);
-              if (!p) return { valid: false, error: 'Missing period / date column value' };
+              var p = (row.date || row.period || row.interval || row.day || row.timestamp || row.time);
+              if (!p) return { valid: false, error: 'Missing Date / Period column value' };
               var act = parseFloat(row.actual || row.actual_volume || row.actuals || row.volume || row.calls);
               if (isNaN(act) || act < 0) return { valid: false, error: 'Actual volume must be a valid non-negative number' };
               return { valid: true };
@@ -4015,12 +4015,12 @@
             file: file,
             filename: file ? file.name : 'history.csv',
             text: text,
-            requiredHeaders: ['period'],
-            optionalHeaders: ['volume', 'calls', 'aht', 'skill', 'queue', 'channel'],
+            requiredHeaders: ['Date', 'Volume'],
+            optionalHeaders: ['Skill', 'AHT', 'Queue', 'Channel', 'Interval', 'Period', 'Calls', 'Count'],
             rowValidator: function(row) {
-              var p = (row.period || row.date || row.interval || row.day);
-              if (!p) return { valid: false, error: 'Missing period / date column value' };
-              var vol = parseFloat(row.volume || row.calls || 100);
+              var p = (row.date || row.period || row.interval || row.day || row.timestamp || row.time);
+              if (!p) return { valid: false, error: 'Missing Date / Period column value' };
+              var vol = parseFloat(row.volume || row.calls || row.contacts || row.count || row.interactions);
               if (isNaN(vol) || vol < 0) return { valid: false, error: 'Volume must be a non-negative number' };
               return { valid: true };
             },
@@ -4030,10 +4030,10 @@
                 var sk = (r.skill || r.queue || r.channel || r.lob || r.service || 'General').trim();
                 if (sk && sk !== 'General') skillsFound[sk] = true;
                 return {
-                  period: r.period || r.date || r.interval || ('Row ' + (i + 1)),
+                  period: r.date || r.period || r.interval || r.day || ('Row ' + (i + 1)),
                   skill: sk || 'General',
-                  volume: parseFloat(r.volume || r.calls || 100) || 100,
-                  aht: parseFloat(r.aht || 180) || 180
+                  volume: parseFloat(r.volume || r.calls || r.contacts || 100) || 100,
+                  aht: parseFloat(r.aht || r.handletime || r.duration || 180) || 180
                 };
               });
               loadHistory(rows, Object.keys(skillsFound));

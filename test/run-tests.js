@@ -1367,6 +1367,18 @@ ErlanglyPlans.savePlan('capacity', 'Concurrent Plan', { volume: 350 }, {}, 'pln_
         assert(errorRows[0].line === 3, 'First error correctly pinpointed to line 3 (INVALID)');
         assert(errorRows[1].line === 5, 'Second error correctly pinpointed to line 5 (-50)');
 
+        // 21d. Multi-Skill Template and Synonym Header Acceptance
+        console.log('\n  [21d] Multi-Skill Template & Synonym Header Acceptance:');
+        var templateCSV = 'Date,Skill,Volume,AHT\n2026-05-01,Customer Care,1450,180\n2026-05-01,Technical Support,620,300\n2026-05-01,Billing & Inquiries,410,150';
+        var parsedTemplate = ErlanglyUtils.parseCSV(templateCSV);
+        assert(parsedTemplate.normalizedHeaders.includes('date'), 'Template header contains normalized "date"');
+        assert(parsedTemplate.normalizedHeaders.includes('volume'), 'Template header contains normalized "volume"');
+        assert(parsedTemplate.normalizedHeaders.includes('skill'), 'Template header contains normalized "skill"');
+        assert(parsedTemplate.rows.length === 3, 'Parsed 3 sample multi-skill template rows');
+        assert(parsedTemplate.rows[0].date === '2026-05-01', 'First row date extracted accurately');
+        assert(parseFloat(parsedTemplate.rows[0].volume) === 1450, 'First row volume extracted accurately');
+        assert(parsedTemplate.rows[0].skill === 'Customer Care', 'First row skill extracted accurately');
+
         // ====================================================
         // [22] SUPABASE CLIENT, CONFIG RESOLUTION & RLS AUDIT
         // ====================================================
